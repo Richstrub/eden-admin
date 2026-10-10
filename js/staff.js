@@ -185,6 +185,51 @@
   function status(text, cls) { var s = $('edStatus'); s.textContent = text; s.className = 'ed-status' + (cls ? ' ' + cls : ''); }
   function markDirty() { ed.dirty = true; status('Unsaved changes. Publishing automatically…', 'dirty'); clearTimeout(ed.timer); ed.timer = setTimeout(save, 600); }
   function isWine(it) { return it.appellation !== undefined || it.grape !== undefined || it.country !== undefined; }
+  // Starting suggestions, all poured by the glass (from Eden's wine list). Used once by the Kitchen tab's
+  // "Add suggested wine pairings" button; after that, pairings are edited like any other field.
+  var SUGGESTED_PAIRINGS = {
+      "Mushroom Toast": [
+          "2023 Wölffer Estate Cabernet Franc, Long Island",
+          "16"
+      ],
+      "Beef Tartare": [
+          "Hermann J. Wiemer Extra Brut Méthode Champenoise, Seneca Lake",
+          "18"
+      ],
+      "Green Lentil Salad": [
+          "2023 Lieb Cellars Sauvignon Blanc, North Fork",
+          "17"
+      ],
+      "Braised Short Rib": [
+          "2023 Red Tail Ridge Blaufränkisch, Finger Lakes",
+          "16"
+      ],
+      "Beet and Carrot Salad": [
+          "2024 Apollo's Praise Lahoma Vineyard Scheurebe, Seneca Lake",
+          "17"
+      ],
+      "Pan Seared Salmon": [
+          "2024 Living Roots Ramato Pinot Gris, Finger Lakes",
+          "16"
+      ],
+      "Goat Cheese Cappelletti": [
+          "2024 Giovanni Battista Mesina 'Vermentuzzo' Vermentino, Umbria",
+          "20"
+      ],
+      "Tandoori Chicken": [
+          "2024 Hermann J. Wiemer Flower Day Riesling, Seneca Lake",
+          "18"
+      ],
+      "Ember Roasted NY Strip": [
+          "2018 Luke Reserve Syrah, Wahluke Slope",
+          "30"
+      ],
+      "Specialty Cuts": [
+          "2021 Living Roots Cabernet – Tannat, Adelaide Hills",
+          "20"
+      ]
+  };
+  function isKitchen(t) { return t && (t.id === 'm-food' || /kitchen/i.test(t.label || '')); }
   function hasWine(t) { return (t.groups || []).some(function (g) { return (g.items || []).some(isWine); }); }
 
   function openEditor() {
@@ -235,6 +280,20 @@
     if (ed.tab === 'supper') { edSupper(main); return; }
     var t = d.tabs[ed.tab];
     var h = document.createElement('h2'); h.textContent = t.label || 'Untitled'; main.appendChild(h);
+    if (isKitchen(t) && ed.canWrite && !t.groups.some(function (g) { return (g.items || []).some(function (it) { return it.pair; }); })) {
+      var matches = 0; t.groups.forEach(function (g) { (g.items || []).forEach(function (it) { if (SUGGESTED_PAIRINGS[it.name]) matches++; }); });
+      if (matches) {
+        var pb = document.createElement('div'); pb.className = 'ed-banner';
+        var pp = document.createElement('p'); pp.textContent = 'Suggested by-the-glass wine pairings are ready for ' + matches + ' Small and Large Plates. Add them, then change any you like. Each pairing shows under its dish on the website and iPad menu.';
+        pb.appendChild(pp);
+        var pgo = document.createElement('button'); pgo.type = 'button'; pgo.className = 'ed-btn'; pgo.textContent = 'Add suggested wine pairings';
+        pgo.onclick = function () {
+          t.groups.forEach(function (g) { (g.items || []).forEach(function (it) { var sp = SUGGESTED_PAIRINGS[it.name]; if (sp && !it.pair) { it.pair = sp[0]; it.pairPrice = sp[1]; } }); });
+          markDirty(); edRender();
+        };
+        pb.appendChild(pgo); main.appendChild(pb);
+      }
+    }
     var tn = document.createElement('div'); tn.className = 'ed-tabname'; tn.appendChild(field('Tab name', t.label, function (v) { t.label = v; h.textContent = v || 'Untitled'; side.children[ed.tab].textContent = v || 'Untitled'; })); main.appendChild(tn);
     t.groups.forEach(function (g, gi) {
       var box = document.createElement('section'); box.className = 'ed-group';
@@ -274,7 +333,14 @@
         ib.appendChild(btn('↑', 'Move up', function () { if (ii > 0) { g.items.splice(ii - 1, 0, g.items.splice(ii, 1)[0]); markDirty(); edRender(); } }));
         ib.appendChild(btn('↓', 'Move down', function () { if (ii < g.items.length - 1) { g.items.splice(ii + 1, 0, g.items.splice(ii, 1)[0]); markDirty(); edRender(); } }));
         ib.appendChild(confirmBtn('✕', function () { g.items.splice(ii, 1); markDirty(); edRender(); }, 'Remove item'));
-        row.appendChild(ib); list.appendChild(row);
+        row.appendChild(ib);
+        if (!isWine(it) && isKitchen(t)) {
+          var pr = document.createElement('div'); pr.className = 'ed-pairrow';
+          pr.appendChild(field('Wine pairing (optional)', it.pair, function (v) { if (v) it.pair = v; else delete it.pair; }));
+          pr.appendChild(field('Glass price', it.pairPrice, function (v) { if (v) it.pairPrice = v; else delete it.pairPrice; }));
+          row.appendChild(pr);
+        }
+        list.appendChild(row);
       });
       box.appendChild(list);
       var foot = document.createElement('div'); foot.className = 'ed-gfoot';
