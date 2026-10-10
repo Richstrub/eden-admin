@@ -49,7 +49,9 @@
   <div class="ed-bar">
     <div class="ed-brand">EDEN <span>Staff</span></div>
     <nav class="ed-nav" aria-label="Staff sections">
-      <button type="button" data-view="menu" aria-current="true">Menu</button>
+      <a href="#home" data-view="home">Home</a>
+      <a href="#menu" data-view="menu">Menu</a>
+      <a href="#schedule" data-view="schedule" data-mgr>Schedule</a>
       <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
       <button type="button" disabled title="Coming in a later phase">Calendar</button>
       <button type="button" disabled title="Coming in a later phase">Reservations</button>
@@ -62,15 +64,41 @@
       <button class="ed-btn" id="edSave" type="button">Publish changes</button>
     </div>
   </div>
-  <div class="ed-body">
+  <section class="view home" id="viewHome" hidden>
+    <div class="home-in">
+      <p class="home-eyebrow" id="homeHello">Welcome</p>
+      <h1 class="home-title">Eden Staff</h1>
+      <div class="home-grid">
+        <a class="tile" href="#menu">
+          <span class="tile-k">Website</span>
+          <span class="tile-t">Menu &amp; Supper Club</span>
+          <span class="tile-d">Edit dishes, wine list, pairings and the Supper Club page. Changes go live on the website and iPads in about a second.</span>
+          <span class="tile-m" id="homeMenuMeta"></span>
+        </a>
+        <a class="tile" href="#schedule" data-mgr>
+          <span class="tile-k">Team</span>
+          <span class="tile-t">Staff Schedule</span>
+          <span class="tile-d">Build the weekly schedule, publish it, and text each employee their shifts.</span>
+          <span class="tile-m" id="homeSchedMeta"></span>
+        </a>
+        <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Catering &amp; BEOs</span><span class="tile-d">Inquiries from the website turned into banquet event orders.</span></div>
+        <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Events Calendar</span><span class="tile-d">Private events and the Supper Club by room, with double-booking warnings.</span></div>
+        <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Reservations</span><span class="tile-d">Phone bookings, large parties and guest notes alongside OpenTable.</span></div>
+      </div>
+      <p class="home-links"><a id="homeSite" href="#" target="_blank" rel="noopener">View the website</a> <a id="homePad" href="#" target="_blank" rel="noopener">Open the iPad menu</a></p>
+    </div>
+  </section>
+  <div class="ed-body" id="viewMenu" hidden>
     <nav class="ed-side" id="edTabs" aria-label="Menu sections"></nav>
     <main class="ed-main" id="edMain"></main>
   </div>
+  <section class="view sched" id="viewSchedule" hidden></section>
 </div>
 
 <script src="js/config.js"></script>
 <script src="js/menu-seed.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="js/schedule.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>

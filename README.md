@@ -13,6 +13,15 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 - **Database**: Supabase project `qmblccwyxbpvziiwrlne`. The publishable key in
   `js/config.js` is meant to be public. Never commit a secret key or `service_role` key.
 
+## Pages
+
+- **Home** (`#home`): tiles for each part of the back office.
+- **Menu** (`#menu`): menu, wine list, pairings and Supper Club editor.
+- **Schedule** (`#schedule`, Owner and Manager only): employees, the weekly schedule, publishing,
+  and texting each person their shifts. One-time setup: run `supabase/schedule.sql` in Supabase.
+  Employees can be imported from `templates/eden-employees.xlsx` (Schedule → Employees → Import spreadsheet).
+  Texting opens the phone's Messages app with each person's shifts filled in (no texting service needed).
+
 ## Roles
 
 | Role | Menu and Supper Club |
@@ -21,6 +30,8 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 | Manager | Edit |
 | Kitchen | Edit |
 | Front of House | View |
+
+The Schedule (and employees' phone numbers) is visible only to Owner and Manager.
 
 ## Adding a staff member (for now)
 

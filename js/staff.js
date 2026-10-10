@@ -100,10 +100,59 @@
         var b = document.createElement('b'); b.textContent = name; $('who').appendChild(b);
         $('who').appendChild(document.createTextNode(ROLE_NAMES[role] || role));
         ed.canWrite = EDIT_ROLES.indexOf(role) !== -1;
+        staffName = name;
+        document.querySelectorAll('[data-mgr]').forEach(function (el) { el.hidden = !isMgr(); });
         show('app');
-        if (!started) { started = true; startData(); } else openEditor();
+        if (!started) { started = true; startData(); }
+        route();
       });
     });
+  }
+
+  /* ---------------- pages: Home, Menu, Schedule ---------------- */
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule' };
+  var view = null, menuOpened = false, staffName = '';
+  function isMgr() { return role === 'owner' || role === 'manager'; }
+  function route() {
+    if ($('app').hidden) return;
+    var v = (location.hash || '').replace(/^#/, '');
+    if (!VIEWS[v] || (v === 'schedule' && !isMgr())) v = 'home';
+    if (('#' + v) !== location.hash) history.replaceState(null, '', '#' + v);
+    if (view === 'menu' && v !== 'menu' && ed.dirty) save();
+    view = v;
+    Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
+    document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
+    $('edSave').hidden = v !== 'menu';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : 'Eden Staff';
+    if (v === 'menu') {
+      if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
+      else if (!store.loaded) status('Loading the menu…');
+      else status(ed.dirty ? 'Unsaved changes. Publishing automatically…' : (ed.canWrite ? 'Ready. Changes publish to the website automatically.' : 'View only. Your role can see the menu but not change it.'), ed.dirty ? 'dirty' : (ed.canWrite ? '' : 'err'));
+    } else if (v === 'schedule') {
+      status('');
+      if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
+    } else {
+      status(''); renderHome();
+    }
+  }
+  window.addEventListener('hashchange', route);
+  function renderHome() {
+    var first = String(staffName || '').split(/[\s@]/)[0];
+    var h = new Date().getHours();
+    $('homeHello').textContent = (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '');
+    var site = CFG.publicSite || '';
+    $('homeSite').href = site || '#'; $('homeSite').hidden = !site;
+    $('homePad').href = site ? site.replace(/#.*$/, '') + '#ipad' : '#'; $('homePad').hidden = !site;
+    homeMeta();
+  }
+  function fmtWhen(t) {
+    var d = new Date(t); if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  function homeMeta() {
+    var m = store.rows['site/menu'];
+    $('homeMenuMeta').textContent = !store.loaded ? '' : m && m.updatedAt ? 'Last published ' + fmtWhen(m.updatedAt) : 'Not set up yet';
+    if (isMgr() && window.EdenSchedule) window.EdenSchedule.summary(sb).then(function (t) { $('homeSchedMeta').textContent = t || ''; }, function () {});
   }
 
   /* ---------------- data: read all website rows, keep them live ---------------- */
@@ -121,8 +170,10 @@
     });
   }
   function startData() {
-    status('Loading the menu…');
-    loadAll().then(function () { openEditor(); }, function () { status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
+    loadAll().then(function () {
+      if (view === 'menu') { menuOpened = true; openEditor(); }
+      homeMeta();
+    }, function () { if (view === 'menu') status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
     var first = true;
     sb.channel('staff-site-docs')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'site_docs' }, function (ch) {
