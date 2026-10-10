@@ -335,10 +335,7 @@
         ib.appendChild(confirmBtn('✕', function () { g.items.splice(ii, 1); markDirty(); edRender(); }, 'Remove item'));
         row.appendChild(ib);
         if (!isWine(it) && isKitchen(t)) {
-          var pr = document.createElement('div'); pr.className = 'ed-pairrow';
-          pr.appendChild(field('Wine pairing (optional)', it.pair, function (v) { if (v) it.pair = v; else delete it.pair; }));
-          pr.appendChild(field('Glass price', it.pairPrice, function (v) { if (v) it.pairPrice = v; else delete it.pairPrice; }));
-          row.appendChild(pr);
+          row.appendChild(pairRow(it));
         }
         list.appendChild(row);
       });
@@ -406,11 +403,86 @@
     rb.appendChild(cta);
   }
 
-  function field(label, val, onchange) {
+  /* ---------- wine pairing field with by-the-glass suggestions ---------- */
+  function fold(x) { return String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function glassWines() { // every wine on the current wine list that has a glass price
+    var out = [];
+    ((ed.draft && ed.draft.tabs) || []).forEach(function (t) {
+      (t.groups || []).forEach(function (g) {
+        (g.items || []).forEach(function (w) {
+          if (isWine(w) && w.glass && w.name && !w.hidden) out.push({ name: w.name, glass: String(w.glass).trim(), style: g.title || '', where: w.appellation || w.country || '' });
+        });
+      });
+    });
+    return out;
+  }
+  function pairRow(it) {
+    var pr = document.createElement('div'); pr.className = 'ed-pairrow';
+    var wf = field('Wine pairing (optional)', it.pair, function (v) { if (v) it.pair = v; else delete it.pair; }, true);
+    var pf = field('Glass price', it.pairPrice, function (v) { if (v) it.pairPrice = v; else delete it.pairPrice; });
+    pr.appendChild(wf); pr.appendChild(pf);
+    if (!ed.canWrite) return pr;
+    var input = wf.querySelector('input'), priceInput = pf.querySelector('input');
+    input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
+    input.placeholder = 'Start typing a wine, grape or region';
+    wf.classList.add('ed-ac');
+    var box = document.createElement('div'); box.className = 'ed-ac-list'; box.setAttribute('role', 'listbox'); box.hidden = true;
+    wf.appendChild(box);
+    var matches = [], active = -1;
+    function close() { box.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); }
+    function choose(w) {
+      input.value = w.name; priceInput.value = w.glass;
+      it.pair = w.name; it.pairPrice = w.glass;
+      close(); markDirty();
+    }
+    function paint() {
+      box.querySelectorAll('.ed-ac-opt').forEach(function (o, i) { o.classList.toggle('on', i === active); o.setAttribute('aria-selected', i === active); });
+      var on = box.querySelector('.ed-ac-opt.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+    }
+    function open() {
+      var words = fold(input.value).split(/\s+/).filter(Boolean), all = glassWines();
+      matches = all.filter(function (w) { var hay = fold(w.name + ' ' + w.style + ' ' + w.where); return words.every(function (q) { return hay.indexOf(q) !== -1; }); });
+      if (matches.length === 1 && matches[0].name === input.value) matches = [];
+      box.innerHTML = '';
+      if (!all.length) { close(); return; }
+      var head = document.createElement('div'); head.className = 'ed-ac-head';
+      head.textContent = matches.length ? 'By the glass' + (words.length ? ' · ' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') : '') : 'No glass pours match “' + input.value + '”. You can still type any wine.';
+      box.appendChild(head);
+      matches.forEach(function (w, i) {
+        var o = document.createElement('div'); o.className = 'ed-ac-opt'; o.setAttribute('role', 'option');
+        var n = document.createElement('span'); n.className = 'ed-ac-name'; n.textContent = w.name;
+        var m = document.createElement('span'); m.className = 'ed-ac-meta'; m.textContent = w.style + (w.where ? ' · ' + w.where : '');
+        var pz = document.createElement('span'); pz.className = 'ed-ac-price'; pz.textContent = w.glass;
+        o.appendChild(n); o.appendChild(pz); o.appendChild(m);
+        o.addEventListener('mousedown', function (e) { e.preventDefault(); choose(w); }); // before the input loses focus
+        o.addEventListener('mousemove', function () { if (active !== i) { active = i; paint(); } });
+        box.appendChild(o);
+      });
+      active = matches.length && words.length ? 0 : -1;
+      box.hidden = false; input.setAttribute('aria-expanded', 'true'); paint();
+    }
+    input.addEventListener('focus', open);
+    input.addEventListener('input', open);
+    input.addEventListener('blur', function () { setTimeout(close, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (box.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { open(); e.preventDefault(); return; }
+      if (box.hidden) return;
+      if (e.key === 'ArrowDown') { active = Math.min(matches.length - 1, active + 1); paint(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); paint(); e.preventDefault(); }
+      else if (e.key === 'Enter') { if (active >= 0 && matches[active]) { choose(matches[active]); e.preventDefault(); } }
+      else if (e.key === 'Escape') { close(); e.preventDefault(); }
+    });
+    return pr;
+  }
+
+  function field(label, val, onchange, deferSave) {
     var w = document.createElement('label'); w.className = 'ed-field';
     var s = document.createElement('span'); s.textContent = label; w.appendChild(s);
     var i = document.createElement('input'); i.value = val || ''; i.disabled = !ed.canWrite;
-    i.addEventListener('input', function () { onchange(i.value); markDirty(); });
+    // deferSave: keep the change in the draft while typing, publish when the field is left
+    i.addEventListener('input', function () { onchange(i.value); if (!deferSave) markDirty(); });
+    if (deferSave) i.addEventListener('change', function () { onchange(i.value); markDirty(); });
     w.appendChild(i); return w;
   }
   function area(label, val, onchange) {
