@@ -78,6 +78,8 @@
   function loadEmployees() {
     return sb().from('employees').select('*').order('name').then(function (r) {
       if (r.error) throw r.error; S.employees = r.data || [];
+      S.hasEmail = !S.employees.length || S.employees.some(function (e) { return 'email' in e; });
+      return loadAccounts();
     });
   }
   function loadWeek(d) {
@@ -115,11 +117,32 @@
       if (!isPerm(e)) S.timer = setTimeout(saveWeek, 5000);
     });
   }
-  function saveEmployee(e) {
-    return sb().from('employees').upsert({ id: e.id, name: e.name || '', phone: e.phone || '', position: e.position || '', active: e.active !== false }, { onConflict: 'id' })
-      .then(function (r) { if (r.error) throw r.error; status('Saved.', 'ok'); })
-      .catch(function (err) { status(isPerm(err) ? 'Your account can’t change employees.' : 'Couldn’t save the employee. Check your connection.', 'err'); });
+  function empRow(e) {
+    var r = { id: e.id, name: e.name || '', phone: e.phone || '', position: e.position || '', active: e.active !== false };
+    if (S.hasEmail) r.email = String(e.email || '').trim().toLowerCase();
+    return r;
   }
+  function noEmailCol(err) { return err && (err.code === 'PGRST204' || err.code === '42703') && /email/i.test(err.message || ''); }
+  function saveEmployee(e) {
+    return sb().from('employees').upsert(empRow(e), { onConflict: 'id' })
+      .then(function (r) {
+        if (r.error && noEmailCol(r.error)) { S.hasEmail = false; return saveEmployee(e).then(function () { status('Saved, but emails need the one-time team setup (supabase/team.sql).', 'err'); }); }
+        if (r.error) throw r.error; status('Saved.', 'ok');
+      })
+      .catch(function (err) {
+        if (err && err.code === '23505') { status('That email is already used by another employee.', 'err'); return; }
+        status(isPerm(err) ? 'Your account can\u2019t change employees.' : 'Couldn\u2019t save the employee. Check your connection.', 'err');
+      });
+  }
+  function loadAccounts() {
+    return sb().rpc('employee_accounts').then(function (r) {
+      S.accounts = {};
+      if (r.error) { S.accountsOk = false; return; }
+      S.accountsOk = true;
+      (r.data || []).forEach(function (a) { S.accounts[String(a.email || '').toLowerCase()] = a; });
+    }, function () { S.accountsOk = false; });
+  }
+  function teamUrl() { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'team/'; }
   var empTimers = {};
   function empChanged(e) { status('Saving…', 'dirty'); clearTimeout(empTimers[e.id]); empTimers[e.id] = setTimeout(function () { saveEmployee(e); }, 600); }
 
@@ -375,15 +398,24 @@
     var wrap = h('div', { cls: 'sc-people' });
     var tools = h('div', { cls: 'sc-ptools' }, [
       h('button', { type: 'button', cls: 'ed-btn', text: '+ Add employee', on: { click: function () {
-        var e = { id: uid(), name: '', phone: '', position: '', active: true }; S.employees.push(e); render();
+        var e = { id: uid(), name: '', phone: '', position: '', email: '', active: true }; S.employees.push(e); render();
         var rows = S.body.querySelectorAll('.sc-prow'); var last = rows[rows.length - 1]; if (last) last.querySelector('input').focus();
       } } }),
       h('label', { cls: 'ed-btn small sc-file' }, ['Import spreadsheet', h('input', { type: 'file', accept: '.xlsx,.xls,.csv', on: { change: function (ev) { var f = ev.target.files[0]; ev.target.value = ''; if (f) importFile(f); } } })]),
       h('a', { cls: 'sc-link', href: TEMPLATE, download: 'eden-employees.xlsx', text: 'Download the blank employee spreadsheet' })
     ]);
     wrap.appendChild(tools);
+    var url = teamUrl(), cp = h('button', { type: 'button', cls: 'ed-btn small', text: 'Copy link' });
+    cp.addEventListener('click', function () { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { cp.textContent = 'Copied'; }, function () { cp.textContent = url; }); });
+    wrap.appendChild(h('div', { cls: 'sc-teamlink' }, [
+      h('div', null, [h('span', { cls: 'sc-eyebrow', text: 'Staff schedule page' }), h('a', { href: url, target: '_blank', rel: 'noopener', text: url })]),
+      h('p', { text: 'Employees with an email below can open this page, choose \u201cCreate account\u201d and set their own password. They see published schedules (names and positions only) and the message board.' }),
+      cp
+    ]));
+    if (!S.hasEmail) wrap.appendChild(h('div', { cls: 'ed-banner' }, [h('p', { text: 'To add login emails, run the one-time team setup in Supabase (supabase/team.sql), then reload this page.' })]));
     var list = S.employees.slice().sort(function (a, b) { return (!a.name) - (!b.name) || (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''); });
-    var table = h('table', { cls: 'sc-ptable' }, [h('thead', null, h('tr', null, [h('th', { text: 'Name' }), h('th', { text: 'Mobile number' }), h('th', { text: 'Position' }), h('th', { text: 'On schedule' }), h('th')]))]);
+    var heads = ['Name', 'Mobile number'].concat(S.hasEmail ? ['Email (login)'] : []).concat(['Position']).concat(S.hasEmail ? ['Login'] : []).concat(['On schedule', '']);
+    var table = h('table', { cls: 'sc-ptable' }, [h('thead', null, h('tr', null, heads.map(function (t) { return h('th', { text: t }); })))]);
     var tb = h('tbody');
     var dl = h('datalist', { id: 'scPosList' }, positions().map(function (p) { return h('option', { value: p }); }));
     list.forEach(function (e) {
@@ -408,19 +440,30 @@
           render(); status('Removed.', 'ok');
         });
       });
-      tb.appendChild(h('tr', { cls: 'sc-prow' + (e.active === false ? ' inactive' : '') }, [
-        h('td', null, inp('name', { placeholder: 'Full name' })),
-        h('td', null, [ph, bad]),
-        h('td', null, inp('position', { list: 'scPosList', placeholder: 'e.g. Server' })),
-        h('td', { cls: 'c' }, act),
-        h('td', { cls: 'r' }, del)
-      ]));
+      var em = null, login = null;
+      if (S.hasEmail) {
+        var emIn = inp('email', { type: 'email', placeholder: 'name@example.com', autocomplete: 'off', spellcheck: 'false' });
+        var emBad = h('span', { cls: 'sc-warn' });
+        var emChk = function () { emBad.textContent = e.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e.email).trim()) ? 'Check this email' : ''; };
+        emIn.addEventListener('blur', emChk); emChk();
+        em = [emIn, emBad];
+        var acct = e.email ? S.accounts && S.accounts[String(e.email).trim().toLowerCase()] : null;
+        login = !e.email ? h('span', { cls: 'sc-login none', text: '\u2013' })
+          : acct ? h('span', { cls: 'sc-login ok', text: 'Active' + (acct.last_sign_in_at ? ' \u00b7 ' + new Date(acct.last_sign_in_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '') })
+          : S.accountsOk ? h('span', { cls: 'sc-login', text: 'Not created yet' }) : h('span', { cls: 'sc-login none', text: '\u2013' });
+      }
+      var cells = [h('td', null, inp('name', { placeholder: 'Full name' })), h('td', null, [ph, bad])];
+      if (S.hasEmail) cells.push(h('td', null, em));
+      cells.push(h('td', null, inp('position', { list: 'scPosList', placeholder: 'e.g. Server' })));
+      if (S.hasEmail) cells.push(h('td', null, login));
+      cells.push(h('td', { cls: 'c' }, act), h('td', { cls: 'r' }, del));
+      tb.appendChild(h('tr', { cls: 'sc-prow' + (e.active === false ? ' inactive' : '') }, cells));
     });
     table.appendChild(tb);
     wrap.appendChild(dl);
     if (list.length) wrap.appendChild(h('div', { cls: 'sc-scroll' }, table));
     else wrap.appendChild(h('p', { cls: 'sc-empty', text: 'No employees yet. Add them here, or fill in the spreadsheet and import it.' }));
-    wrap.appendChild(h('p', { cls: 'sc-help', text: 'Mobile numbers are used only to text schedules, and only the Owner and Managers can see them. Turn off “On schedule” for people who are on leave or seasonal; their past schedules are kept.' }));
+    wrap.appendChild(h('p', { cls: 'sc-help', text: 'Mobile numbers and emails are visible only to the Owner and Managers; the staff page never shows them. Turn off \u201cOn schedule\u201d for people on leave or seasonal: they drop off the schedule and can no longer sign in to the staff page. Remove deletes them.' }));
     S.body.appendChild(wrap);
   }
 
@@ -439,22 +482,29 @@
       for (var i = 0; i < Math.min(rows.length, 15) && hi < 0; i++) {
         var r = rows[i].map(function (c) { return String(c).toLowerCase().trim(); });
         var n = r.findIndex(function (c) { return /^(full name|name|employee|employee name)\*?$/.test(c); });
-        if (n >= 0) { hi = i; col.name = n; col.phone = r.findIndex(function (c) { return /phone|mobile|cell/.test(c); }); col.position = r.findIndex(function (c) { return /position|role|job|title/.test(c); }); }
+        if (n >= 0) { hi = i; col.name = n; col.phone = r.findIndex(function (c) { return /phone|mobile|cell/.test(c); }); col.position = r.findIndex(function (c) { return /position|role|job|title/.test(c); }); col.email = r.findIndex(function (c) { return /e-?mail/.test(c); }); }
       }
       if (hi < 0) { status('Couldn’t find a “Name” column in that file. Use the Eden employee spreadsheet.', 'err'); return; }
       var added = 0, updated = 0, skipped = 0, jobs = [];
       rows.slice(hi + 1).forEach(function (r) {
         var name = String(r[col.name] || '').trim(), phone = col.phone >= 0 ? String(r[col.phone] || '').trim() : '', pos = col.position >= 0 ? String(r[col.position] || '').trim() : '';
+        var mail = col.email >= 0 ? String(r[col.email] || '').trim().toLowerCase() : '';
         if (/^example/i.test(name)) return;
         if (!name) { if (phone || pos) skipped++; return; }
         var e164 = phoneE164(phone);
         var hit = S.employees.filter(function (x) { return (e164 && phoneE164(x.phone) === e164) || (x.name || '').trim().toLowerCase() === name.toLowerCase(); })[0];
-        if (hit) { hit.name = name; if (phone) hit.phone = e164 ? phoneShow(e164) : phone; if (pos) hit.position = pos; hit.active = true; updated++; jobs.push(hit); }
-        else { var e = { id: uid(), name: name, phone: e164 ? phoneShow(e164) : phone, position: pos, active: true }; S.employees.push(e); added++; jobs.push(e); }
+        if (hit) { hit.name = name; if (phone) hit.phone = e164 ? phoneShow(e164) : phone; if (pos) hit.position = pos; if (mail) hit.email = mail; hit.active = true; updated++; jobs.push(hit); }
+        else { var e = { id: uid(), name: name, phone: e164 ? phoneShow(e164) : phone, position: pos, email: mail, active: true }; S.employees.push(e); added++; jobs.push(e); }
       });
       if (!jobs.length) { status('No employees found in that file.', 'err'); return; }
-      return sb().from('employees').upsert(jobs.map(function (e) { return { id: e.id, name: e.name, phone: e.phone, position: e.position, active: true }; }), { onConflict: 'id' }).then(function (r) {
+      jobs.forEach(function (e) { e.active = true; });
+      return sb().from('employees').upsert(jobs.map(empRow), { onConflict: 'id' }).then(function (r) {
+        if (r.error && noEmailCol(r.error)) { S.hasEmail = false; return sb().from('employees').upsert(jobs.map(empRow), { onConflict: 'id' }); }
+        return r;
+      }).then(function (r) {
+        if (r.error && r.error.code === '23505') throw new Error('two employees have the same email address');
         if (r.error) throw r.error;
+        loadAccounts().then(render);
         render(); status('Imported: ' + added + ' added, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' rows without a name skipped' : '') + '.', 'ok');
       });
     }).catch(function (e) { status(isPerm(e) ? 'Your account can’t change employees.' : 'Couldn’t import that file: ' + (e && e.message || e), 'err'); });

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1215">
+<title>Eden Team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/editor-base.css">
+<link rel="stylesheet" href="../css/staff.css">
+<link rel="stylesheet" href="team.css">
+</head>
+<body class="team">
+
+<div class="gate" id="loading"><div class="card"><div class="mark">EDEN<span>Team</span></div><p id="loadingMsg" style="text-align:center">Loading…</p></div></div>
+
+<div class="gate" id="signin" hidden>
+  <form novalidate>
+    <div class="mark">EDEN<span>Team</span></div>
+    <div class="tm-switch" role="tablist">
+      <button type="button" role="tab" data-mode="in" aria-selected="true">Sign in</button>
+      <button type="button" role="tab" data-mode="up" aria-selected="false">Create account</button>
+    </div>
+    <p class="tm-intro" data-for="up" hidden>First time here? Use the email you gave Eden and choose a password.</p>
+    <label>Email<input type="email" name="email" autocomplete="username" required></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <label data-for="up" hidden>Repeat password<input type="password" name="password2" autocomplete="new-password"></label>
+    <p class="msg" role="status"></p>
+    <button class="primary" type="submit">Sign in</button>
+    <p class="tm-small" data-for="in">Forgot your password? Ask a manager to reset it.</p>
+  </form>
+</div>
+
+<div class="gate" id="notlisted" hidden>
+  <div class="card">
+    <div class="mark">EDEN<span>Team</span></div>
+    <p id="notlistedMsg"></p>
+    <button class="primary" type="button" data-act="signout">Sign out</button>
+  </div>
+</div>
+
+<div class="tm" id="app" hidden>
+  <header class="tm-bar">
+    <div class="tm-brand">EDEN <span>Team</span></div>
+    <div class="tm-who"><b id="whoName"></b><span id="whoRole"></span></div>
+    <a class="tm-btn" id="mgrLink" href="../#home" hidden>Manager site</a>
+    <button class="tm-btn" type="button" data-act="signout">Sign out</button>
+  </header>
+
+  <main class="tm-main">
+    <section class="tm-hero">
+      <p class="tm-eyebrow" id="hello"></p>
+      <h1 id="weekTitle"></h1>
+      <div class="tm-weeknav">
+        <button type="button" class="tm-btn" id="prevWeek" aria-label="Previous week">&larr;</button>
+        <button type="button" class="tm-btn" id="thisWeek">This week</button>
+        <button type="button" class="tm-btn" id="nextWeek" aria-label="Next week">&rarr;</button>
+      </div>
+    </section>
+
+    <section class="tm-sec">
+      <h2 class="tm-h">Your shifts</h2>
+      <div id="myShifts"></div>
+    </section>
+
+    <section class="tm-sec">
+      <h2 class="tm-h">Who&rsquo;s working</h2>
+      <div id="teamDays"></div>
+    </section>
+
+    <section class="tm-sec tm-board" id="board">
+      <h2 class="tm-h">Message board</h2>
+      <form id="postForm" class="tm-post" novalidate>
+        <label class="tm-sr" for="postBody">Write a note</label>
+        <textarea id="postBody" maxlength="2000" rows="3" placeholder="Leave a note for the team: shift swaps, 86&rsquo;d items, reminders&hellip;"></textarea>
+        <div class="tm-post-f"><span class="tm-count" id="postCount"></span><button class="tm-btn primary" type="submit">Post</button></div>
+      </form>
+      <p class="tm-msg" id="boardMsg" role="status"></p>
+      <ul class="tm-posts" id="posts"></ul>
+    </section>
+  </main>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="team.js"></script>
+</body>
+</html>

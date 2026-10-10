@@ -91,7 +91,7 @@
       role = r.data || null;
       var email = session.user && session.user.email;
       if (!role) {
-        $('noaccessMsg').textContent = 'You are signed in as ' + email + ', but this account hasn’t been given staff access yet. Ask the owner to add you.';
+        $('noaccessMsg').textContent = 'You are signed in as ' + email + '. This is the managers\u2019 site. Your schedule and the team message board are on the staff schedule page.';
         show('noaccess'); return;
       }
       return sb.from('staff').select('name').eq('user_id', session.user.id).maybeSingle().then(function (n) {
