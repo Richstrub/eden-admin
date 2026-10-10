@@ -1,0 +1,6 @@
+// Cloudflare settings: publish this folder as a static website (no server code).
+{
+  "name": "eden-admin",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "." }
+}

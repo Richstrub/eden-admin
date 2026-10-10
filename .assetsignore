@@ -1,0 +1,7 @@
+.git
+node_modules
+supabase
+README.md
+wrangler.jsonc
+.assetsignore
+.gitignore
