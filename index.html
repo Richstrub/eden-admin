@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Eden Staff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/editor-base.css">
+<link rel="stylesheet" href="css/staff.css">
+</head>
+<body>
+
+<div class="gate" id="loading"><div class="card"><div class="mark">EDEN<span>Staff</span></div><p id="loadingMsg" style="text-align:center">Loading…</p></div></div>
+
+<div class="gate" id="signin" hidden>
+  <form novalidate>
+    <div class="mark">EDEN<span>Staff</span></div>
+    <label>Email<input type="email" name="email" autocomplete="username" required></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <p class="msg" role="status"></p>
+    <button class="primary" type="submit">Sign in</button>
+    <div class="row"><button type="button" class="link" data-act="reset">Forgot password?</button></div>
+  </form>
+</div>
+
+<div class="gate" id="newpw" hidden>
+  <form novalidate>
+    <div class="mark">EDEN<span>Staff</span></div>
+    <p>Choose a new password (at least 10 characters).</p>
+    <label>New password<input type="password" name="password" autocomplete="new-password" minlength="10" required></label>
+    <label>Repeat it<input type="password" name="password2" autocomplete="new-password" minlength="10" required></label>
+    <p class="msg" role="status"></p>
+    <button class="primary" type="submit">Save password</button>
+  </form>
+</div>
+
+<div class="gate" id="noaccess" hidden>
+  <div class="card">
+    <div class="mark">EDEN<span>Staff</span></div>
+    <p id="noaccessMsg"></p>
+    <button class="primary" type="button" data-act="signout">Sign out</button>
+  </div>
+</div>
+
+<div class="ed" id="app" hidden>
+  <div class="ed-bar">
+    <div class="ed-brand">EDEN <span>Staff</span></div>
+    <nav class="ed-nav" aria-label="Staff sections">
+      <button type="button" data-view="menu" aria-current="true">Menu</button>
+      <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
+      <button type="button" disabled title="Coming in a later phase">Calendar</button>
+      <button type="button" disabled title="Coming in a later phase">Reservations</button>
+    </nav>
+    <div class="ed-status" id="edStatus" role="status">Loading…</div>
+    <div class="ed-who" id="who"></div>
+    <div class="ed-actions">
+      <a class="ed-btn ghost" id="viewSite" href="#" target="_blank" rel="noopener">View website</a>
+      <button class="ed-btn ghost" type="button" data-act="signout">Sign out</button>
+      <button class="ed-btn" id="edSave" type="button">Publish changes</button>
+    </div>
+  </div>
+  <div class="ed-body">
+    <nav class="ed-side" id="edTabs" aria-label="Menu sections"></nav>
+    <main class="ed-main" id="edMain"></main>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/menu-seed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="js/staff.js"></script>
+</body>
+</html>
