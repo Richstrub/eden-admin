@@ -794,3 +794,39 @@ body.nt-open #app{visibility:hidden!important}
 .sc-copyone{display:block;margin-top:5px;background:none;border:0;padding:0;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ember);cursor:pointer;text-align:left}
 .sc-copyone:hover{text-decoration:underline;text-underline-offset:3px}
 @media print{.sc-copyone{display:none!important}}
+
+/* ---------- History ---------- */
+.hi-in{max-width:1200px;margin:0 auto;padding:28px 32px 80px}
+.hi-title{display:flex;justify-content:space-between;align-items:end;gap:20px;flex-wrap:wrap}
+.hi-sub{max-width:62ch;font-size:.86rem;color:var(--stone)}
+.hi-filters{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:end;margin:18px 0 12px;padding:14px 16px;background:var(--ivory);border:1px solid var(--line)}
+.hi-filters select,.hi-filters input{font:inherit;font-size:.92rem;padding:8px 10px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:2px}
+.hi-q{flex:1 1 220px}.hi-q input{width:100%}
+.hi-list{background:#fff;border:1px solid var(--line)}
+.hi-day{padding:10px 16px 6px;font-size:.6rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ember);background:#faf8f4;border-bottom:1px solid var(--line)}
+.hi-row{display:grid;grid-template-columns:72px 82px minmax(0,1fr) minmax(0,220px) 64px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid rgba(15,18,21,.06)}
+.hi-row.open{background:#fbf8f2}
+.hi-time{font-variant-numeric:tabular-nums;font-size:.85rem;color:#4a4e53}
+.hi-act{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;padding:3px 7px;border-radius:2px;justify-self:start}
+.hi-insert{background:#e8f2ea;color:#2f6b3a}.hi-update{background:#f6eee4;color:#8a5a2b}.hi-delete{background:#f8e7e4;color:#a33}
+.hi-what{min-width:0}
+.hi-what b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-what span{display:block;font-size:.74rem;color:var(--stone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-who{min-width:0;text-align:right}
+.hi-who b{display:block;font-weight:500;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-who span{display:block;font-size:.72rem;color:var(--stone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hi-more{background:none;border:0;color:var(--ember);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;justify-self:end}
+.hi-changes{padding:4px 16px 12px 182px;background:#fbf8f2;border-bottom:1px solid var(--line);display:grid;gap:4px}
+.hi-ch{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:.86rem}
+.hi-ch span{min-width:120px;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--stone)}
+.hi-ch s{color:#a05a4a;text-decoration-color:rgba(160,90,74,.6);word-break:break-word}
+.hi-ch i{color:var(--stone);font-style:normal}
+.hi-ch em{font-style:normal;color:#2f5f3a;word-break:break-word}
+.hi-foot{display:flex;gap:12px;align-items:center;margin-top:12px}
+.hi-count{font-size:.8rem;color:var(--stone)}
+@media (max-width:760px){
+  .hi-in{padding:20px 16px 60px}
+  .hi-row{grid-template-columns:60px minmax(0,1fr) 56px;grid-template-areas:"t w m" "a who who"}
+  .hi-time{grid-area:t}.hi-what{grid-area:w}.hi-more{grid-area:m}.hi-act{grid-area:a}.hi-who{grid-area:who;text-align:left}
+  .hi-changes{padding-left:16px}
+}
