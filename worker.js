@@ -19,7 +19,8 @@
  *   RESEND_API_KEY      secret: from resend.com, to send the confirm emails and the "new inquiry" notices.
  *   SUPABASE_URL, SUPABASE_KEY (public key), MAIL_FROM, NOTIFY_TO, SITE_URL: plain settings in wrangler.jsonc.
  */
-const SITE_HOSTS = /(^|\.)edencny\.com$|^eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
+// Eden's website, its Cloudflare address (including preview copies) and its GitHub Pages copy
+const SITE_HOSTS = /(^|\.)edencny\.com$|(^|[.-])eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
 const BOTS = /bot|crawl|spider|slurp|preview|headless|lighthouse|pagespeed|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|curl|wget|python|axios|node-fetch|go-http|java\/|monitor|uptime|pingdom|scan/i;
 
 function cut(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
@@ -105,6 +106,7 @@ function siteCors(req) {
 }
 function json(obj, status, headers) { return new Response(JSON.stringify(obj), { status: status || 200, headers: Object.assign({ 'content-type': 'application/json' }, headers || {}) }); }
 function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function inqKey(env) { return String(env.INQUIRY_KEY || '').replace(/[^a-f0-9]/gi, '').toLowerCase(); }   // ignores stray spaces/quotes from copy and paste
 function turnstileOn(env) { return !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET); }
 function mailOn(env) { return !!(env.RESEND_API_KEY && env.MAIL_FROM); }
 function siteUrl(env) { return String(env.SITE_URL || 'https://edencny.com/').replace(/\/?$/, '/'); }
@@ -159,9 +161,22 @@ async function notifyStaff(env, req, q) {
   });
 }
 
+// ?check=1 (used by the Catering & BEOs page) also tests the connection to the database
 async function inquiryConfig(req, env) {
-  const c = siteCors(req);
-  return json({ ready: !!(env.INQUIRY_KEY && env.SUPABASE_URL), turnstile: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : '', confirm: mailOn(env) }, 200, c.headers);
+  const c = siteCors(req), out = { ready: !!(inqKey(env) && env.SUPABASE_URL), turnstile: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : '', confirm: mailOn(env) };
+  if (new URL(req.url).searchParams.get('check')) {
+    out.keySet = !!env.INQUIRY_KEY; out.keyLooksRight = inqKey(env).length === 64; out.turnstileHalf = !!env.TURNSTILE_SITE_KEY !== !!env.TURNSTILE_SECRET;
+    if (out.ready) {
+      try {
+        const r = await fetch(env.SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/rpc/confirm_inquiry', { method: 'POST', headers: { 'apikey': env.SUPABASE_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ p_key: inqKey(env), p_token: 'check' }) });
+        if (r.status === 404) out.db = 'missing_sql';
+        else if (!r.ok) out.db = 'error ' + r.status;
+        else { const j = await r.json(); out.db = j && j.error === 'key' ? 'key_mismatch' : 'ok'; }
+      } catch (e) { out.db = 'unreachable'; }
+      if (out.db !== 'ok') out.ready = false;
+    }
+  }
+  return json(out, 200, c.headers);
 }
 
 async function inquiry(req, env) {
@@ -169,7 +184,7 @@ async function inquiry(req, env) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: c.headers });
   if (req.method !== 'POST') return new Response('Not found', { status: 404 });
   if (!c.ok) return json({ error: 'origin' }, 403, c.headers);
-  if (!env.INQUIRY_KEY || !env.SUPABASE_URL) return json({ error: 'not_ready' }, 503, c.headers);
+  if (!inqKey(env) || !env.SUPABASE_URL) return json({ error: 'not_ready' }, 503, c.headers);
   let b;
   try { const t = await req.text(); if (t.length > 200000) return json({ error: 'too_big' }, 413, c.headers); b = JSON.parse(t); } catch (e) { return json({ error: 'bad' }, 400, c.headers); }
   const a = (b && typeof b.answers === 'object' && b.answers) || {};
@@ -218,7 +233,7 @@ async function inquiry(req, env) {
   };
   const confirmByEmail = mailOn(env) && !spam;
   let res;
-  try { res = await rpc(env, 'submit_inquiry', { p_key: env.INQUIRY_KEY, p_ip: await ipKey(req), p_row: row, p_unconfirmed: confirmByEmail, p_spam: spam }); }
+  try { res = await rpc(env, 'submit_inquiry', { p_key: inqKey(env), p_ip: await ipKey(req), p_row: row, p_unconfirmed: confirmByEmail, p_spam: spam }); }
   catch (e) { return json({ error: 'server', message: 'Something went wrong on our side.' }, 502, c.headers); }
   if (res && res.error === 'rate') return json({ error: 'rate', message: 'We’ve already received a few questionnaires from you recently. Please email events@edencny.com if you need to add something.' }, 429, c.headers);
   if (!res || res.error || !res.token) return json({ error: 'server', message: 'Something went wrong on our side.' }, 502, c.headers);
@@ -237,7 +252,7 @@ async function inquiry(req, env) {
     });
     if (sent) return json({ ok: true, confirm: true }, 200, c.headers);
     // the email couldn't go out: let it through, flagged, rather than lose it
-    try { await rpc(env, 'confirm_inquiry', { p_key: env.INQUIRY_KEY, p_token: res.token, p_unverified: true }); } catch (e) {}
+    try { await rpc(env, 'confirm_inquiry', { p_key: inqKey(env), p_token: res.token, p_unverified: true }); } catch (e) {}
   }
   await notifyStaff(env, req, Object.assign({}, row, { guests }));
   return json({ ok: true, confirm: false }, 200, c.headers);
@@ -248,12 +263,12 @@ async function confirm(req, env) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: c.headers });
   if (req.method !== 'POST') return new Response('Not found', { status: 404 });
   if (!c.ok) return json({ error: 'origin' }, 403, c.headers);
-  if (!env.INQUIRY_KEY) return json({ error: 'not_ready' }, 503, c.headers);
+  if (!inqKey(env)) return json({ error: 'not_ready' }, 503, c.headers);
   let t = '';
   try { t = String((await req.json()).t || ''); } catch (e) {}
   if (!/^[a-f0-9]{40,80}$/.test(t)) return json({ error: 'not_found' }, 400, c.headers);
   let r;
-  try { r = await rpc(env, 'confirm_inquiry', { p_key: env.INQUIRY_KEY, p_token: t }); } catch (e) { return json({ error: 'server' }, 502, c.headers); }
+  try { r = await rpc(env, 'confirm_inquiry', { p_key: inqKey(env), p_token: t }); } catch (e) { return json({ error: 'server' }, 502, c.headers); }
   if (r && r.already) return json({ ok: true, already: true }, 200, c.headers);
   if (!r || r.error) return json({ error: (r && r.error) || 'server' }, r && r.error === 'not_found' ? 404 : 400, c.headers);
   await notifyStaff(env, req, r);

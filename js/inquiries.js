@@ -76,6 +76,7 @@
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Catering & BEOs' }), h('h1', { cls: 'sc-week', text: 'Inquiries' })]),
       h('p', { cls: 'cq-sub', text: 'Catering questionnaires sent from edencny.com. Bots are screened out before they get here; anything that still looks automated goes to Spam.' })
     ]));
+    I.healthEl = h('div', { cls: 'cq-health', role: 'status' }); wrap.appendChild(I.healthEl); paintHealth();
     if (!I.loaded) { wrap.appendChild(h('p', { cls: 'cq-empty', text: 'Loading…' })); return; }
     if (I.missing) {
       wrap.appendChild(h('div', { cls: 'iv-setup' }, [h('p', { text: 'Online inquiries aren’t switched on yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/inquiries.sql from the eden-admin repository, and click Run. The README lists the remaining steps (the inquiry key, Turnstile and email). Until then, guests email their questionnaire file to you as before.' })]));
@@ -196,6 +197,38 @@
       if (x.error) { I.ctx.status('Couldn’t delete it.', 'err'); return; }
       I.rows = I.rows.filter(function (y) { return y.id !== r.id; }); I.sel = null; I.ctx.status('Deleted.', 'ok'); render();
     });
+  }
+
+  /* Is the website's questionnaire sending here? Asks this site's worker, which tests the database too. */
+  function checkHealth() {
+    if (I.healthP) return I.healthP;
+    I.healthP = fetch('inquiry/config?check=1', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+      .then(function (c) { I.health = c; return c; });
+    return I.healthP;
+  }
+  function paintHealth() {
+    var el = I.healthEl; if (!el) return;
+    var c = I.health;
+    if (c === undefined) { checkHealth().then(function () { paintHealth(); }); return; }
+    el.innerHTML = '';
+    if (!c || typeof c.ready !== 'boolean') { el.hidden = true; return; }
+    el.hidden = false;
+    var bad = '';
+    if (!c.keySet) bad = 'Cloudflare doesn’t have the INQUIRY_KEY secret yet (Workers & Pages → eden-admin → Settings → Variables and Secrets).';
+    else if (!c.keyLooksRight) bad = 'The INQUIRY_KEY secret in Cloudflare doesn’t look like the 64-character code from Supabase. Paste the code again.';
+    else if (c.db === 'missing_sql') bad = 'The database setup hasn’t been run yet: run supabase/inquiries.sql in Supabase.';
+    else if (c.db === 'key_mismatch') bad = 'The INQUIRY_KEY in Cloudflare doesn’t match the database. In Supabase run  select public.new_inquiry_key();  again and paste the new code into the INQUIRY_KEY secret.';
+    else if (c.db && c.db !== 'ok') bad = 'The database couldn’t be reached just now (' + c.db + '). Try again in a minute.';
+    if (bad) {
+      el.className = 'cq-health off';
+      el.appendChild(h('b', { text: 'Website questionnaire: not sending online yet. ' }));
+      el.appendChild(document.createTextNode(bad + ' Until then, guests are asked to email their answers file.'));
+    } else {
+      el.className = 'cq-health on';
+      el.appendChild(h('b', { text: 'Website questionnaire: sending here ✓ ' }));
+      el.appendChild(document.createTextNode([c.turnstile ? 'Turnstile bot check on' : (c.turnstileHalf ? 'Turnstile needs both keys' : 'Turnstile not set up yet'),
+        c.confirm ? 'email confirmation on' : 'email confirmation not set up yet'].join(' · ') + '.'));
+    }
   }
 
   window.EdenInquiries = {

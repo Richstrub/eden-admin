@@ -979,3 +979,7 @@ body.nt-open #app{visibility:hidden!important}
   .cq-back{display:inline-block}
   .cq-kv{grid-template-columns:90px minmax(0,1fr)}
 }
+.cq-health{margin:14px 0 0;padding:10px 14px;font-size:.86rem;border-left:3px solid var(--stone);background:#f6f4ef;color:var(--text)}
+.cq-health.on{border-left-color:#2f6b3a;background:#eef5ef}
+.cq-health.off{border-left-color:#a33;background:#fbefec}
+.cq-health[hidden]{display:none}
