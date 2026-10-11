@@ -121,21 +121,25 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', history: 'viewHistory' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics' };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
   function route() {
     if ($('app').hidden) return;
-    var v = (location.hash || '').replace(/^#/, '');
-    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || (v === 'history' && role !== 'owner')) v = 'home';
-    if (('#' + v) !== location.hash) history.replaceState(null, '', '#' + v);
+    var v = (location.hash || '').replace(/^#/, ''), sub = '';
+    if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
+    if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
+    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || (v === 'analytics' && role !== 'owner')) { v = 'home'; sub = ''; }
+    var want = '#' + v + (sub ? '/' + sub : '');
+    if (want !== location.hash) history.replaceState(null, '', want);
+    if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
     document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : v === 'history' ? 'History · Eden Staff' : 'Eden Staff';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : v === 'analytics' ? (sub === 'history' ? 'History · Analytics · Eden Staff' : 'Analytics · Eden Staff') : 'Eden Staff';
     if (v === 'menu') {
       INV.items = null; // pick up inventory changes made since
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
@@ -144,9 +148,9 @@
     } else if (v === 'schedule') {
       status('');
       if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
-    } else if (v === 'history') {
+    } else if (v === 'analytics') {
       status('');
-      if (window.EdenHistory) window.EdenHistory.show({ sb: sb, el: $('viewHistory'), status: status });
+      if (window.EdenAnalytics) window.EdenAnalytics.show({ sb: sb, el: $('viewAnalytics'), status: status, sub: sub });
     } else if (v === 'calendar') {
       status('');
       if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr() });

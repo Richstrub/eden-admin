@@ -68,7 +68,7 @@
     var el = H.el; if (!el) return;
     el.innerHTML = '';
     var wrap = h('div', { cls: 'hi-in' }); el.appendChild(wrap);
-    wrap.appendChild(h('div', { cls: 'hi-title' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'History' })]),
+    wrap.appendChild(h('div', { cls: 'hi-title' }, [H.ctx.embedded ? h('h2', { cls: 'an-h2', text: 'History' }) : h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'History' })]),
       h('p', { cls: 'hi-sub', text: 'Everything added, changed or deleted on the staff site and the staff page, who did it, and when. Quick saves of the same thing within 10 minutes are grouped into one line. Private notes are not recorded.' })]));
     if (H.missing) { wrap.appendChild(h('div', { cls: 'iv-setup' }, [h('p', { text: 'History isn’t switched on yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/history.sql from the eden-admin repository, and click Run. From then on, every change is recorded here.' })])); return; }
     // filters

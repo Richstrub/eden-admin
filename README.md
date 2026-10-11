@@ -8,8 +8,9 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 
 - **Public website** (`Richstrub/eden-website`): read-only. Reads the menu live from Supabase,
   and falls back to its built-in copy if the database can't be reached.
-- **Staff site** (this repository): a static page, no build step. Sign-in and every permission
-  are enforced by Supabase (`supabase/schema.sql`), not by this code.
+- **Staff site** (this repository): static pages, no build step, plus one small Cloudflare worker
+  (`worker.js`) that only counts website visits. Sign-in and every permission are enforced by
+  Supabase (`supabase/schema.sql`), not by this code.
 - **Database**: Supabase project `qmblccwyxbpvziiwrlne`. The publishable key in
   `js/config.js` is meant to be public. Never commit a secret key or `service_role` key.
 
@@ -72,7 +73,9 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   times, room, guests, notes) with double-booking warnings per room; the whole team can read. Events carry
   `source`/`beo_id` so BEOs can add them later. One-time setup: `supabase/calendar.sql`.
 - **Weeks start on Sunday** (Sun–Sat) on the Schedule, staff page and Calendar. Existing Monday-start weeks: run `supabase/sunday-weeks.sql` once. Each person on the Schedule grid has "Copy last week" (skips days with approved time off).
-- **History** (`#history`, Owner only, top bar after Reservations): every add/change/delete on the staff site and staff page, by whom and when, written by database triggers (`supabase/history.sql`). Quick repeat saves fold into one line; private notes are not logged.
+- **Analytics** (`#analytics`, Owner only, top bar after Reservations), two sub-pages:
+  - **Website traffic** (`#analytics`): visitors and page views on edencny.com over 7 days, 30 days, 90 days or 12 months (with the previous period for comparison), a world map (or United States map) shaded by visitors with a dot per city, and lists of countries, cities, US states, how people found the site, pages and devices. Visits are sent by the public site (`js/analytics.js` there) to `/t` on this site, where `worker.js` adds Cloudflare's approximate location and saves them with the publishable key (`supabase/analytics.sql`: anyone may add a visit, only the Owner can read them). No IP addresses, names or cookies are stored; a visitor is an anonymous code that changes daily. The map files load from cdn.jsdelivr.net.
+  - **History** (`#analytics/history`; old `#history` links still work): every add/change/delete on the staff site and staff page, by whom and when, written by database triggers (`supabase/history.sql`). Quick repeat saves fold into one line; private notes are not logged.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles
