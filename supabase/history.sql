@@ -17,6 +17,9 @@ create table if not exists public.activity_log (
   changes  jsonb not null default '{}'::jsonb,   -- for changes: { field: {old, new} }
   edits    integer not null default 1  -- quick successive saves of the same thing are folded into one line
 );
+-- full before / after copies, so the History page can show exactly what changed
+alter table public.activity_log add column if not exists old_row jsonb;
+alter table public.activity_log add column if not exists new_row jsonb;
 create index if not exists activity_log_at on public.activity_log (at desc);
 create index if not exists activity_log_fold on public.activity_log (user_id, tbl, row_key, at desc);
 
@@ -104,7 +107,8 @@ begin
       where a.user_id is not distinct from uid and a.tbl = tg_table_name and a.row_key = rkey and a.action = 'update' and a.at > now() - interval '10 minutes'
       order by a.at desc limit 1;
     if prev is not null then
-      update public.activity_log a set at = now(), edits = a.edits + 1, label = lbl,
+      update public.activity_log a set at = now(), edits = a.edits + 1, label = lbl, new_row = j,
+        old_row = coalesce(a.old_row, o),
         changes = a.changes || coalesce((select jsonb_object_agg(x,
           case when jsonb_typeof(ch -> x) = 'array' then
                  (select coalesce(jsonb_agg(distinct v), '[]'::jsonb) from jsonb_array_elements(coalesce(a.changes -> x, '[]'::jsonb) || (ch -> x)) v)
@@ -115,8 +119,10 @@ begin
     end if;
   end if;
 
-  insert into public.activity_log (user_id, email, who, action, tbl, row_key, label, changes)
-  values (uid, em, whoname, lower(tg_op), tg_table_name, rkey, lbl, ch);
+  insert into public.activity_log (user_id, email, who, action, tbl, row_key, label, changes, old_row, new_row)
+  values (uid, em, whoname, lower(tg_op), tg_table_name, rkey, lbl, ch,
+          case when tg_op = 'INSERT' then null when tg_op = 'DELETE' then j else o end,
+          case when tg_op = 'DELETE' then null else j end);
   return null;
 end $$;
 
