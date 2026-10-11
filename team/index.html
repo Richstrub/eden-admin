@@ -45,11 +45,13 @@
 <div class="tm" id="app" hidden>
   <header class="tm-bar">
     <div class="tm-brand">EDEN <span>Team</span></div>
+    <nav class="tm-tabs" aria-label="Pages"><a href="#" id="tabSched" aria-current="page">Schedule</a><a href="#recipes" id="tabRecipes">Recipes</a></nav>
     <div class="tm-who"><b id="whoName"></b><span id="whoRole"></span></div>
     <a class="tm-btn" id="mgrLink" href="../#home" hidden>Manager site</a>
     <button class="tm-btn" type="button" data-act="signout">Sign out</button>
   </header>
 
+  <section class="tm-recipes" id="recipesView" hidden></section>
   <main class="tm-main">
     <section class="tm-hero">
       <p class="tm-eyebrow" id="hello"></p>
@@ -101,6 +103,7 @@
 
 <script src="../js/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="../js/recipes.js"></script>
 <script src="team.js"></script>
 </body>
 </html>

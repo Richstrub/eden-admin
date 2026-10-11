@@ -55,6 +55,7 @@
       <a href="#schedule" data-view="schedule" data-mgr>Schedule</a>
       <a href="#prep" data-view="prep" data-prep>Prep List</a>
       <a href="#inventory" data-view="inventory" data-prep>Inventory</a>
+      <a href="#recipes" data-view="recipes">Recipes</a>
       <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
       <button type="button" disabled title="Coming in a later phase">Calendar</button>
       <button type="button" disabled title="Coming in a later phase">Reservations</button>
@@ -98,6 +99,11 @@
           <span class="tile-t">Inventory</span>
           <span class="tile-d">Count food, paper goods, and beer, wine &amp; liquor. See what&rsquo;s below par, what to order, and the value on hand.</span>
         </a>
+        <a class="tile" href="#recipes">
+          <span class="tile-k">Kitchen &amp; Bar</span>
+          <span class="tile-t">Recipes</span>
+          <span class="tile-d">The recipe book. Scale any recipe by a multiplier or by how much you want to make, and the math is done for you.</span>
+        </a>
         <a class="tile" href="#todo">
           <span class="tile-k">Everyone</span>
           <span class="tile-t">Notes &amp; To-do</span>
@@ -123,6 +129,7 @@
   <section class="view prep" id="viewPrep" hidden></section>
   <section class="view inv" id="viewInventory" hidden></section>
   <section class="view todo" id="viewTodo" hidden></section>
+  <section class="view recipes" id="viewRecipes" hidden></section>
 </div>
 
 <script src="js/config.js"></script>
@@ -132,6 +139,7 @@
 <script src="js/prep.js"></script>
 <script src="js/inventory.js"></script>
 <script src="js/notes.js"></script>
+<script src="js/recipes.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>

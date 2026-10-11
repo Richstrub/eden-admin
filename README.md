@@ -62,6 +62,11 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   Notes autosave and are private to their author. Email (mailto), Share (handwriting attached, iPad share
   sheet), or "Add to to-do" (one per line or one item). **To-do** (`#todo`, top bar): shared list with due
   dates, overdue flags, details and a link back to the source note. One-time setup: `supabase/notes.sql`.
+- **Recipes** (`#recipes` on the staff site, and a Recipes tab on the staff page): the recipe book.
+  Owner and Managers create/edit (paste an ingredient list and it's split into amount/unit/item/note);
+  everyone on the team can read. Scale by ½×–4×, any multiplier, or "make N <yield unit>"; Smart units
+  converts to the easiest measure (48 tsp → 1 cup, 2000 g → 2 kg) with kitchen fractions. Print a card.
+  One-time setup: `supabase/recipes.sql`.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

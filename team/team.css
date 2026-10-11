@@ -184,3 +184,11 @@
 .tm-tl-now{position:absolute;top:26px;bottom:0;width:2px;margin-left:-1px;background:#c0392b;z-index:2}
 .tm-tl-now::before{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:#c0392b}
 @media (max-width:640px){.tm-tl{--who:118px}.tm-tl-who{padding:6px 8px}.tm-tl-who b{font-size:.84rem}}
+
+/* pages in the header */
+.tm-brand{margin-right:0!important}
+.tm-tabs{display:flex;gap:2px;margin-right:auto;margin-left:8px}
+.tm-tabs a{color:rgba(243,238,229,.65);text-decoration:none;font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid transparent}
+.tm-tabs a[aria-current="page"]{color:var(--ivory);border-bottom-color:var(--ember-hot)}
+.tm-recipes{background:var(--paper);min-height:60vh}
+@media (max-width:640px){.tm-bar{flex-wrap:wrap}.tm-tabs{order:5;width:100%;margin:4px 0 0}}
