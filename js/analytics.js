@@ -44,7 +44,7 @@
   function countryName(c) { var x = (window.EDEN_COUNTRIES || {})[c]; return x ? x[1] : c; }
   function countryNum(c) { var x = (window.EDEN_COUNTRIES || {})[c]; return x ? x[0] : null; }
   function pageName(p) {
-    var m = { '/': 'Home', '/supper': 'Supper Club', '/catering': 'Catering & private events' };
+    var m = { '/': 'Home', '/supper': 'Supper Club', '/catering': 'Catering & private events', '/catering/questionnaire': 'Catering questionnaire (guest links)' };
     return m[p] || p;
   }
   var SITES = [[/(^|\.)google\./, 'Google'], [/(^|\.)bing\.com$/, 'Bing'], [/duckduckgo/, 'DuckDuckGo'], [/(^|\.)yahoo\./, 'Yahoo'],
