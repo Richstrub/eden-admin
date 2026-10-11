@@ -109,6 +109,7 @@
         staffName = name;
         document.querySelectorAll('[data-mgr]').forEach(function (el) { el.hidden = !isMgr(); });
         document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
+        document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         show('app');
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
@@ -118,20 +119,21 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep' };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
+  function canPrep() { return isMgr() || role === 'kitchen'; }
   function route() {
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, '');
-    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler')) v = 'home';
+    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler') || (v === 'prep' && !canPrep())) v = 'home';
     if (('#' + v) !== location.hash) history.replaceState(null, '', '#' + v);
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
     document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : 'Eden Staff';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : 'Eden Staff';
     if (v === 'menu') {
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
       else if (!store.loaded) status('Loading the menu…');
@@ -139,9 +141,20 @@
     } else if (v === 'schedule') {
       status('');
       if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
+    } else if (v === 'prep') {
+      status('');
+      showPrep();
+      if (!store.loaded) loadAll().then(showPrep, function () { status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
     } else {
       status(''); renderHome();
     }
+  }
+  function showPrep() {
+    if (!window.EdenPrep) return;
+    window.EdenPrep.show({ el: $('viewPrep'), status: status, getMenu: function () {
+      if (!store.loaded) return null;
+      return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] };
+    } });
   }
   window.addEventListener('hashchange', route);
   function renderHome() {
@@ -207,6 +220,8 @@
     clearTimeout(applyT);
     applyT = setTimeout(function () {
       var d = assembleMenu();
+      if (d) menuData = ed.dirty || ed.saving ? menuData : d;
+      if (window.EdenPrep) window.EdenPrep.refresh();
       if (!d) { if (!ed.el.hidden && !$('app').hidden) edRender(); return; }
       menuData = d;
       if (!ed.dirty && !ed.saving) {

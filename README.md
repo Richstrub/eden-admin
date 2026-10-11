@@ -34,8 +34,12 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 - **Permissions and time off**: run `supabase/access-and-timeoff.sql` (after `team.sql`). Each employee has
   an access level, set by the Owner on Schedule → Employees: **Employee** (sees the posted schedule,
   requests time off, message board) or **Manager** (also edits/publishes the schedule, approves time off,
-  texts the team; signs in on this site and sees Home + Schedule only). Time-off requests wait for a
+  texts the team; signs in on this site and sees Home, Schedule and Prep List). Time-off requests wait for a
   Manager or the Owner on Schedule → Time off; approved time off shows on the grid and the month view.
+- **Prep List** (`#prep`, Owner, Manager, Kitchen and Manager-tier employees): a printable prep sheet built
+  from the live Kitchen menu (each dish's components from its description, plus the large-plate add-ons),
+  by dish or combined, optionally with the bar. Pars, added items and removed lines are kept in that
+  computer's browser. Print with the Print button or Cmd/Ctrl+P. No setup needed.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

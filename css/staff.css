@@ -237,3 +237,71 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 .sc-ptable{min-width:1160px}
 @media (max-width:820px){.sc-treq{grid-template-columns:1fr}.sc-treq-a{justify-content:flex-start}.sc-tnote{min-width:0;width:100%}}
 @media print{.sc-viewtog{display:none!important}.sc-cal{min-width:0}.sc-cal-d{min-height:90px}}
+
+/* ---------- prep list ---------- */
+.pp-in{max-width:980px;margin:0 auto;padding:28px 32px 80px}
+.pp-controls{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
+.pp-ctl{display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.pp-ctl .sc-f input{width:auto;padding:8px 10px;font-size:.95rem}
+.pp-ctl .sc-viewtog{margin-right:0}
+.pp-help{margin:12px 0 22px;font-size:.86rem;color:var(--stone);max-width:70ch}
+.pp-sheet{background:#fff;border:1px solid var(--line);padding:30px 34px 34px;color:#111}
+.pp-head{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:6px}
+.pp-brand{font-family:var(--serif);font-size:1.9rem;letter-spacing:.32em;line-height:1}
+.pp-title{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;margin-top:6px}
+.pp-meta{display:grid;grid-template-columns:auto auto auto;gap:6px 22px;align-items:end}
+.pp-meta div{display:grid;gap:2px}
+.pp-meta span{font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;color:#555}
+.pp-meta b{font-weight:500;font-size:.92rem}
+.pp-meta i{display:block;width:110px;border-bottom:1px solid #111;height:1.2em}
+.pp-sec{margin-top:20px;break-inside:auto}
+.pp-sec-h{font-family:var(--serif);font-weight:500;font-size:1.35rem;display:flex;align-items:baseline;gap:10px;margin-bottom:4px;break-after:avoid}
+.pp-sec-h span{font-family:var(--sans);font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;border:1px solid #111;padding:2px 6px}
+.pp-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.pp-table th{font-size:.55rem;letter-spacing:.22em;text-transform:uppercase;font-weight:500;color:#555;text-align:left;padding:4px 6px;border-bottom:1px solid #111}
+.pp-table td{padding:5px 6px;border-bottom:1px solid #d6d2ca;vertical-align:middle}
+.pp-table tr{break-inside:avoid}
+.pp-chk{width:26px;text-align:center!important}
+.pp-box{display:inline-block;width:13px;height:13px;border:1.5px solid #111;vertical-align:middle}
+.pp-item span{display:block}
+.pp-item small{display:block;font-size:.72rem;color:#666;margin-top:1px}
+.pp-num{width:76px;text-align:center!important;border-left:1px solid #e3dfd7}
+.pp-ini{width:52px;border-left:1px solid #e3dfd7}
+.pp-tool{width:30px;text-align:right}
+.pp-table .pp-par{width:100%;height:auto;min-height:0;margin:0;box-shadow:none;border-radius:0;border:0;border-bottom:1px dashed transparent;background:transparent;font:inherit;text-align:center;padding:2px 0;color:#111}
+.pp-table .pp-par:hover,.pp-table .pp-par:focus{border-bottom-color:#999;outline:none;background:#faf7f1}
+.pp-x{background:none;border:0;color:#999;cursor:pointer;font-size:.8rem;padding:2px 4px;opacity:0;transition:opacity .15s}
+.pp-table tr:hover .pp-x,.pp-x:focus{opacity:1}
+.pp-x:hover{color:#a33}
+.pp-dish td{padding:10px 6px 4px;border-bottom:1px solid #bbb}
+.pp-dish b{font-weight:500;font-size:.95rem}
+.pp-dish span{margin-left:10px;font-size:.72rem;color:#666}
+.pp-shared .pp-item span{font-weight:500}
+.pp-extra .pp-item small{font-style:italic}
+.pp-add{display:flex;gap:8px;margin-top:8px}
+.pp-addin{flex:1;min-width:0;font:inherit;font-size:.85rem;padding:6px 10px;border:1px dashed var(--line);background:transparent;color:var(--ink)}
+.pp-addin:focus{outline:2px solid var(--ember-hot);outline-offset:-1px;border-style:solid}
+.pp-notes{margin-top:26px;display:grid;gap:14px}
+.pp-notes span{font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;color:#555}
+.pp-notes i{display:block;border-bottom:1px solid #999;height:1em}
+@media (hover:none){.pp-x{opacity:1}}
+@media (max-width:700px){
+  .pp-in{padding:20px 16px 60px}
+  .pp-sheet{padding:18px 14px}
+  .pp-head{flex-direction:column;align-items:start}
+  .pp-meta{grid-template-columns:1fr 1fr}
+  .pp-num{width:52px}.pp-ini{width:38px}
+}
+@media print{
+  @page{margin:12mm}
+  .pp-controls,.pp-help,.pp-add,.pp-tool{display:none!important}
+  .pp-in{padding:0;max-width:none}
+  .pp-sheet{border:0;padding:0}
+  .pp-table{font-size:10pt}
+  .pp-table td{padding:3px 6px}
+  .pp-dish td{padding:7px 6px 2px}
+  .pp-sec{margin-top:14px}
+  .pp-box{width:11px;height:11px}
+  .pp-par{border:0!important;background:none!important}
+  .pp-par:placeholder-shown{color:transparent}
+}
