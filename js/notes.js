@@ -108,8 +108,8 @@
       h('button', { type: 'button', cls: 'nt-b nt-listbtn', 'aria-label': 'My notes', title: 'My notes', text: '☰ Notes', on: { click: function () { el.classList.toggle('show-list'); } } }),
       title,
       h('div', { cls: 'nt-mode', role: 'group', 'aria-label': 'Mode' }, [
-        h('button', { type: 'button', 'data-mode': 'ink', text: 'Handwriting', on: { click: function () { setMode('ink'); } } }),
-        h('button', { type: 'button', 'data-mode': 'text', text: 'Text', on: { click: function () { setMode('text'); } } })
+        h('button', { type: 'button', 'data-mode': 'text', text: 'Write', title: 'Write with Apple Pencil; Scribble turns it into text', on: { click: function () { setMode('text'); } } }),
+        h('button', { type: 'button', 'data-mode': 'ink', text: 'Sketch', title: 'Draw or keep handwriting as ink', on: { click: function () { setMode('ink'); } } })
       ]),
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
@@ -134,17 +134,20 @@
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: 'Clear', on: { click: function () { if (N.note.ink.length && confirm('Clear the handwriting on this note?')) { N.redo = []; N.note.ink = []; redraw(); changed(); } } } }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: '+ Page', title: 'More room to write', on: { click: addPage } }));
     tools.appendChild(h('span', { cls: 'nt-grow' }));
-    tools.appendChild(h('button', { type: 'button', cls: 'nt-b nt-convert', text: 'Convert to text', on: { click: convert } }));
+    tools.appendChild(h('button', { type: 'button', cls: 'nt-b nt-convert', text: 'Convert sketch to text', on: { click: convert } }));
     el.appendChild(tools);
     // body: list | page
     var list = h('aside', { cls: 'nt-list', 'aria-label': 'My notes' });
     var paper = h('div', { cls: 'nt-paper' });
     var canvas = h('canvas', { cls: 'nt-canvas', 'aria-label': 'Handwriting area' });
     paper.appendChild(canvas);
-    var text = h('textarea', { cls: 'nt-text', placeholder: 'Type here, or write with Apple Pencil: on an iPad your handwriting turns into text as you write (Scribble).' });
+    var text = h('textarea', { cls: 'nt-text', placeholder: 'Write here with your Apple Pencil — your handwriting turns into text as you go. You can also type.', autocapitalize: 'sentences', spellcheck: 'true' });
     text.value = N.note.body || '';
     text.addEventListener('input', function () { N.note.body = text.value; changed(); paintList(); });
-    var hint = h('p', { cls: 'nt-hint', text: 'Tip: on iPad, Scribble must be on (Settings → Apple Pencil → Scribble).' });
+    var hint = h('div', { cls: 'nt-hint' }, [
+      h('span', { text: 'Pencil tips: scratch out to delete · circle to select · touch and hold to make space · vertical line to join or split words.' }),
+      h('span', { cls: 'nt-hint-off', text: 'Writing stays as ink? Turn on Settings → Apple Pencil → Scribble.' })
+    ]);
     el.appendChild(h('div', { cls: 'nt-body' }, [list, h('div', { cls: 'nt-page' }, [paper, h('div', { cls: 'nt-textwrap' }, [text, hint])])]));
     el.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input, textarea')) e.preventDefault(); });
     el.addEventListener('contextmenu', function (e) { if (!e.target.closest('input, textarea')) e.preventDefault(); });
@@ -152,7 +155,7 @@
     try { var sel = window.getSelection(); if (sel) sel.removeAllRanges(); } catch (x) {}
     N.canvas = canvas; N.paper = paper; N.text = text; N.titleEl = title; N.list = list;
     setupCanvas();
-    setMode(N.note.ink && N.note.ink.length || !(N.note.body || '').trim() ? 'ink' : 'text');
+    setMode(N.note.ink && N.note.ink.length && !(N.note.body || '').trim() ? 'ink' : 'text');
     paintTools(); paintList();
     window.addEventListener('resize', onResize);
     el.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.querySelector('.sc-modal')) close(); if ((e.metaKey || e.ctrlKey) && e.key === 'z' && N.mode === 'ink' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { e.preventDefault(); e.shiftKey ? redo() : undo(); } });
@@ -190,7 +193,7 @@
     N.note = n; N.redo = []; N.dirty = false;
     N.titleEl.value = n.title || ''; N.text.value = n.body || '';
     N.paper.scrollTop = 0; N.extra = 0;
-    setMode(n.ink && n.ink.length || !(n.body || '').trim() ? 'ink' : 'text');
+    setMode(n.ink && n.ink.length && !(n.body || '').trim() ? 'ink' : 'text');
     redraw(); paintList(); toast('');
     N.el.classList.remove('show-list');
   }
@@ -393,11 +396,11 @@
       }
       return next();
     }).then(function () {
-      b.disabled = false; label('Convert to text');
+      b.disabled = false; label('Convert sketch to text');
       review(out);
     }, function () {
-      b.disabled = false; label('Convert to text');
-      toast('Couldn’t load the handwriting reader. Check the connection and try again, or use the Text tab with Scribble.', 'err');
+      b.disabled = false; label('Convert sketch to text');
+      toast('Couldn’t load the handwriting reader. Check the connection and try again, or write on the Write page instead.', 'err');
     });
   }
   // Each line of handwriting next to what was read, ready to fix, then "Use this text".
@@ -423,12 +426,12 @@
       if (!txt) { toast('Nothing to add.', 'err'); return; }
       N.note.body = (N.note.body ? N.note.body.replace(/\s+$/, '') + '\n\n' : '') + txt;
       N.text.value = N.note.body; changed(); setMode('text');
-      toast('Added to the Text page.', 'ok');
+      toast('Added to the Write page.', 'ok');
     }
     back.appendChild(h('div', { cls: 'sc-card' }, [
       h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Check the conversion' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: close } })]),
       h('div', { cls: 'sc-card-b' }, [
-        h('p', { cls: 'sc-sub', text: rows.length + ' line' + (rows.length === 1 ? '' : 's') + ' found. Fix anything it misread (Enter goes to the next line), then use the text. Tip: printed letters with a little space between words read best; for cursive, the Text tab with Scribble is more accurate.' }),
+        h('p', { cls: 'sc-sub', text: rows.length + ' line' + (rows.length === 1 ? '' : 's') + ' found. Fix anything it misread (Enter goes to the next line), then use the text. Tip: printed letters with a little space between words read best; for cursive, writing on the Write page is more accurate.' }),
         list
       ]),
       h('div', { cls: 'sc-card-f' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: close } }),

@@ -589,3 +589,9 @@ body.nt-open #app{visibility:hidden!important}
 .nt-rv-txt input:focus{outline:2px solid var(--ember-hot);outline-offset:-1px;border-color:transparent}
 .nt-rv-txt span{font-size:.72rem;color:#9a5a12}
 @media (max-width:700px){.nt-rv-row{grid-template-columns:1fr}.nt-rv-shot{border-right:0;padding-right:0}}
+
+/* Notes: Write page (Scribble) is the main page */
+.nt-text{font-size:1.35rem;line-height:48px;padding:24px 32px 24px 84px;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 47px,#d9e3ef 47px,#d9e3ef 48px),linear-gradient(to right,transparent 0,transparent 66px,#f1c7c0 66px,#f1c7c0 67px,transparent 67px);background-position:0 24px;caret-color:var(--ember)}
+.nt-text::placeholder{color:#a9a39a}
+.nt-hint{display:flex;gap:6px 18px;flex-wrap:wrap;justify-content:space-between}
+.nt-hint-off{color:var(--stone)}
