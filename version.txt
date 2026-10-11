@@ -1,1 +1,1 @@
-menu-inventory
+quick-add

@@ -377,6 +377,7 @@
     var tn = document.createElement('div'); tn.className = 'ed-tabname'; tn.appendChild(field('Tab name', t.label, function (v) { t.label = v; h.textContent = v || 'Untitled'; side.children[ed.tab].textContent = v || 'Untitled'; })); main.appendChild(tn);
     var kind = ed.canWrite ? invKind(t) : null;
     if (kind) loadInv();
+    if (ed.canWrite && t.groups.length) main.appendChild(quickAdd(t, kind));
     t.groups.forEach(function (g, gi) {
       var box = document.createElement('section'); box.className = 'ed-group';
       var head = document.createElement('div'); head.className = 'ed-ghead';
@@ -566,6 +567,81 @@
     return pr;
   }
 
+  /* ---------- Quick add: one row at the top of each tab; pick which section the item goes in ---------- */
+  function quickAdd(t, kind) {
+    var wine = hasWine(t), q = ed.qa && ed.qa.tab === t.id ? ed.qa : (ed.qa = { tab: t.id, gid: null });
+    if (!t.groups.some(function (g) { return g.id === q.gid; })) q.gid = t.groups[0].id;
+    var draft = wine ? { name: '', country: '', appellation: '', grape: '', bottle: '', desc: '', price: '' } : { name: '', src: '', desc: '', price: '' };
+    var box = document.createElement('section'); box.className = 'ed-qa';
+    var hd = document.createElement('div'); hd.className = 'ed-qa-h';
+    var ht = document.createElement('h3'); ht.textContent = 'Quick add'; hd.appendChild(ht);
+    var hs = document.createElement('span'); hs.textContent = kind ? 'Start typing to pick from the inventory; the section fills in for you.' : 'Add an item straight into any section of ' + (t.label || 'this tab') + '.'; hd.appendChild(hs);
+    box.appendChild(hd);
+    var row = document.createElement('div'); row.className = 'ed-qa-row' + (wine ? ' is-wine' : '');
+    // section (sub-category) picker
+    var sw = document.createElement('label'); sw.className = 'ed-field ed-qa-sec';
+    var sl = document.createElement('span'); sl.textContent = 'Section'; sw.appendChild(sl);
+    var sel = document.createElement('select');
+    t.groups.forEach(function (g) { var o = document.createElement('option'); o.value = g.id; o.textContent = g.title || 'Untitled section'; sel.appendChild(o); });
+    sel.value = q.gid; sel.addEventListener('change', function () { q.gid = sel.value; });
+    sw.appendChild(sel);
+    function selGroup() { return t.groups.filter(function (g) { return g.id === sel.value; })[0] || t.groups[0]; }
+    function input(label, key, cls) {
+      var f = field(label, '', function (v) { draft[key] = v; });
+      f.classList.add('ed-qa-f'); if (cls) f.classList.add(cls);
+      f.querySelector('input').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); add(); } });
+      // quick add fields aren't on the menu yet: don't publish while typing
+      var i = f.querySelector('input'), clone = i.cloneNode(true); i.replaceWith(clone);
+      clone.addEventListener('input', function () { draft[key] = clone.value; });
+      clone.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.defaultPrevented && (!clone.closest('.ed-ac') || clone.getAttribute('aria-expanded') !== 'true')) { e.preventDefault(); add(); } });
+      return f;
+    }
+    var nameF = input(wine ? 'Wine' : (kind ? 'Drink' : 'Dish / drink'), 'name', 'ed-qa-name');
+    row.appendChild(nameF); row.appendChild(sw);
+    if (wine) {
+      row.appendChild(input('Country', 'country'));
+      row.appendChild(input('Grape', 'grape'));
+      row.appendChild(input('Bottle price', 'bottle', 'ed-qa-num'));
+      row.appendChild(input('Glass price', 'glass', 'ed-qa-num'));
+    } else {
+      row.appendChild(input(isKitchen(t) ? 'Farm or producer' : 'Producer', 'src'));
+      row.appendChild(input('Description', 'desc', 'desc'));
+      row.appendChild(input('Price', 'price', 'ed-qa-num'));
+    }
+    var go = document.createElement('button'); go.type = 'button'; go.className = 'ed-btn ed-qa-go'; go.textContent = 'Add'; go.onclick = add;
+    row.appendChild(go);
+    box.appendChild(row);
+    var msg = document.createElement('p'); msg.className = 'ed-qa-msg'; msg.setAttribute('role', 'status'); msg.textContent = q.last || ''; box.appendChild(msg);
+    if (kind) {
+      var gp = { get title() { return selGroup().title; } };
+      invCombo(nameF, draft, t, gp, row, kind, function (x) {
+        // pick the menu section that matches the inventory section, e.g. "Red wine" -> Red
+        var hit = t.groups.filter(function (g) { return groupFit(x, g); })[0];
+        if (hit) { sel.value = hit.id; q.gid = hit.id; }
+        if (!wine && !draft.desc && x.pack) { draft.desc = x.pack; var di = row.querySelector('.ed-field.desc input'); if (di) di.value = x.pack; }
+        var next = row.querySelectorAll('.ed-qa-f input')[1]; if (next) next.focus();
+      });
+    }
+    function add() {
+      var nm = (draft.name || '').trim();
+      if (!nm) { msg.textContent = 'Type a name first.'; msg.className = 'ed-qa-msg err'; nameF.querySelector('input').focus(); return; }
+      var g = selGroup(), it = {};
+      Object.keys(draft).forEach(function (k) { var v = String(draft[k] || '').trim(); if (v || k === 'name' || k === 'desc' || k === 'price' || (wine && k !== 'glass') || (!wine && k === 'src')) it[k] = v; });
+      if (wine) { if (!it.glass) delete it.glass; it.price = it.bottle || (it.glass ? it.glass + ' glass' : ''); }
+      g.items.push(it);
+      q.gid = g.id; q.last = 'Added “' + nm + '” to ' + (g.title || 'the section') + '.';
+      markDirty();
+      var mainEl = $('edMain'), st = mainEl ? mainEl.scrollTop : 0;
+      edRender();
+      if (mainEl) mainEl.scrollTop = st;
+      var fresh = document.querySelector('.ed-qa .ed-qa-name input'); if (fresh) fresh.focus();
+      // flash the new row where it landed
+      var gi = t.groups.indexOf(g), grp = document.querySelectorAll('.ed-group')[gi];
+      if (grp) { var rows = grp.querySelectorAll('.ed-item'), last = rows[rows.length - 1]; if (last) { last.classList.add('ed-flash'); setTimeout(function () { last.classList.remove('ed-flash'); }, 2200); } }
+    }
+    return box;
+  }
+
   /* ---------- menu <-> inventory: wine, beer & soft drinks, spirits, coffee & tea (not kitchen or cocktails) ---------- */
   var INV = { items: null, loading: null, missing: false };
   function loadInv(force) {
@@ -632,7 +708,7 @@
   }
 
   // The item-name field: suggestions from the inventory for this part of the menu, plus "add to inventory".
-  function invCombo(wrap, it, t, g, row, kind) {
+  function invCombo(wrap, it, t, g, row, kind, onPick) {
     var input = wrap.querySelector('input');
     input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
@@ -652,7 +728,9 @@
       var x = o.x;
       it.name = x.name; input.value = x.name;
       if (!hasWine(t) && !it.desc && x.pack) { it.desc = x.pack; setField('.ed-field.desc input', x.pack); }
-      close(); markDirty();
+      close();
+      if (onPick) { onPick(x); return; } // quick add: nothing is on the menu yet
+      markDirty();
       var next = row.querySelectorAll('input')[1]; if (next) next.focus();
     }
     function paint() {
