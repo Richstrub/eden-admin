@@ -41,13 +41,21 @@
     var e = addDays(d, 6);
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – ' + (d.getMonth() === e.getMonth() ? e.getDate() : e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
   }
+  // Shifts can end at a set time or at a server "out" time. Those have an assumed clock time for hour totals.
+  var ENDS = { cut1: { label: '1st cut', at: '20:00' }, cut2: { label: '2nd cut', at: '21:00' }, close: { label: 'close', at: '22:00' } };
+  function isApprox(s) { return !!ENDS[s.end]; }
   function fmtT(t) {
-    if (t === 'close') return 'close';
+    if (ENDS[t]) return ENDS[t].label;
     var p = String(t || '').split(':'), H = +p[0], M = +p[1] || 0; if (isNaN(H)) return '';
     return (H % 12 || 12) + (M ? ':' + String(M).padStart(2, '0') : '') + (H >= 12 ? 'p' : 'a');
   }
   function mins(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
-  function hours(s) { if (s.end === 'close' || !s.start || !s.end) return null; var d = mins(s.end) - mins(s.start); if (d <= 0) d += 1440; return d / 60; }
+  function hours(s) {
+    if (!s.start || !s.end) return null;
+    var end = ENDS[s.end] ? ENDS[s.end].at : s.end, d = mins(end) - mins(s.start);
+    if (d <= 0) { if (ENDS[s.end]) return null; d += 1440; }
+    return d / 60;
+  }
   function ago(t) {
     var s = (Date.now() - new Date(t).getTime()) / 1000;
     if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' hr ago';
@@ -192,7 +200,7 @@
     var box = $('myShifts'); box.innerHTML = '';
     var mine = [], total = 0, close = 0, today = iso(new Date());
     for (var d = new Date(monthData.first); d <= monthData.last; d = addDays(d, 1)) {
-      (dayShifts(d) || []).forEach(function (s) { if (s.mine) { var hrs = hours(s); if (hrs == null) close++; else total += hrs; mine.push({ date: new Date(d), s: s }); } });
+      (dayShifts(d) || []).forEach(function (s) { if (s.mine) { var hrs = hours(s); if (hrs != null) total += hrs; if (isApprox(s)) close++; mine.push({ date: new Date(d), s: s }); } });
     }
     if (!mine.length) box.appendChild(h('p', { cls: 'tm-empty', text: 'No posted shifts for you this month yet.' }));
     else {
@@ -204,7 +212,7 @@
         ]));
       });
       box.appendChild(ul);
-      box.appendChild(h('p', { cls: 'tm-total', text: mine.length + ' shift' + (mine.length === 1 ? '' : 's') + ' \u00b7 ' + (Math.round(total * 4) / 4) + ' hours' + (close ? ' + ' + close + ' until close' : '') }));
+      box.appendChild(h('p', { cls: 'tm-total', text: mine.length + ' shift' + (mine.length === 1 ? '' : 's') + ' \u00b7 ' + (close ? 'about ' : '') + (Math.round(total * 4) / 4) + ' hours' }));
     }
     var cal = h('div', { cls: 'tm-cal' }), team = $('teamDays'); team.innerHTML = '';
     DAYS.forEach(function (dn) { cal.appendChild(h('div', { cls: 'tm-cal-h', text: dn.slice(0, 2) })); });
@@ -283,7 +291,7 @@
     var total = 0, close = 0, today = iso(new Date());
     var grid = h('div', { cls: 'tm-mine' });
     mine.forEach(function (s) {
-      var d = addDays(week, s.day), hrs = hours(s); if (hrs == null) close++; else total += hrs;
+      var d = addDays(week, s.day), hrs = hours(s); if (hrs != null) total += hrs; if (isApprox(s)) close++;
       grid.appendChild(h('div', { cls: 'tm-shift' + (iso(d) === today ? ' today' : '') }, [
         h('div', { cls: 'tm-day' }, [h('span', { text: DAYS[s.day] }), h('b', { text: md(d) })]),
         h('div', { cls: 'tm-time' }, [h('b', { text: fmtT(s.start) + ' – ' + fmtT(s.end) }), s.role ? h('span', { text: s.role }) : null, s.note ? h('em', { text: s.note }) : null]),
@@ -291,7 +299,7 @@
       ]));
     });
     box.appendChild(grid);
-    box.appendChild(h('p', { cls: 'tm-total', text: mine.length + ' shift' + (mine.length === 1 ? '' : 's') + ' · ' + (Math.round(total * 4) / 4) + ' hours' + (close ? ' + ' + close + ' until close' : '') }));
+    box.appendChild(h('p', { cls: 'tm-total', text: mine.length + ' shift' + (mine.length === 1 ? '' : 's') + ' · ' + (close ? 'about ' : '') + (Math.round(total * 4) / 4) + ' hours' }));
   }
   function renderTeam(list) {
     var box = $('teamDays'), today = iso(new Date());

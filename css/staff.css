@@ -335,3 +335,10 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 .pp-paper .pp-notes{margin-top:8px;gap:9px}
 .pp-paper .pp-notes span{font-size:5.5pt}
 
+
+/* ---------- shift end: set time, 1st cut, 2nd cut, close ---------- */
+.sc-endtog{display:flex;flex-wrap:wrap;margin-right:0;width:100%}
+.sc-endtog button{flex:1 1 auto;padding:9px 10px;border-right:1px solid var(--line)}
+.sc-endtog button:last-child{border-right:0}
+.sc-small{font-size:.78rem;color:var(--stone);margin-top:-4px}
+.sc-hrs small{font-family:var(--sans);font-size:.62rem;letter-spacing:.06em;color:var(--stone)}

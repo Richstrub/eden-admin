@@ -20,6 +20,8 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 - **Schedule** (`#schedule`, Owner and Manager only): employees, the weekly schedule, publishing,
   and texting each person their shifts. One-time setup: run `supabase/schedule.sql` in Supabase.
   Employees can be imported from `templates/eden-employees.xlsx` (Schedule → Employees → Import spreadsheet).
+  A shift ends at a set time or at a server out time: 1st cut (counted as about 8pm), 2nd cut (about 9pm)
+  or Close (about 10pm). Weekly totals that include one of these are shown as "about N" hours.
   Texting opens the phone's Messages app with each person's shifts filled in (no texting service needed).
 
 - **Staff schedule page** (`/team/`, every employee): published schedules and the message board.

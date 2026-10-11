@@ -4,7 +4,7 @@
  *   employees        id, name, phone, position, active
  *   schedule_weeks   week_start (Monday, YYYY-MM-DD), shifts (json), status, published (json snapshot),
  *                    published_at, sent (json: employee id -> { at, msg })
- * A shift is { id, emp, day (0 = Monday … 6 = Sunday), start 'HH:MM', end 'HH:MM' | 'close', role, note }.
+ * A shift is { id, emp, day (0 = Monday … 6 = Sunday), start 'HH:MM', end 'HH:MM' | 'cut1' | 'cut2' | 'close', role, note }.
  * Only Owner and Manager can see or change any of this (enforced by the database).
  *
  * Texting: "Text schedules" lists everyone with their own week written out. Each "Text" button opens the
@@ -49,14 +49,22 @@
     var e = addDays(d, 6), sameM = d.getMonth() === e.getMonth();
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – ' + (sameM ? e.getDate() : e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) + ', ' + e.getFullYear();
   }
+  // Shifts can end at a set time or at a server "out" time. Those have an assumed clock time for hour totals.
+  var ENDS = { cut1: { label: '1st cut', at: '20:00' }, cut2: { label: '2nd cut', at: '21:00' }, close: { label: 'close', at: '22:00' } };
+  function isApprox(s) { return !!ENDS[s.end]; }
   function fmtT(t) {
-    if (t === 'close') return 'close';
+    if (ENDS[t]) return ENDS[t].label;
     var p = String(t || '').split(':'), H = +p[0], M = +p[1] || 0; if (isNaN(H)) return '';
     var ap = H >= 12 ? 'p' : 'a', hh = H % 12 || 12;
     return hh + (M ? ':' + String(M).padStart(2, '0') : '') + ap;
   }
   function mins(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
-  function shiftHours(s) { if (s.end === 'close' || !s.start || !s.end) return null; var d = mins(s.end) - mins(s.start); if (d <= 0) d += 1440; return d / 60; }
+  function shiftHours(s) {
+    if (!s.start || !s.end) return null;
+    var end = ENDS[s.end] ? ENDS[s.end].at : s.end, d = mins(end) - mins(s.start);
+    if (d <= 0) { if (ENDS[s.end]) return null; d += 1440; } // started after the assumed out time: unknown
+    return d / 60;
+  }
   function fmtH(n) { return (Math.round(n * 4) / 4).toString().replace(/\.0+$/, ''); }
   function phoneE164(p) {
     var d = String(p || '').replace(/[^\d+]/g, '');
@@ -185,10 +193,10 @@
     if (!list.length) return head.split('\n')[0] + '\n' + (first ? 'Hi ' + first + ', you are not on the schedule this week.' : 'You are not on the schedule this week.') + '\nReply with any questions. – Eden';
     var total = 0, close = 0;
     var lines = list.map(function (s) {
-      var hrs = shiftHours(s); if (hrs == null) close++; else total += hrs;
+      var hrs = shiftHours(s); if (hrs != null) total += hrs; if (isApprox(s)) close++;
       return DAYS[s.day] + ' ' + md(addDays(S.week, s.day)) + ': ' + fmtT(s.start) + '–' + fmtT(s.end) + (s.role ? ' ' + s.role : '') + (s.note ? ' (' + s.note + ')' : '');
     });
-    var tot = 'Total: ' + fmtH(total) + ' hrs' + (close ? ' + ' + close + ' close' : '');
+    var tot = 'Total: ' + (close ? 'about ' : '') + fmtH(total) + ' hrs';
     return head + '\n' + lines.join('\n') + '\n' + tot + '\nReply with any questions. – Eden';
   }
   function smsHref(phone, body) { return 'sms:' + phone + '?&body=' + encodeURIComponent(body); }
@@ -353,7 +361,7 @@
           var td = h('td', { cls: 'sc-cell' + (list.length ? '' : ' empty') + (off && off.status === 'approved' ? ' is-off' : '') });
           if (off) td.appendChild(h('div', { cls: 'sc-off' + (off.status === 'pending' ? ' pending' : ''), title: off.reason || '' }, [h('b', { text: off.status === 'pending' ? 'Requested off' : 'Time off' }), h('span', { text: offText(off) })]));
           list.forEach(function (s) {
-            var hrs = shiftHours(s); if (hrs == null) close++; else total += hrs;
+            var hrs = shiftHours(s); if (hrs != null) total += hrs; if (isApprox(s)) close++;
             td.appendChild(h('button', { type: 'button', cls: 'sc-shift', title: 'Edit shift', on: { click: function () { editShift(e, day, s); } } }, [
               h('span', { cls: 'sc-st', text: fmtT(s.start) + '–' + fmtT(s.end) }),
               s.role && s.role !== e.position ? h('span', { cls: 'sc-sr', text: s.role }) : null,
@@ -364,7 +372,7 @@
           tr.appendChild(td);
         })(d);
       }
-      tr.appendChild(h('td', { cls: 'sc-hrs', text: total || close ? fmtH(total) + (close ? ' + ' + close + ' cl' : '') : '–' }));
+      tr.appendChild(h('td', { cls: 'sc-hrs', title: close ? 'Estimated: 1st cut counted as 8pm, 2nd cut as 9pm, close as 10pm' : null }, total || close ? [close ? h('small', { text: 'about ' }) : null, fmtH(total)] : '–'));
       tb.appendChild(tr);
     });
     var tf = h('tr', { cls: 'sc-foot' }, [h('td', { text: 'On the schedule' })]);
@@ -398,22 +406,27 @@
   function editShift(emp, day, s) {
     var isNew = !s; s = s || { id: uid(), emp: emp.id, day: day, start: '', end: '', role: emp.position || '', note: '' };
     var start = h('input', { type: 'time', value: s.start || '', step: '900' });
-    var end = h('input', { type: 'time', value: s.end && s.end !== 'close' ? s.end : '', step: '900' });
-    var cl = h('input', { type: 'checkbox' }); cl.checked = s.end === 'close';
+    var end = h('input', { type: 'time', value: s.end && !ENDS[s.end] ? s.end : '', step: '900' });
+    var endMode = ENDS[s.end] ? s.end : 'time';
+    var modeBtns = {};
+    var endTog = h('div', { cls: 'sc-viewtog sc-endtog', role: 'group', 'aria-label': 'Shift ends' }, [['time', 'Set time'], ['cut1', '1st cut ~8p'], ['cut2', '2nd cut ~9p'], ['close', 'Close ~10p']].map(function (o) {
+      return (modeBtns[o[0]] = h('button', { type: 'button', 'data-end': o[0], text: o[1], on: { click: function () { endMode = o[0]; syncClose(); if (o[0] === 'time') end.focus(); } } }));
+    }));
     var role = h('input', { type: 'text', value: s.role || '', list: 'scPositions', placeholder: 'e.g. Server, Line, Bar' });
     var note = h('input', { type: 'text', value: s.note || '', placeholder: 'Optional, e.g. Private event, training' });
     var dl = h('datalist', { id: 'scPositions' }, positions().map(function (p) { return h('option', { value: p }); }));
-    function syncClose() { end.disabled = cl.checked; }
-    cl.addEventListener('change', syncClose); syncClose();
+    function syncClose() { end.disabled = endMode !== 'time'; Object.keys(modeBtns).forEach(function (k) { modeBtns[k].setAttribute('aria-pressed', k === endMode ? 'true' : 'false'); }); }
+    syncClose();
     var quick = recentShifts();
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
     var kids = [
       h('p', { cls: 'sc-sub', text: (emp.name || '') + ' · ' + DAYS_LONG[day] + ', ' + addDays(S.week, day).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) }),
       quick.length ? h('div', { cls: 'sc-quick' }, [h('span', { text: 'Quick pick' })].concat(quick.map(function (q) {
-        return h('button', { type: 'button', cls: 'ed-btn small', text: fmtT(q.start) + '–' + fmtT(q.end), on: { click: function () { start.value = q.start; if (q.end === 'close') { cl.checked = true; end.value = ''; } else { cl.checked = false; end.value = q.end; } syncClose(); } } });
+        return h('button', { type: 'button', cls: 'ed-btn small', text: fmtT(q.start) + '–' + fmtT(q.end), on: { click: function () { start.value = q.start; if (ENDS[q.end]) { endMode = q.end; end.value = ''; } else { endMode = 'time'; end.value = q.end; } syncClose(); } } });
       }))) : null,
       h('div', { cls: 'sc-row2' }, [lbl('Start', start), lbl('End', end)]),
-      h('label', { cls: 'sc-check' }, [cl, ' Until close']),
+      h('div', { cls: 'sc-f' }, [h('span', { text: 'Ends' }), endTog]),
+      h('p', { cls: 'sc-small', text: 'Server out times: 1st cut is counted as about 8pm, 2nd cut about 9pm, close about 10pm when hours are totaled.' }),
       lbl('Position', role), dl,
       lbl('Note', note), msg
     ];
@@ -426,10 +439,11 @@
     ];
     function save() {
       if (!start.value) { msg.textContent = 'Choose a start time.'; start.focus(); return; }
-      if (!cl.checked && !end.value) { msg.textContent = 'Choose an end time, or tick Until close.'; end.focus(); return; }
+      if (endMode === 'time' && !end.value) { msg.textContent = 'Choose an end time, or pick 1st cut, 2nd cut or Close.'; end.focus(); return; }
+      if (ENDS[endMode] && mins(start.value) >= mins(ENDS[endMode].at) && !confirm('This shift starts after ' + ENDS[endMode].label + ' is usually called (about ' + fmtT(ENDS[endMode].at) + '). Keep it?')) return;
       var off = offOn(S.timeoff, emp.id, addDays(S.week, day));
       if (isNew && off && off.status === 'approved' && !confirm((emp.name || 'This person') + ' has approved time off on ' + DAYS_LONG[day] + ' (' + offText(off) + '). Schedule them anyway?')) return;
-      s.start = start.value; s.end = cl.checked ? 'close' : end.value; s.role = role.value.trim(); s.note = note.value.trim();
+      s.start = start.value; s.end = endMode === 'time' ? end.value : endMode; s.role = role.value.trim(); s.note = note.value.trim();
       if (isNew) { S.row.shifts = shifts().concat([s]); }
       m.close(); changed(); render();
     }
