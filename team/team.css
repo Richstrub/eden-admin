@@ -192,3 +192,4 @@
 .tm-tabs a[aria-current="page"]{color:var(--ivory);border-bottom-color:var(--ember-hot)}
 .tm-recipes{background:var(--paper);min-height:60vh}
 @media (max-width:640px){.tm-bar{flex-wrap:wrap}.tm-tabs{order:5;width:100%;margin:4px 0 0}}
+.tm-dlink .tm-dhead{flex-wrap:wrap;row-gap:2px}.tm-dlink .tm-dgo{flex-basis:100%;order:3}
