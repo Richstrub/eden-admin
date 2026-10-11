@@ -67,6 +67,10 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   everyone on the team can read. Scale by ½×–4×, any multiplier, or "make N <yield unit>"; Smart units
   converts to the easiest measure (48 tsp → 1 cup, 2000 g → 2 kg) with kitchen fractions. Print a card.
   One-time setup: `supabase/recipes.sql`.
+- **Calendar** (`#calendar` on the staff site; Calendar tab on the staff page): events by Day (hour
+  timeline, same look as staff shifts), Week and Month. Owner and Managers add/edit (type, date, all-day or
+  times, room, guests, notes) with double-booking warnings per room; the whole team can read. Events carry
+  `source`/`beo_id` so BEOs can add them later. One-time setup: `supabase/calendar.sql`.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

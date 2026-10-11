@@ -135,13 +135,16 @@
   /* ---------- pages: Schedule (with the board) and Recipes ---------- */
   function page() {
     if ($('app').hidden || !me) return;
-    var rec = location.hash === '#recipes';
-    $('recipesView').hidden = !rec; document.querySelector('.tm-main').hidden = rec;
-    $('tabSched').setAttribute('aria-current', rec ? 'false' : 'page'); $('tabRecipes').setAttribute('aria-current', rec ? 'page' : 'false');
-    document.title = rec ? 'Recipes · Eden Team' : 'Eden Team';
-    if (rec && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '',
-      canEdit: me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager',
-      status: function (t, k) { var m = $('recipesView').querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } } });
+    var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : 'sched';
+    $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; document.querySelector('.tm-main').hidden = pg !== 'sched';
+    $('tabSched').setAttribute('aria-current', pg === 'sched' ? 'page' : 'false');
+    $('tabRecipes').setAttribute('aria-current', pg === 'recipes' ? 'page' : 'false');
+    $('tabCalendar').setAttribute('aria-current', pg === 'calendar' ? 'page' : 'false');
+    document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : 'Eden Team';
+    var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
+    var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
+    if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
+    if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }
   window.addEventListener('hashchange', page);
   $('tabSched').addEventListener('click', function (e) { e.preventDefault(); history.pushState(null, '', location.pathname); page(); });

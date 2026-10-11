@@ -56,8 +56,8 @@
       <a href="#prep" data-view="prep" data-prep>Prep List</a>
       <a href="#inventory" data-view="inventory" data-prep>Inventory</a>
       <a href="#recipes" data-view="recipes">Recipes</a>
+      <a href="#calendar" data-view="calendar">Calendar</a>
       <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
-      <button type="button" disabled title="Coming in a later phase">Calendar</button>
       <button type="button" disabled title="Coming in a later phase">Reservations</button>
     </nav>
     <div class="ed-status" id="edStatus" role="status">Loading…</div>
@@ -104,6 +104,11 @@
           <span class="tile-t">Recipes</span>
           <span class="tile-d">The recipe book. Scale any recipe by a multiplier or by how much you want to make, and the math is done for you.</span>
         </a>
+        <a class="tile" href="#calendar">
+          <span class="tile-k">Events</span>
+          <span class="tile-t">Calendar</span>
+          <span class="tile-d">Private events, the Supper Club and closures by day, week or month, with double-booking warnings.</span>
+        </a>
         <a class="tile" href="#todo">
           <span class="tile-k">Everyone</span>
           <span class="tile-t">Notes &amp; To-do</span>
@@ -115,7 +120,7 @@
           <span class="tile-d">What employees see: published schedules (names and positions only) and the team message board.</span>
         </a>
         <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Catering &amp; BEOs</span><span class="tile-d">Inquiries from the website turned into banquet event orders.</span></div>
-        <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Events Calendar</span><span class="tile-d">Private events and the Supper Club by room, with double-booking warnings.</span></div>
+
         <div class="tile soon"><span class="tile-k">Coming next</span><span class="tile-t">Reservations</span><span class="tile-d">Phone bookings, large parties and guest notes alongside OpenTable.</span></div>
       </div>
       <p class="home-links"><a id="homeSite" href="#" target="_blank" rel="noopener">View the website</a> <a id="homePad" href="#" target="_blank" rel="noopener">Open the iPad menu</a></p>
@@ -130,6 +135,7 @@
   <section class="view inv" id="viewInventory" hidden></section>
   <section class="view todo" id="viewTodo" hidden></section>
   <section class="view recipes" id="viewRecipes" hidden></section>
+  <section class="view calendar" id="viewCalendar" hidden></section>
 </div>
 
 <script src="js/config.js"></script>
@@ -140,6 +146,7 @@
 <script src="js/inventory.js"></script>
 <script src="js/notes.js"></script>
 <script src="js/recipes.js"></script>
+<script src="js/calendar.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>

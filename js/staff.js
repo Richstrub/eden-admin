@@ -120,7 +120,7 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar' };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
@@ -134,7 +134,7 @@
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
     document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : 'Eden Staff';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : 'Eden Staff';
     if (v === 'menu') {
       INV.items = null; // pick up inventory changes made since
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
@@ -143,6 +143,9 @@
     } else if (v === 'schedule') {
       status('');
       if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
+    } else if (v === 'calendar') {
+      status('');
+      if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr() });
     } else if (v === 'recipes') {
       status('');
       if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr() });
