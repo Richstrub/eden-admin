@@ -791,3 +791,6 @@ body.nt-open #app{visibility:hidden!important}
 .ed-row2 .ed-status{flex:1;min-width:140px}
 .ed-row2 .ed-actions{margin-left:auto}
 @media (max-width:640px){.ed-top{gap:8px}.ed-acct .ed-btn.small{padding:6px 9px}}
+.sc-copyone{display:block;margin-top:5px;background:none;border:0;padding:0;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ember);cursor:pointer;text-align:left}
+.sc-copyone:hover{text-decoration:underline;text-underline-offset:3px}
+@media print{.sc-copyone{display:none!important}}

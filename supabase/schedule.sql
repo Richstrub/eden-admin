@@ -14,7 +14,7 @@ create table if not exists public.employees (
 );
 
 create table if not exists public.schedule_weeks (
-  week_start date primary key,                -- the Monday of the week
+  week_start date primary key,                -- the Sunday that starts the week (day 0 = Sunday)
   shifts jsonb not null default '[]'::jsonb,  -- [{id, emp, day 0-6, start, end|'close', role, note}]
   status text not null default 'draft' check (status in ('draft','published')),
   published jsonb,                            -- copy of shifts at the last publish

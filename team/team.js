@@ -8,8 +8,8 @@
 (function () {
   'use strict';
   var CFG = window.EDEN_STAFF_CONFIG || {};
-  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  var DAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // weeks run Sunday to Saturday
+  var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var ROLE_NAMES = { owner: 'Owner', manager: 'Manager', kitchen: 'Kitchen', foh: 'Front of House' };
   var $ = function (id) { return document.getElementById(id); };
   var screens = ['loading', 'signin', 'notlisted', 'app'];
@@ -33,7 +33,7 @@
   function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function parseDay(t) { var p = String(t || '').split('-'); return new Date(+p[0], (+p[1] || 1) - 1, +p[2] || 1); }
   function dayLabel(t) { return parseDay(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
-  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
+  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - x.getDay()); return x; } // the Sunday that starts the week
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function md(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
@@ -221,7 +221,7 @@
   }
   function dayShifts(date) {
     if (!monthData) return null;
-    var mon = iso(monday(date)), di = (date.getDay() + 6) % 7, wk = null;
+    var mon = iso(monday(date)), di = date.getDay(), wk = null;
     monthData.weeks.forEach(function (w) { if (iso(w.wk) === mon) wk = w.data; });
     if (!wk || !wk.published) return null;
     return (wk.shifts || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || a.name.localeCompare(b.name); });
@@ -283,7 +283,7 @@
       if (r.error) { $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'Couldn’t load the schedule. Check your connection and reload.' })); return; }
       var w = r.data || {};
       if (!w.published) { $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'The schedule for this week hasn’t been posted yet.' })); return; }
-      var di = (d.getDay() + 6) % 7;
+      var di = d.getDay();
       var list = (w.shifts || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || a.name.localeCompare(b.name); });
       renderDayMine(list); renderTimeline(list);
     });
@@ -296,7 +296,7 @@
       mine.forEach(function (s) {
         var hrs = hours(s);
         grid.appendChild(h('div', { cls: 'tm-shift' + (iso(dayDate) === iso(new Date()) ? ' today' : '') }, [
-          h('div', { cls: 'tm-day' }, [h('span', { text: DAYS[(dayDate.getDay() + 6) % 7] }), h('b', { text: md(dayDate) })]),
+          h('div', { cls: 'tm-day' }, [h('span', { text: DAYS[dayDate.getDay()] }), h('b', { text: md(dayDate) })]),
           h('div', { cls: 'tm-time' }, [h('b', { text: fmtT(s.start) + ' – ' + fmtT(s.end) }), s.role ? h('span', { text: s.role }) : null, s.note ? h('em', { text: s.note }) : null]),
           hrs != null ? h('span', { cls: 'tm-today', text: (isApprox(s) ? 'about ' : '') + (Math.round(hrs * 4) / 4) + ' hrs' }) : null
         ]));

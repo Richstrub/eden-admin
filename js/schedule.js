@@ -2,9 +2,9 @@
  *
  * Tables (see supabase/schedule.sql):
  *   employees        id, name, phone, position, active
- *   schedule_weeks   week_start (Monday, YYYY-MM-DD), shifts (json), status, published (json snapshot),
+ *   schedule_weeks   week_start (Sunday, YYYY-MM-DD), shifts (json), status, published (json snapshot),
  *                    published_at, sent (json: employee id -> { at, msg })
- * A shift is { id, emp, day (0 = Monday … 6 = Sunday), start 'HH:MM', end 'HH:MM' | 'cut1' | 'cut2' | 'close', role, note }.
+ * A shift is { id, emp, day (0 = Sunday … 6 = Saturday), start 'HH:MM', end 'HH:MM' | 'cut1' | 'cut2' | 'close', role, note }.
  * Only Owner and Manager can see or change any of this (enforced by the database).
  *
  * Texting: "Text schedules" lists everyone with their own week written out. Each "Text" button opens the
@@ -12,8 +12,8 @@
  */
 (function () {
   'use strict';
-  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  var DAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // weeks run Sunday to Saturday
+  var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var TEMPLATE = 'templates/eden-employees.xlsx';
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -40,7 +40,7 @@
   function dayLabel(t) { return parseDay(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
   function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : (p[0] || ''); }
   function isOwner() { return S.ctx && S.ctx.role === 'owner'; }
-  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); var dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); return x; }
+  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - x.getDay()); return x; } // the Sunday that starts the week (name kept for history)
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function md(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
@@ -310,7 +310,7 @@
     DAYS.forEach(function (d) { cal.appendChild(h('div', { cls: 'sc-cal-h', text: d })); });
     for (var d = new Date(rg.start); d <= rg.end; d = addDays(d, 1)) {
       (function (date) {
-        var wk = S.monthData.weeks[iso(monday(date))], di = (date.getDay() + 6) % 7;
+        var wk = S.monthData.weeks[iso(monday(date))], di = date.getDay();
         var list = ((wk && wk.shifts) || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start); });
         var offs = (S.monthData.off || []).filter(function (t) { return t.status !== 'denied' && t.start_date <= iso(date) && t.end_date >= iso(date); });
         var cell = h('button', { type: 'button', cls: 'sc-cal-d' + (date.getMonth() !== mo ? ' out' : '') + (iso(date) === today ? ' today' : '') + (wk && wk.status !== 'published' && list.length ? ' draft' : ''),
@@ -352,7 +352,8 @@
       var pos = e.position || '';
       if (pos !== lastPos) { tb.appendChild(h('tr', { cls: 'sc-group' }, [h('td', { colspan: '9', text: pos || 'No position' })])); lastPos = pos; }
       var tr = h('tr', { cls: e.active === false ? 'inactive' : null });
-      tr.appendChild(h('td', { cls: 'sc-name' }, [h('span', { cls: 'sc-ename', text: e.name || 'Unnamed' }), e.phone ? null : h('span', { cls: 'sc-warn', text: 'No mobile number' })]));
+      tr.appendChild(h('td', { cls: 'sc-name' }, [h('span', { cls: 'sc-ename', text: e.name || 'Unnamed' }), e.phone ? null : h('span', { cls: 'sc-warn', text: 'No mobile number' }),
+        h('button', { type: 'button', cls: 'sc-copyone', title: 'Copy ' + (e.name || 'this person') + '’s shifts from last week into this week', 'aria-label': 'Copy last week for ' + (e.name || 'this person'), text: '↻ Copy last week', on: { click: function () { copyLastWeekFor(e); } } })]));
       var total = 0, close = 0;
       for (var d = 0; d < 7; d++) {
         (function (day) {
@@ -464,6 +465,28 @@
       S.row.shifts = keep.map(function (s) { var c = JSON.parse(JSON.stringify(s)); c.id = uid(); return c; });
       S.lastWeek = list;
       changed(); render(); status('Copied ' + keep.length + ' shifts from last week. Review them, then publish.', 'ok');
+    }, function () { status('Couldn’t load last week.', 'err'); });
+  }
+
+  // One person: replace their shifts this week with their shifts from last week (same days and times).
+  function copyLastWeekFor(emp) {
+    var prev = addDays(S.week, -7), who = emp.name || 'This person';
+    status('Copying ' + who + '’s last week…');
+    loadWeek(prev).then(function (r) {
+      var mine = ((r && r.shifts) || []).filter(function (s) { return s.emp === emp.id; });
+      if (!mine.length) { status(who + ' had no shifts last week (' + weekLabel(prev) + ').', 'err'); return; }
+      var now = shiftsFor(emp.id);
+      if (now.length && !confirm('Replace ' + who + '’s ' + now.length + ' shift' + (now.length === 1 ? '' : 's') + ' this week with last week’s ' + mine.length + '?')) { status(''); return; }
+      var skipped = [];
+      var copies = mine.filter(function (s) {
+        var off = offOn(S.timeoff, emp.id, addDays(S.week, s.day));
+        if (off && off.status === 'approved') { skipped.push(DAYS[s.day]); return false; }
+        return true;
+      }).map(function (s) { var c = JSON.parse(JSON.stringify(s)); c.id = uid(); return c; });
+      S.row.shifts = shifts().filter(function (s) { return s.emp !== emp.id; }).concat(copies);
+      S.lastWeek = (r && r.shifts) || S.lastWeek;
+      changed(); render();
+      status('Copied ' + copies.length + ' shift' + (copies.length === 1 ? '' : 's') + ' for ' + who + (skipped.length ? '. Skipped ' + skipped.join(', ') + ' (approved time off)' : '') + '.', 'ok');
     }, function () { status('Couldn’t load last week.', 'err'); });
   }
 

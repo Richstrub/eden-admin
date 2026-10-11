@@ -71,6 +71,7 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   timeline, same look as staff shifts), Week and Month. Owner and Managers add/edit (type, date, all-day or
   times, room, guests, notes) with double-booking warnings per room; the whole team can read. Events carry
   `source`/`beo_id` so BEOs can add them later. One-time setup: `supabase/calendar.sql`.
+- **Weeks start on Sunday** (Sun–Sat) on the Schedule, staff page and Calendar. Existing Monday-start weeks: run `supabase/sunday-weeks.sql` once. Each person on the Schedule grid has "Copy last week" (skips days with approved time off).
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

@@ -19,8 +19,8 @@
     { id: 'other', label: 'Other', color: '#2b3035' }
   ];
   var ROOMS = ['Main dining room', 'Bar', 'Private dining room', 'Patio', 'Whole restaurant', 'Off-site'];
-  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  var DAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var C = { ctx: null, el: null, view: 'month', day: today(), events: [], range: null, loading: false, missing: false };
 
   /* ---------- helpers ---------- */
@@ -39,7 +39,7 @@
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function parseDay(t) { var p = String(t || '').split('-'); return new Date(+p[0], (+p[1] || 1) - 1, +p[2] || 1); }
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
-  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
+  function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - x.getDay()); return x; } // weeks start on Sunday
   function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function md(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
   function mins(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
@@ -148,7 +148,7 @@
       (function (d) {
         var list = onDay(d);
         var col = h('div', { cls: 'cl-wcol' + (iso(d) === t ? ' today' : ''), role: 'button', tabindex: '0', 'aria-label': DAYS_LONG[i] + ' ' + md(d) + ', ' + list.length + ' events. Open the day view' }, [
-          h('div', { cls: 'cl-whead' }, [h('span', { text: DAYS_LONG[(d.getDay() + 6) % 7] }), h('b', { text: md(d) }), h('em', { text: (list.length ? list.length + ' event' + (list.length === 1 ? '' : 's') + ' · ' : '') + 'Day view →' })])
+          h('div', { cls: 'cl-whead' }, [h('span', { text: DAYS_LONG[d.getDay()] }), h('b', { text: md(d) }), h('em', { text: (list.length ? list.length + ' event' + (list.length === 1 ? '' : 's') + ' · ' : '') + 'Day view →' })])
         ]);
         if (!list.length) col.appendChild(h('p', { cls: 'cl-none', text: 'Nothing scheduled' }));
         list.forEach(function (e) { col.appendChild(chip(e)); });
