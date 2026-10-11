@@ -6,7 +6,7 @@
   var SECTIONS = {
     site_docs: 'Menu & website', employees: 'Employees', staff: 'Staff logins', schedule_weeks: 'Schedule', time_off: 'Time off',
     board_posts: 'Message board', inventory_items: 'Inventory items', inventory_counts: 'Inventory counts', recipes: 'Recipes',
-    events: 'Calendar', todos: 'To-do'
+    events: 'Calendar', todos: 'To-do', catering_inquiries: 'Catering inquiries'
   };
   var ACTS = { insert: 'Added', update: 'Changed', delete: 'Deleted' };
   var FIELD = { yield_qty: 'yield', yield_unit: 'yield unit', all_day: 'all day', count_date: 'date', start_date: 'from', end_date: 'to',

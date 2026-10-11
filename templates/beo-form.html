@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Banquet Event Order · Eden Hospitality</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F7F3;--surface:#FFFFFF;--ink:#1C2420;--muted:#5B675F;--moss:#2F4A3A;--moss-soft:#E4EBE5;
+  --brass:#8C6D22;--rule:#D6DCD5;--warn:#9B3B26;--focus:#2F6B4E;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--paper:#111613;--surface:#18201B;--ink:#E6ECE7;--muted:#9BA8A0;--moss:#A3C8AE;--moss-soft:#1F2C25;--brass:#D3B467;--rule:#2B3530;--warn:#EE937A;--focus:#A3C8AE}
+}
+:root[data-theme="dark"]{--paper:#111613;--surface:#18201B;--ink:#E6ECE7;--muted:#9BA8A0;--moss:#A3C8AE;--moss-soft:#1F2C25;--brass:#D3B467;--rule:#2B3530;--warn:#EE937A;--focus:#A3C8AE}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 'Source Sans 3',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+.masthead{max-width:1240px;margin:0 auto;padding:36px 24px 8px}
+.brand{font-family:'Jost',system-ui,sans-serif;font-weight:300;letter-spacing:.38em;font-size:22px;margin:0;color:var(--moss)}
+h1{font-family:'Jost',system-ui,sans-serif;font-weight:300;font-size:clamp(32px,5vw,50px);line-height:1.05;margin:10px 0}
+.lede{color:var(--muted);max-width:62ch;margin:0}
+.layout{max-width:1240px;margin:0 auto;padding:12px 24px 120px;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:44px;align-items:start}
+@media (max-width:980px){.layout{grid-template-columns:1fr;gap:0}}
+.block{border-top:1px solid var(--rule);padding:28px 0}
+h2{font-family:'Jost',system-ui,sans-serif;font-weight:400;font-size:24px;margin:0 0 4px}
+h3{font-size:15px;font-weight:600;margin:22px 0 6px}
+.note{color:var(--muted);font-size:14px;margin:0 0 14px;max-width:72ch}
+.warn{color:var(--warn);font-size:14px;margin:8px 0 0}
+.warn:empty{display:none}
+.ok{color:var(--moss);font-size:14px;margin:8px 0 0}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 16px}
+.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.f.wide{grid-column:1/-1}
+input,select,textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:7px 10px;min-width:0}
+textarea{min-height:96px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+input[type=checkbox],input[type=radio]{width:18px;height:18px;accent-color:var(--moss);margin:0}
+.table-wrap{overflow-x:auto}
+table.items{width:100%;border-collapse:collapse;font-size:15px}
+table.items th{text-align:left;font-weight:600;font-size:13px;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.items td{padding:10px 8px;border-bottom:1px solid var(--rule);vertical-align:middle}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.item-name{font-weight:600}
+.item-desc{color:var(--muted);font-size:14px}
+input.qty{width:80px;text-align:right}
+input.price{width:92px;text-align:right}
+tr.on td{background:var(--moss-soft)}
+tr.off td{opacity:.4}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px;white-space:nowrap}
+.tiers{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 4px}
+.tier{display:flex;align-items:center;gap:10px;border:1px solid var(--rule);border-radius:8px;padding:10px 14px;background:var(--surface);cursor:pointer}
+.tier:has(input:checked){border-color:var(--moss);background:var(--moss-soft)}
+.tier b{font-family:'Jost',system-ui,sans-serif;font-weight:400;font-size:22px}
+.inline{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:10px 0}
+.inline label{display:flex;align-items:center;gap:8px}
+.summary{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:20px 20px 16px;margin-top:28px}
+.summary h2{font-size:20px;margin-bottom:12px}
+.lines{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:14px;margin:0}
+.lines dt{color:var(--muted)}
+.lines dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.lines .sub{border-top:1px solid var(--rule);padding-top:8px;margin-top:4px;color:var(--ink);font-weight:600}
+.grand{border-top:1px solid var(--rule);margin-top:14px;padding-top:12px}
+.grand span{display:block;font-size:13px;color:var(--muted)}
+.grand strong{font-family:'Jost',system-ui,sans-serif;font-weight:300;font-size:42px;line-height:1.1;color:var(--brass);font-variant-numeric:tabular-nums}
+.balance{display:flex;justify-content:space-between;font-size:15px;margin-top:6px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{font:inherit;font-size:14px;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--moss);background:var(--moss);color:var(--surface)}
+button.ghost{background:transparent;color:var(--moss)}
+.saved{font-size:12px;color:var(--muted);margin-top:10px}
+.totalbar{display:none}
+#dropZone{position:fixed;inset:12px;z-index:50;display:flex;align-items:center;justify-content:center;border:3px dashed var(--moss);border-radius:14px;background:color-mix(in srgb,var(--paper) 88%,transparent);font-family:'Jost',system-ui,sans-serif;font-size:24px;color:var(--moss);pointer-events:none;text-align:center;padding:20px}
+#dropZone[hidden]{display:none}
+.addr{font-size:13px;color:var(--ink);line-height:1.35}
+button.link{background:none;border:none;padding:0;color:var(--moss);text-decoration:underline;font-size:13px}
+dialog{border:1px solid var(--rule);border-radius:10px;background:var(--surface);color:var(--ink);padding:22px;width:min(440px,calc(100vw - 32px))}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+#evDlg{width:min(500px,calc(100vw - 32px))}
+#evDlg h2{margin-bottom:8px}
+dialog textarea{min-height:80px}
+@media (max-width:980px){
+  .summary{position:static}
+  .totalbar{display:flex;position:fixed;left:0;right:0;bottom:0;justify-content:space-between;align-items:center;gap:12px;padding:10px 20px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--rule);z-index:5}
+  .totalbar strong{font-family:'Jost',system-ui,sans-serif;font-weight:400;font-size:24px;color:var(--brass);font-variant-numeric:tabular-nums}
+  .totalbar a{color:var(--moss);font-size:14px}
+}
+.sig{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+.disclaimer{font-size:13px;color:var(--muted);font-style:italic}
+@media (prefers-reduced-motion:no-preference){tr td{transition:background-color .15s}}
+@media print{
+  body{background:#fff;color:#000}
+  .actions,.totalbar,.saved,button.link,dialog,#dropZone{display:none!important}
+  .layout{display:block}
+  .summary{position:static;border:1px solid #999;break-inside:avoid}
+  input,select,textarea{border:none;border-bottom:1px solid #999;border-radius:0;background:transparent}
+  tr.off{display:none}
+}
+/* Staff sheets: hidden on screen, the only thing printed in staff mode */
+#staff{display:none}
+@media print{
+  body.staff-print > *:not(#staff){display:none!important}
+  body.staff-print #staff{display:block}
+}
+@page{margin:0.5in}
+.ss{font:11pt/1.35 'Source Sans 3',system-ui,sans-serif;color:#000}
+.ss + .ss{break-before:page}
+.ss-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px}
+.ss-head h1{font-family:'Jost',system-ui,sans-serif;font-weight:400;font-size:22pt;margin:0;line-height:1.1}
+.ss-head .ss-dept{font-family:'Jost',system-ui,sans-serif;font-size:12pt;letter-spacing:.2em;text-transform:uppercase}
+.ss-head .ss-ev{font-size:10pt;text-align:right}
+.ss-kv{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 14px;margin:0 0 8px}
+.ss-kv div{font-size:10pt}
+.ss-kv b{display:block;font-size:8pt;text-transform:uppercase;letter-spacing:.06em;color:#444;font-weight:600}
+.ss h2{font-family:'Jost',system-ui,sans-serif;font-weight:500;font-size:12.5pt;margin:12px 0 4px;padding-bottom:2px;border-bottom:1px solid #000;break-after:avoid}
+.ss h3{font-size:10.5pt;font-weight:600;margin:6px 0 2px;break-after:avoid}
+.ss table{width:100%;border-collapse:collapse;font-size:10pt;margin:2px 0 4px;break-inside:auto}
+.ss th{text-align:left;font-size:8.5pt;text-transform:uppercase;letter-spacing:.04em;color:#444;border-bottom:1px solid #000;padding:3px 6px}
+.ss td{border-bottom:1px solid #bbb;padding:4px 6px;vertical-align:top}
+.ss tr{break-inside:avoid}
+.ss td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.ss td.ck{width:22px}
+.ss .box{display:inline-block;width:12px;height:12px;border:1.5px solid #000;vertical-align:middle}
+.ss .d{color:#444;font-size:9pt}
+.ss .flag{font-size:8pt;font-weight:600;border:1px solid #000;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap}
+.ss .alert{border:2px solid #000;padding:6px 8px;margin:6px 0}
+.ss .alert h2{border:none;margin-top:0}
+.ss .alert,.ss .notes{break-inside:avoid}
+.ss .notes{white-space:pre-wrap;border:1px solid #999;padding:6px 8px;font-size:10pt}
+.ss .foot{margin-top:12px;font-size:8.5pt;color:#444;border-top:1px solid #999;padding-top:4px}
+.ss .none{color:#666;font-style:italic;font-size:10pt}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <p class="brand">EDEN</p>
+  <h1>Banquet event order</h1>
+  <p class="lede">Enter guest counts and quantities as you go. Line totals and the billing summary update automatically, and your entries are saved in this browser until you clear the form.</p>
+</header>
+
+<div class="layout">
+<main id="form">
+
+<section class="block">
+  <h2>Event information</h2>
+  <p class="note">Menu selections are due 21 days before the event. The signed BEO is due to the event manager 14 business days before the event.</p>
+  <div class="fields">
+    <label class="f">BEO #<input data-k="ev.beo"></label>
+    <label class="f">Event name<input data-k="ev.name"></label>
+    <label class="f">Event type<select data-k="ev.type"><option></option><option>Wedding</option><option>Corporate</option><option>Social</option><option>Other</option></select></label>
+    <label class="f">Event date<input type="date" data-k="ev.date"></label>
+    <label class="f">Start time<input type="time" data-k="ev.start"></label>
+    <label class="f">End time<input type="time" data-k="ev.end"></label>
+    <label class="f">Location / room<select data-k="ev.room" id="roomSel"><option></option><option>3rd Floor Event Space</option><option>Palladian Hall</option><option>Restaurant</option><option>Other</option></select><span class="addr" id="roomAddr" hidden><span id="roomAddrText"></span> <button type="button" class="link" id="roomAddrEdit">Edit address</button></span></label>
+    <label class="f">Client / organization<input data-k="ev.client"></label>
+    <label class="f">On-site contact<input data-k="ev.contact"></label>
+    <label class="f">Phone<input type="tel" data-k="ev.phone"></label>
+    <label class="f">Email<input type="email" data-k="ev.email"></label>
+    <label class="f">Event manager<input data-k="ev.manager"></label>
+    <label class="f wide">Billing address<input data-k="ev.address"></label>
+    <label class="f">Expected guest count<input type="number" min="0" inputmode="numeric" data-k="ev.expected"></label>
+    <label class="f">Final guaranteed count<input type="number" min="0" inputmode="numeric" data-k="ev.guar"></label>
+  </div>
+  <p class="note" style="margin-top:12px">The final guarantee is due by 11:00 am, 5 business days before the event. If it isn't received, the expected count becomes the minimum guarantee.</p>
+  <div class="inline">
+    <label><input type="checkbox" data-k="ev.alacarte"> À la carte dinner</label>
+    <label><input type="checkbox" data-k="ev.third"> Held in the third-floor space</label>
+    <label><input type="checkbox" data-k="ev.waive"> Waive third-floor rental fee</label>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Event timeline</h2>
+  <p class="note">Buffets and reception stations run 90 minutes, plated dinners 120 to 180 minutes, and breaks 30 minutes. Longer service carries an additional fee.</p>
+  <div class="table-wrap"><table class="items" id="timeline"><thead><tr><th>Time</th><th>Activity</th><th>Location</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section class="block">
+  <h2>Room setup</h2>
+  <div class="fields">
+    <label class="f">Setup style<select data-k="rm.style"><option></option><option>Rounds</option><option>Banquet</option><option>Cocktail</option><option>Classroom</option><option>Other</option></select></label>
+    <label class="f">Tables / seats per table<input data-k="rm.tables"></label>
+    <label class="f">Head or sweetheart table<input data-k="rm.head"></label>
+    <label class="f">Buffet / station tables<input data-k="rm.buffet"></label>
+    <label class="f">Bar location<input data-k="rm.bar"></label>
+    <label class="f">Linen and napkin color<input data-k="rm.linen"></label>
+    <label class="f">Centerpieces / décor by<input data-k="rm.decor"></label>
+    <label class="f">A/V, microphone, music<input data-k="rm.av"></label>
+    <label class="f">Vendor load-in times<input data-k="rm.vendors"></label>
+    <label class="f">Place cards<input data-k="rm.cards" placeholder="Required for pre-selected entrees"></label>
+  </div>
+</section>
+
+<section class="block">
+  <h2>In-suite dining</h2>
+  <p class="note">Priced per person, with a 10-person minimum.</p>
+  <div class="table-wrap"><table class="items" id="t-suite"></table></div>
+  <p class="warn" id="w-suite"></p>
+  <div class="fields" style="margin-top:12px"><label class="f">Suite delivery time<input type="time" data-k="suite.time"></label><label class="f">Suite / room<input data-k="suite.room"></label></div>
+</section>
+
+<section class="block">
+  <h2>Breakfast and brunch buffet</h2>
+  <p class="note">Priced per person, with a 25-guest minimum. Includes a coffee station and chilled juices.</p>
+  <div class="table-wrap"><table class="items" id="t-brunch"></table></div>
+  <p class="warn" id="w-brunch"></p>
+  <h3>Chef-attended stations</h3>
+  <p class="note">One attendant is required per 35 guests at each station, at $150 per attendant. The fee is added automatically.</p>
+  <div class="table-wrap"><table class="items" id="t-stations"></table></div>
+  <div class="inline"><label class="f" style="flex-direction:row;align-items:center;gap:8px">Carving protein <select data-k="carv.protein"><option>NY strip loin</option><option>Pork loin</option></select></label></div>
+</section>
+
+<section class="block">
+  <h2>Social hour reception</h2>
+  <p class="note">25-guest minimum. Canapés are priced per piece.</p>
+  <div class="fields">
+    <label class="f">Reception guests<input type="number" min="0" inputmode="numeric" data-k="rec.guests"></label>
+    <label class="f">Reception length<select data-k="rec.len"><option value="1">One hour</option><option value="2">Two hours</option></select></label>
+  </div>
+  <p class="ok" id="rec-guide"></p>
+  <p class="warn" id="w-rec"></p>
+  <h3>Hot canapés</h3>
+  <div class="table-wrap"><table class="items" id="t-hot"></table></div>
+  <h3>Chilled canapés</h3>
+  <div class="table-wrap"><table class="items" id="t-cold"></table></div>
+  <h3>Enhancements and stations</h3>
+  <p class="note">Each enhancement must be ordered for at least 80% of the total guest count.</p>
+  <div class="table-wrap"><table class="items" id="t-enh"></table></div>
+  <p class="warn" id="w-enh"></p>
+</section>
+
+<section class="block">
+  <h2>Plated dinner</h2>
+  <p class="note">Each three-course menu includes one salad, one starter or dessert, and two entrees plus one vegetarian selection, with three entree selections at most. All guests receive the same sides.</p>
+  <div class="tiers" id="tiers"></div>
+  <div class="fields" style="margin-top:12px">
+    <label class="f">Dinner guests<input type="number" min="0" inputmode="numeric" data-k="din.guests"></label>
+    <label class="f">Entree service<select data-k="din.mode"><option value="pre">Pre-selected (counts due 14 days before)</option><option value="table">Tableside selection (+$35 per guest)</option></select></label>
+    <label class="f">Beef temperature<select data-k="din.temp"><option></option><option>Rare</option><option>Medium-rare</option><option>Medium</option><option>Medium-well</option><option>Well done</option></select></label>
+  </div>
+  <p class="warn" id="w-din"></p>
+  <h3>Salad <span class="tag">choose one</span></h3>
+  <div class="table-wrap"><table class="items" id="t-salad"></table></div>
+  <h3>Starter <span class="tag">choose one, or a dessert in its place</span></h3>
+  <div class="inline"><label><input type="checkbox" data-k="din.dessertInstead"> Serve a dessert in place of the starter</label></div>
+  <div class="table-wrap"><table class="items" id="t-starter"></table></div>
+  <h3>Entrees <span class="tag">two plus one vegetarian</span></h3>
+  <div class="table-wrap"><table class="items" id="t-entree"></table></div>
+  <h3>Sides <span class="tag">same for all guests</span></h3>
+  <div class="table-wrap"><table class="items" id="t-sides"></table></div>
+</section>
+
+<section class="block">
+  <h2>Dinner buffet</h2>
+  <p class="note">Buffets run 90 minutes. Each buffet menu level is $10 per person less than the matching plated level. Choose one or two salads, two entrees plus one vegetarian (three at most), and one starch and one vegetable side.</p>
+  <div class="tiers" id="bf-tiers"></div>
+  <div class="fields" style="margin-top:12px">
+    <label class="f">Buffet guests<input type="number" min="0" inputmode="numeric" data-k="bf.guests"></label>
+    <label class="f">Beef temperature<select data-k="bf.temp"><option></option><option>Rare</option><option>Medium-rare</option><option>Medium</option><option>Medium-well</option><option>Well done</option></select></label>
+  </div>
+  <p class="warn" id="w-bf"></p>
+  <h3>Salads <span class="tag">one or two</span></h3>
+  <div class="table-wrap"><table class="items" id="t-bf-salad"></table></div>
+  <h3>Entrees <span class="tag">two plus one vegetarian</span></h3>
+  <div class="table-wrap"><table class="items" id="t-bf-entree"></table></div>
+  <h3>Sides <span class="tag">one starch, one vegetable</span></h3>
+  <div class="table-wrap"><table class="items" id="t-bf-sides"></table></div>
+</section>
+
+<section class="block">
+  <h2>Desserts</h2>
+  <p class="note">Priced per guest.</p>
+  <div class="table-wrap"><table class="items" id="t-dessert"></table></div>
+</section>
+
+<section class="block">
+  <h2>Beverage service</h2>
+  <p class="note">Enter the price and quantity for each beverage service.</p>
+  <div class="table-wrap"><table class="items" id="t-bev"></table></div>
+  <div class="fields" style="margin-top:12px"><label class="f">Bar open<input type="time" data-k="bev.open"></label><label class="f">Bar close<input type="time" data-k="bev.close"></label><label class="f">Bartenders<input type="number" min="0" data-k="bev.staff"></label></div>
+</section>
+
+<section class="block">
+  <h2>Dietary restrictions and allergies</h2>
+  <p class="note">List every guest with an allergy or dietary need. The kitchen confirms each substitution before the event.</p>
+  <div class="table-wrap"><table class="items" id="t-diet"><thead><tr><th>Guest</th><th>Table</th><th>Allergy / restriction</th><th>Substitute meal</th><th>Chef confirmed</th></tr></thead><tbody></tbody></table></div>
+  <div class="actions"><button type="button" class="ghost" id="addDiet">Add guest</button></div>
+</section>
+
+<section class="block">
+  <h2>Billing adjustments</h2>
+  <div class="fields">
+    <label class="f">Overtime / extended service fees ($)<input type="number" min="0" step="0.01" data-k="bill.ot"></label>
+    <label class="f">Service charge (% of food and beverage, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
+    <label class="f">Sales tax (%, default 8%)<input type="number" min="0" step="0.001" data-k="bill.tax"></label>
+    <label class="f">Deposit received ($)<input type="number" min="0" step="0.01" data-k="bill.dep"></label>
+    <label class="f">Deposit date<input type="date" data-k="bill.depdate"></label>
+    <label class="f">Payment method<input data-k="bill.method"></label>
+    <label class="f">Balance due date<input type="date" data-k="bill.duedate"></label>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Notes</h2>
+  <label class="f">Special requests, vendor details, and anything the kitchen and service team should know<textarea data-k="notes"></textarea></label>
+</section>
+
+<section class="block">
+  <h2>Approval</h2>
+  <p class="note">By signing, the client confirms the selections, guest counts, and charges on this BEO. Changes after signing must be made in writing and approved by the event manager.</p>
+  <div class="sig">
+    <div class="fields" style="grid-template-columns:1fr"><label class="f">Client name<input data-k="sig.client"></label><label class="f">Client signature<input data-k="sig.clientSig"></label><label class="f">Date<input type="date" data-k="sig.clientDate"></label></div>
+    <div class="fields" style="grid-template-columns:1fr"><label class="f">Event manager name<input data-k="sig.mgr"></label><label class="f">Event manager signature<input data-k="sig.mgrSig"></label><label class="f">Date<input type="date" data-k="sig.mgrDate"></label></div>
+  </div>
+  <p class="disclaimer">*Consuming raw or undercooked meats, poultry, seafood, shellfish, oysters, or eggs may increase your risk of foodborne illness.</p>
+</section>
+
+</main>
+
+<aside class="summary" id="summary" aria-live="polite">
+  <h2>Billing summary</h2>
+  <dl class="lines" id="lines"></dl>
+  <div class="grand"><span>Total</span><strong id="grand">$0.00</strong></div>
+  <div class="balance"><span>Deposit</span><span id="dep">$0.00</span></div>
+  <div class="balance"><b>Balance due</b><b id="bal">$0.00</b></div>
+  <div class="actions">
+    <button type="button" id="printBtn">Print BEO</button>
+    <button type="button" id="staffBtn">Print staff sheets</button>
+    <button type="button" id="pdfBtn">Create BEO PDF</button>
+    <button type="button" class="ghost" id="docBtn">Save as event BEO file</button>
+    <button type="button" id="xlsxBtn" hidden>Create entree spreadsheet</button>
+    <button type="button" class="ghost" id="clearBtn">Clear form</button>
+  </div>
+  <p class="saved" id="pdfStatus" role="status"></p>
+  <p class="saved">Staff sheets print a front-of-house page and a back-of-house page, with no prices or billing details.</p>
+  <p class="saved" id="saved">Entries save automatically in this browser.</p>
+  <p class="saved"><button type="button" class="link" id="importBtn">Import a client selections file</button> or drag it onto this page. Each one is saved as its own event BEO file.<input type="file" id="importFile" accept=".json,application/json" hidden></p>
+</aside>
+</div>
+
+<div class="totalbar"><span>Total <strong id="grand2">$0.00</strong></span><a href="#summary">View summary</a></div>
+
+<dialog id="addrDlg" aria-labelledby="addrTitle">
+  <form method="dialog" id="addrForm">
+    <h2 id="addrTitle">Event address</h2>
+    <p class="note">Enter the address where this event will be held.</p>
+    <label class="f">Address<textarea id="addrInput" rows="3" placeholder="Street, city, state, ZIP" required></textarea></label>
+    <div class="actions"><button type="submit" value="ok">Save address</button><button type="button" class="ghost" id="addrCancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="evDlg" aria-labelledby="evTitle"><div id="evBody"></div></dialog>
+
+<div id="dropZone" hidden>Drop the client's selections file to fill in this BEO</div>
+
+<div id="staff" aria-hidden="true"></div>
+
+<script>
+(function(){
+// A clean copy of this page (before it fills in), used to save each event as its own BEO file
+const PRISTINE=(()=>{const c=document.documentElement.cloneNode(true);c.querySelectorAll('#beo-data').forEach(n=>n.remove());return '<!doctype html>\n'+c.outerHTML;})();
+// In an event BEO file, the client's selections are built in and edits save under that event's own key
+const DOC=window.__BEO_DOC&&window.__BEO_DOC.id?window.__BEO_DOC:null;
+const STORE=DOC?'eden-beo-doc-'+DOC.id:'eden-beo-draft-v1';
+let S=null;
+try{S=JSON.parse(localStorage.getItem(STORE)||'null');}catch(e){S=null;}
+const FRESH_DOC=!!(DOC&&!S);
+if(!S||typeof S!=='object')S=DOC?JSON.parse(JSON.stringify(DOC.data||{})):{};
+/* Client questionnaire import: arrives in the link (#import=...) or from a saved answers file */
+const hasEntries=o=>Object.keys(o).some(k=>k==='__diet'?(o[k]||[]).some(r=>r&&Object.values(r).some(Boolean)):!['bill.svc','bill.tax'].includes(k)&&o[k]!==''&&o[k]!==false&&o[k]!=null);
+const askReplace=()=>!hasEntries(S)||confirm('Replace the current BEO with the client questionnaire answers? Your current entries will be cleared.');
+let IMPORTED=false;
+(function(){
+  let d=window.__BEO_IMPORT||null;
+  if(!d){
+    const m=location.hash.match(/^#import=(.+)$/);if(!m)return;
+    try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+    try{d=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));}catch(e){alert('The questionnaire answers couldn\u2019t be read.');return;}
+  }
+  window.__BEO_IMPORT=null;
+  if(d&&typeof d==='object'&&askReplace()){S=d;IMPORTED=true;try{localStorage.setItem(STORE,JSON.stringify(S));}catch(e){}}
+})();
+if(!Array.isArray(S.__diet)) S.__diet=[{},{},{}];
+const DEFAULTS={'bill.svc':'3','bill.tax':'8'};
+Object.keys(DEFAULTS).forEach(k=>{if(S[k]===undefined||S[k]==='')S[k]=DEFAULTS[k];});
+const ROOMS=['3rd Floor Event Space','Palladian Hall','Restaurant','Other'],THIRD='3rd Floor Event Space';
+const TEMPS=['Rare','Medium-rare','Medium','Medium-well','Well done'];
+// Older drafts typed the room and temperature freely; carry those values over
+if(S['ev.room']&&!ROOMS.includes(S['ev.room'])){S['ev.roomAddr']=S['ev.roomAddr']||S['ev.room'];S['ev.room']='Other';}
+if(S['din.temp']){const m=TEMPS.find(o=>o.toLowerCase()===String(S['din.temp']).trim().toLowerCase());if(m)S['din.temp']=m;}
+function roomLabel(){const r=String(S['ev.room']||'').trim();return r==='Other'?(String(S['ev.roomAddr']||'').trim()||'Other'):r;}
+
+const suite=[
+ {key:'suite.bridal',name:'Bridal Suite Brunch',desc:'Croque madame, scrambled egg and cheese croissant, mini cheese board, crudité with hummus, seasonal vegetable display, macarons and chocolate chip cookies',price:50},
+ {key:'suite.groom',name:"Groom's Suite Snacks",desc:'Croque monsieur, roast beef tartine, turkey and roasted garlic aioli on sourdough, ember roasted crackers with basil salsa verde, cookies and brownies',price:50}];
+const brunch=[
+ {key:'br.classic',name:'Classic Brunch',desc:'Fresh juices, fruit and berries, smoked salmon display, pastries, applewood smoked bacon, ginger and sage sausage, breakfast potatoes, French toast with NY maple syrup',price:65},
+ {key:'br.cont',name:'Continental Brunch',desc:'Fresh juices, fruit and berries, house granola and milks, Greek yogurt, pastries, bagels, smoked salmon display',price:52}];
+const stations=[
+ {key:'st.omelet',name:'Omelet Station',desc:'Whole eggs or egg whites with vegetables, maple ham, turkey, mozzarella and cheddar*',price:25},
+ {key:'st.carving',name:'Carving Station',desc:'Ember roasted NY strip loin or pork loin; chimichurri, whole grain mustard, mornay, horseradish aioli',price:35}];
+const hot=[
+ {key:'cn.well',name:'Beef Wellington',desc:'Béarnaise sauce',price:8},
+ {key:'cn.bun',name:'Steamed bun',desc:'Asian brined pork, pickled vegetables, hoisin',price:10},
+ {key:'cn.dump',name:'Steamed beef dumplings',desc:'Soy sauce',price:8},
+ {key:'cn.fennel',name:'Prosciutto wrapped fennel',desc:'',price:6},
+ {key:'cn.mush',name:'Roasted mushroom crostini',desc:'Aioli, chives',price:6},
+ {key:'cn.rb',name:'Roast beef',desc:'Chimichurri, crème fraîche, Hawaiian roll',price:8},
+ {key:'cn.crab',name:'Crab cake',desc:'Old Bay aioli',price:12},
+ {key:'cn.crep',name:'Seafood crépinette',desc:'Preserved lemon aioli',price:12},
+ {key:'cn.goy',name:'Grilled oysters',desc:'Hot pepper jam',price:12},
+ {key:'cn.oct',name:'Grilled octopus',desc:'Romesco',price:12}];
+const cold=[
+ {key:'cn.tart',name:'Beef tartare*',desc:'Preserved lemon, crostini',price:8},
+ {key:'cn.egg',name:'Masala deviled eggs',desc:'Indian pickle',price:6},
+ {key:'cn.brus',name:'Tomato basil bruschetta',desc:'Sourdough baguette',price:7},
+ {key:'cn.burr',name:'Burrata',desc:'Tomato jam, focaccia',price:8},
+ {key:'cn.tuna',name:'Tuna tartare*',desc:'Cucumber, hoisin, wasabi',price:12},
+ {key:'cn.oys',name:'Oysters on the half shell*',desc:'Lemon, horseradish',price:12},
+ {key:'cn.shrimp',name:'Shrimp cocktail',desc:'Charred lemon',price:12},
+ {key:'cn.crabsal',name:'Crab salad',desc:'Rice cracker',price:12}];
+const enh=[
+ {key:'en.crud',name:'Vegetable crudité',desc:'Fresh fruits, hummus, crème fraîche, romesco, grilled bread',price:20},
+ {key:'en.cheese',name:'Finger Lakes cheese board',desc:'Local cheeses, baguette, crackers, dried fruit, grapes and nuts',price:28},
+ {key:'en.mezze',name:'Mezze',desc:'Cured meats, olives, cheeses, tomato and mozzarella salad, hummus, crackers, pita, naan',price:35},
+ {key:'en.raw',name:'Chef-attended raw bar',desc:'Shrimp cocktail, oysters on the half shell*, tuna crudo*, mignonette, horseradish, hot sauce, lemons',price:45}];
+const tiers=[120,135,165];
+const salads=[
+ {key:'sa.greens',name:'Heritage blend greens',desc:'Maple ginger vinaigrette, cucumber, grapes, carrots',t:[120,135,165]},
+ {key:'sa.beet',name:'Roasted beet salad',desc:'Goat cheese, almond brittle, orange',t:[120,135,165]},
+ {key:'sa.carrot',name:'Ember roasted carrot',desc:'Basil salsa verde, fromage blanc, candied hazelnuts',t:[120,135,165]},
+ {key:'sa.panz',name:'Panzanella',desc:'Roasted red pepper, heirloom tomato, mozzarella, pickled watermelon',t:[165]}];
+const starters=[
+ {key:'sr.burr',name:'Baked burrata',desc:'Tomato jam, basil salsa verde, grilled bread',t:[120,135,165]},
+ {key:'sr.pear',name:'Poached pear',desc:'Arugula, blue cheese, candied walnuts',t:[120,135,165]},
+ {key:'sr.mush',name:'Mushroom toast',desc:'Poached egg*, bacon, grilled bread',t:[120,135,165]},
+ {key:'sr.oct',name:'Grilled octopus',desc:'Romesco, marinated olives, fresh basil',t:[135,165]},
+ {key:'sr.crab',name:'Crab cake',desc:'Old Bay aioli; roasted corn hash ($135) or charred lemon ($165)',t:[135,165]}];
+const entrees=[
+ {key:'en.strip',name:'Ember roasted NY strip',desc:'Basil chimichurri',t:[120]},
+ {key:'en.tend',name:'Ember roasted tenderloin of beef',desc:'Basil chimichurri, Kashmiri chili butter',t:[135,165]},
+ {key:'en.short',name:'Braised beef short rib',desc:'Béarnaise at $120 and $135',t:[120,135,165]},
+ {key:'en.duck',name:'Pan roasted duck breast',desc:'Sour cherry gastrique',t:[165]},
+ {key:'en.chick',name:'Roasted chicken breast',desc:'Orange honey gastrique',t:[120,135,165]},
+ {key:'en.tand',name:'Tandoori chicken',desc:'Indian pickle, raita',t:[135,165]},
+ {key:'en.salmon',name:'Fire roasted Atlantic salmon',desc:'Tomato garlic vinaigrette; candied lemon at $165',t:[120,135,165]},
+ {key:'en.bronz',name:'Fire roasted branzino',desc:'Verjus–chardonnay butter',t:[135]},
+ {key:'en.capp',name:'Goat cheese cappelletti',desc:'Lemon brown butter',t:[120,135,165],veg:true},
+ {key:'en.ris',name:'Sweet corn risotto',desc:'Local mushrooms',t:[120,135,165],veg:true},
+ {key:'en.caul',name:'Roasted cauliflower',desc:'Red pepper hummus',t:[120,135,165],veg:true}];
+const sides=[
+ {key:'sd.whip',name:'Whipped potatoes, roasted garlic',t:[120,135,165],cat:'starch'},
+ {key:'sd.red',name:'Roasted red potatoes and kale',t:[120,135,165],cat:'starch'},
+ {key:'sd.grat',name:'Potato gratin',t:[120,135,165],cat:'starch'},
+ {key:'sd.mac',name:'Baked mac and cheese',t:[120,135,165],cat:'starch'},
+ {key:'sd.asp',name:'Grilled asparagus, lemon vinaigrette',t:[120,135,165],cat:'veg'},
+ {key:'sd.carr',name:'Honey-glazed ember roasted carrots',t:[120,135,165],cat:'veg'},
+ {key:'sd.squash',name:'Caramelized onion, zucchini, squash',t:[120,135,165],cat:'veg'},
+ {key:'sd.tab',name:'Wheat berry tabbouleh',t:[135,165],cat:'starch'}];
+const desserts=[
+ {key:'ds.lemon',name:'Lemon tart',desc:'Toasted and baked meringue, candied lemon',price:10},
+ {key:'ds.pot',name:'Chocolate pot de crème',desc:'Toasted meringue, strawberry coulis, tuile',price:8},
+ {key:'ds.olive',name:'Olive oil cake',desc:'Orange sherbet, chantilly',price:9},
+ {key:'ds.brulee',name:'Crème brûlée',desc:'Fresh fruit, chantilly',price:9},
+ {key:'ds.apple',name:'Apple crumble',desc:'Granola, crème fraîche sorbet',price:8}];
+const bev=[
+ {key:'bv.bar',name:'Bar service',desc:'Hosted, cash, or on consumption',price:null},
+ {key:'bv.wine',name:'Wine service with dinner',desc:'',price:null},
+ {key:'bv.toast',name:'Champagne toast',desc:'',price:null},
+ {key:'bv.na',name:'Non-alcoholic beverages',desc:'',price:null},
+ {key:'bv.other',name:'Other',desc:'',price:null}];
+/*BUFFET-START*/
+// Dinner buffet uses the plated menu levels, priced this much less per person
+const BUFFET_DISCOUNT=10;
+const bfPrice=t=>t?t-BUFFET_DISCOUNT:0;
+const bufDesc=(it,t)=>it.key==='en.short'?(t===165?'':'Béarnaise'):it.key==='en.salmon'?(t===165?'Tomato garlic vinaigrette, candied lemon':'Tomato garlic vinaigrette'):it.key==='sr.crab'?(t===165?'Old Bay aioli, charred lemon':'Old Bay aioli, roasted corn hash'):it.desc;
+/*BUFFET-END*/
+const bfTier=()=>parseInt(S['bf.tier'])||0;
+const bfItems=list=>{const t=bfTier();return list.filter(it=>S['bf.'+it.key]&&(!t||it.t.includes(t))).map(it=>({...it,desc:bufDesc(it,t)}));};
+const timeline=['Staff arrival / setup','Guest arrival','Social hour','Seating','First course','Entree','Dessert','Event end','Breakdown complete'];
+
+const fmt=n=>n.toLocaleString('en-US',{style:'currency',currency:'USD'});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=k=>{const v=parseFloat(S[k]);return isFinite(v)&&v>0?v:0;};
+const $=id=>document.getElementById(id);
+
+function itemTable(id,items,unit){
+  const rows=items.map(it=>{
+    const priceCell=it.price==null?`<input class="price" type="number" min="0" step="0.01" inputmode="decimal" data-k="${it.key}.price" aria-label="${esc(it.name)} price">`:fmt(it.price);
+    return `<tr data-row="${it.key}"><td><div class="item-name">${esc(it.name)}</div>${it.desc?`<div class="item-desc">${esc(it.desc)}</div>`:''}</td><td class="num">${priceCell}</td><td class="num"><input class="qty" type="number" min="0" step="1" inputmode="numeric" data-k="${it.key}.qty" aria-label="${esc(it.name)} ${unit}"></td><td class="num" data-total="${it.key}">—</td></tr>`;}).join('');
+  $(id).innerHTML=`<thead><tr><th>Item</th><th class="num">Price</th><th class="num">${unit}</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function courseTable(id,items,withCount){
+  const rows=items.map(it=>`<tr data-row="${it.key}" data-tiers="${it.t.join(',')}"><td style="width:36px"><input type="checkbox" data-k="${it.key}.sel" aria-label="Select ${esc(it.name)}"></td><td><div class="item-name">${esc(it.name)}${it.veg?'<span class="tag">vegetarian</span>':''}</div>${it.desc?`<div class="item-desc">${esc(it.desc)}</div>`:''}</td><td class="num item-desc">${it.t.map(t=>'$'+t).join(' · ')}</td>${withCount?`<td class="num"><input class="qty" type="number" min="0" step="1" inputmode="numeric" data-k="${it.key}.cnt" aria-label="${esc(it.name)} count"></td>`:''}</tr>`).join('');
+  $(id).innerHTML=`<thead><tr><th></th><th>Selection</th><th class="num">Tiers</th>${withCount?'<th class="num">Count</th>':''}</tr></thead><tbody>${rows}</tbody>`;
+}
+itemTable('t-suite',suite,'Guests');
+itemTable('t-brunch',brunch,'Guests');
+itemTable('t-stations',stations,'Guests');
+itemTable('t-hot',hot,'Pieces');
+itemTable('t-cold',cold,'Pieces');
+itemTable('t-enh',enh,'Guests');
+itemTable('t-dessert',desserts,'Guests');
+itemTable('t-bev',bev,'Qty');
+courseTable('t-salad',salads,false);
+courseTable('t-starter',starters,false);
+courseTable('t-entree',entrees,true);
+courseTable('t-sides',sides,false);
+function buffetTable(id,items){
+  $(id).innerHTML=`<thead><tr><th></th><th>Selection</th><th class="num">Buffet levels</th></tr></thead><tbody>${items.map(it=>`<tr data-bf="${it.key}" data-bft="${it.t.join(',')}"><td style="width:36px"><input type="checkbox" data-k="bf.${it.key}" aria-label="Buffet: ${esc(it.name)}"></td><td><div class="item-name">${esc(it.name)}${it.veg?'<span class="tag">vegetarian</span>':''}${it.cat?`<span class="tag">${it.cat==='veg'?'vegetable':'starch'}</span>`:''}</div><div class="item-desc"></div></td><td class="num item-desc">${it.t.map(t=>'$'+bfPrice(t)).join(' · ')}</td></tr>`).join('')}</tbody>`;
+}
+buffetTable('t-bf-salad',salads);buffetTable('t-bf-entree',entrees);buffetTable('t-bf-sides',sides);
+$('bf-tiers').innerHTML=tiers.map(t=>`<label class="tier"><input type="radio" name="bftier" value="${t}" data-k="bf.tier"><span><b>$${bfPrice(t)}</b> per person <span class="item-desc">($${t} menu)</span></span></label>`).join('')+`<label class="tier"><input type="radio" name="bftier" value="" data-k="bf.tier"><span>No buffet</span></label>`;
+$('tiers').innerHTML=tiers.map(t=>`<label class="tier"><input type="radio" name="tier" value="${t}" data-k="din.tier"><span><b>$${t}</b> per person</span></label>`).join('')+`<label class="tier"><input type="radio" name="tier" value="" data-k="din.tier"><span>No plated dinner</span></label>`;
+$('timeline').querySelector('tbody').innerHTML=timeline.map((a,i)=>`<tr><td><input type="time" data-k="tl.${i}.time" aria-label="${esc(a)} time"></td><td><input data-k="tl.${i}.act" value="" placeholder="${esc(a)}" aria-label="Activity"></td><td><input data-k="tl.${i}.loc" aria-label="Location"></td><td><input data-k="tl.${i}.notes" aria-label="Notes"></td></tr>`).join('');
+
+function renderDiet(){
+  $('t-diet').querySelector('tbody').innerHTML=S.__diet.map((r,i)=>`<tr>${['name','table','allergy','sub'].map(f=>`<td><input data-d="${i}.${f}" value="${esc(r[f]||'')}" aria-label="${f}"></td>`).join('')}<td><input type="checkbox" data-d="${i}.ok" ${r.ok?'checked':''} aria-label="Chef confirmed"></td></tr>`).join('');
+}
+renderDiet();
+$('addDiet').addEventListener('click',()=>{S.__diet.push({});renderDiet();save();});
+
+document.querySelectorAll('[data-k]').forEach(el=>{
+  const v=S[el.dataset.k];
+  if(el.type==='radio'){el.checked=(v??'')===el.value&&v!==undefined;}
+  else if(el.type==='checkbox'){el.checked=!!v;}
+  else if(v!==undefined){el.value=v;if(el.tagName==='SELECT'&&v&&el.value!==v){el.add(new Option(v,v));el.value=v;}}
+});
+
+let t;
+function save(){clearTimeout(t);t=setTimeout(()=>{try{localStorage.setItem(STORE,JSON.stringify(S));$('saved').textContent='Saved in this browser.';}catch(e){$('saved').textContent='Couldn\u2019t save in this browser; print or keep this tab open.';}},250);}
+
+document.addEventListener('input',onChange);
+document.addEventListener('change',onChange);
+function onChange(e){
+  const el=e.target;
+  if(el.dataset.k){S[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;}
+  else if(el.dataset.d){const [i,f]=el.dataset.d.split('.');S.__diet[i][f]=el.type==='checkbox'?el.checked:el.value;}
+  else return;
+  calc();save();
+}
+
+/* ---------- Location: dropdown, address pop-up, timeline auto-fill ---------- */
+const dlg=$('addrDlg'),addrInput=$('addrInput');
+function showAddr(){
+  const other=S['ev.room']==='Other',a=String(S['ev.roomAddr']||'').trim();
+  $('roomAddr').hidden=!other;
+  $('roomAddrText').textContent=a||'No address entered.';
+  $('roomAddrEdit').textContent=a?'Edit address':'Add address';
+}
+function fillTimelineLoc(){
+  const lbl=roomLabel(),prev=String(S['tl.autoLoc']||'');
+  timeline.forEach((a,i)=>{const k=`tl.${i}.loc`,cur=String(S[k]||'').trim();
+    if(!cur||cur===prev){S[k]=lbl;const el=document.querySelector(`[data-k="${k}"]`);if(el)el.value=lbl;}});
+  S['tl.autoLoc']=lbl;
+}
+function applyRoom(){
+  S['ev.third']=S['ev.room']===THIRD;
+  const cb=document.querySelector('[data-k="ev.third"]');if(cb)cb.checked=S['ev.third'];
+  showAddr();fillTimelineLoc();calc();save();
+}
+function askAddr(){
+  addrInput.value=S['ev.roomAddr']||'';
+  try{dlg.showModal();}catch(e){
+    const v=window.prompt('Event address:',addrInput.value);if(v!=null){S['ev.roomAddr']=v.trim();applyRoom();}return;}
+  setTimeout(()=>addrInput.focus(),0);
+}
+$('roomSel').addEventListener('change',e=>{S['ev.room']=e.target.value;applyRoom();if(S['ev.room']==='Other')askAddr();});
+$('roomAddrEdit').addEventListener('click',e=>{e.preventDefault();askAddr();});
+$('addrCancel').addEventListener('click',()=>dlg.close('cancel'));
+$('addrForm').addEventListener('submit',()=>{S['ev.roomAddr']=addrInput.value.trim();applyRoom();});
+addrInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('addrForm').requestSubmit();}});
+showAddr();
+
+const unitPrice=it=>it.price==null?num(it.key+'.price'):it.price;
+function sumItems(items){let s=0;items.forEach(it=>{const q=num(it.key+'.qty');const tot=q*unitPrice(it);s+=tot;const cell=document.querySelector(`[data-total="${it.key}"]`);if(cell)cell.textContent=tot?fmt(tot):'—';const row=document.querySelector(`tr[data-row="${it.key}"]`);if(row)row.classList.toggle('on',q>0);});return s;}
+
+let LAST={};
+function calc(){
+  const G=num('ev.guar')||num('ev.expected');
+  const suiteT=sumItems(suite);
+  const brunchT=sumItems(brunch)+sumItems(stations);
+  let attend=0;stations.forEach(s=>{const q=num(s.key+'.qty');if(q>0)attend+=Math.ceil(q/35)*150;});
+  const hotT=sumItems(hot),coldT=sumItems(cold),enhT=sumItems(enh);
+  const recT=hotT+coldT+enhT;
+  const tier=parseInt(S['din.tier'])||0;
+  const dg=num('din.guests');
+  const dinnerT=tier*dg;
+  const tableT=tier&&S['din.mode']==='table'?35*dg:0;
+  const dessT=sumItems(desserts);
+  const bt=bfTier(),bg=num('bf.guests'),bp=bfPrice(bt);
+  const bS=bfItems(salads),bE=bfItems(entrees),bD=bfItems(sides);
+  const bfOn=bS.length||bE.length||bD.length||bg>0;
+  const bufT=bfOn?bp*bg:0;
+  const allMenu=[...salads,...entrees,...sides];
+  document.querySelectorAll('tr[data-bf]').forEach(r=>{
+    const ok=!bt||r.dataset.bft.split(',').includes(String(bt));
+    r.classList.toggle('off',!ok);r.querySelectorAll('input').forEach(i=>i.disabled=!ok);
+    r.classList.toggle('on',ok&&!!S['bf.'+r.dataset.bf]);
+    const it=allMenu.find(x=>x.key===r.dataset.bf);const dd=r.querySelector('td:nth-child(2) .item-desc');if(it&&dd)dd.textContent=bufDesc(it,bt)||'';
+  });
+  const bevT=sumItems(bev);
+
+  // tier availability
+  document.querySelectorAll('tr[data-tiers]').forEach(r=>{
+    const ok=!tier||r.dataset.tiers.split(',').includes(String(tier));
+    r.classList.toggle('off',!ok);
+    r.querySelectorAll('input').forEach(i=>i.disabled=!ok);
+    const cb=r.querySelector('input[type=checkbox]');
+    r.classList.toggle('on',ok&&cb&&cb.checked);
+  });
+  const sel=list=>list.filter(it=>S[it.key+'.sel']&&(!tier||it.t.includes(tier)));
+
+  // warnings
+  const w=[];
+  suite.forEach(s=>{const q=num(s.key+'.qty');if(q>0&&q<10)w.push(`${s.name} requires at least 10 guests.`);});
+  $('w-suite').textContent=w.join(' ');
+  const wb=[];brunch.forEach(s=>{const q=num(s.key+'.qty');if(q>0&&q<25)wb.push(`${s.name} requires at least 25 guests.`);});
+  $('w-brunch').textContent=wb.join(' ');
+  const rg=num('rec.guests'),len=S['rec.len']==='2'?2:1;
+  const pieces=[...hot,...cold].reduce((a,it)=>a+num(it.key+'.qty'),0);
+  $('rec-guide').textContent=rg?`Recommended for ${rg} guests: ${rg*(len===2?5:3)}–${rg*(len===2?6:4)} pieces. Ordered so far: ${pieces}.`:'';
+  $('w-rec').textContent=(rg>0&&rg<25&&(pieces>0||enhT>0))?'The reception requires at least 25 guests.':'';
+  const we=[];if(G){enh.forEach(s=>{const q=num(s.key+'.qty');if(q>0&&q<Math.ceil(G*.8))we.push(`${s.name}: order for at least ${Math.ceil(G*.8)} guests (80% of ${G}).`);});}
+  $('w-enh').textContent=we.join(' ');
+  const wd=[];
+  if(tier){
+    const sa=sel(salads).length,st=sel(starters).length,en=sel(entrees),veg=en.filter(e=>e.veg).length;
+    if(!dg)wd.push('Enter the number of dinner guests.');
+    if(sa!==1)wd.push('Choose one salad.');
+    if(S['din.dessertInstead']){if(st>0)wd.push('Clear the starter, since a dessert replaces it.');}
+    else if(st!==1)wd.push('Choose one starter, or serve a dessert in its place.');
+    if(en.length>3)wd.push('Choose no more than three entrees.');
+    if(en.length&&!veg)wd.push('Include one vegetarian entree.');
+    if(S['din.mode']!=='table'&&en.length&&dg){const c=en.reduce((a,e)=>a+num(e.key+'.cnt'),0);if(c!==dg)wd.push(`Entree counts add up to ${c}; they should equal ${dg} dinner guests.`);}
+  }
+  $('w-din').textContent=wd.join(' ');
+  const wf=[];
+  if(bfOn){
+    if(!bg)wf.push('Enter the number of buffet guests.');
+    if(!bt)wf.push('Choose a buffet menu level.');
+    if(bS.length<1||bS.length>2)wf.push('Choose one or two salads.');
+    if(bE.length<2)wf.push('Choose at least two entrees.');
+    if(bE.length>3)wf.push('Choose no more than three entrees.');
+    if(bE.length&&!bE.some(e=>e.veg))wf.push('Include one vegetarian entree.');
+    if(bD.filter(x=>x.cat==='starch').length!==1)wf.push('Choose one starch side.');
+    if(bD.filter(x=>x.cat==='veg').length!==1)wf.push('Choose one vegetable side.');
+  }
+  $('w-bf').textContent=wf.join(' ');
+
+  const fb=suiteT+brunchT+recT+dinnerT+tableT+bufT+dessT+bevT;
+  const rental=S['ev.third']&&!S['ev.waive']&&fb<=2500?250:0;
+  const ot=num('bill.ot');
+  const sub=fb+attend+rental+ot;
+  const svc=fb*num('bill.svc')/100;
+  const tax=(sub+svc)*num('bill.tax')/100;
+  const total=sub+svc+tax;
+  const dep=num('bill.dep');
+  const lines=[
+   ['In-suite dining',suiteT],['Brunch and stations',brunchT],['Attendant fees',attend],['Reception canapés',hotT+coldT],['Reception enhancements',enhT],
+   [tier?`Plated dinner ($${tier} × ${dg})`:'Plated dinner',dinnerT],['Tableside selection',tableT],[bufT?`Dinner buffet ($${bp} × ${bg})`:'Dinner buffet',bufT],['Desserts',dessT],['Beverage service',bevT],
+   ['Third-floor rental',rental],['Overtime / extended service',ot]];
+  $('lines').innerHTML=lines.map(([l,v])=>`<dt>${esc(l)}</dt><dd>${v?fmt(v):'—'}</dd>`).join('')+
+   `<dt class="sub">Subtotal</dt><dd class="sub">${fmt(sub)}</dd><dt>Service charge${num('bill.svc')?` (${num('bill.svc')}%)`:''}</dt><dd>${svc?fmt(svc):'—'}</dd><dt>Sales tax${num('bill.tax')?` (${num('bill.tax')}%)`:''}</dt><dd>${tax?fmt(tax):'—'}</dd>`;
+  LAST={lines,sub,svc,tax,total,dep,svcPct:num('bill.svc'),taxPct:num('bill.tax'),attend,tier,dg,tableT,bg,bp,bufT};
+  $('grand').textContent=fmt(total);$('grand2').textContent=fmt(total);
+  $('dep').textContent=fmt(dep);$('bal').textContent=fmt(total-dep);
+  $('xlsxBtn').hidden=!(tier&&S['din.mode']!=='table');
+}
+calc();
+
+/* ---------- Staff sheets (FOH + BOH), no prices or billing ---------- */
+const val=k=>(S[k]==null?'':String(S[k])).trim();
+const raw=it=>/\*/.test(it.name+(it.desc||''));
+const clean=s=>String(s||'').replace(/\*/g,'');
+function fDate(d){if(!d)return '';const p=d.split('-').map(Number);if(p.length!==3||!p[0])return d;return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}
+function fTime(t){if(!t)return '';const [h,m]=t.split(':').map(Number);if(isNaN(h))return t;return `${(h%12)||12}:${String(m||0).padStart(2,'0')} ${h<12?'am':'pm'}`;}
+const ordered=list=>list.filter(it=>num(it.key+'.qty')>0).map(it=>({...it,qty:num(it.key+'.qty')}));
+const kv=pairs=>`<div class="ss-kv">${pairs.filter(p=>p[1]!==''&&p[1]!=null).map(([k,v])=>`<div><b>${esc(k)}</b>${esc(v)}</div>`).join('')}</div>`;
+const flags=it=>(raw(it)?'<span class="flag">RAW / UNDERCOOKED</span>':'')+(it.veg?'<span class="flag">VEG</span>':'');
+function itemRows(items,unit,check){
+  if(!items.length)return '';
+  return `<table><thead><tr>${check?'<th></th>':''}<th>Item</th><th style="text-align:right">${esc(unit)}</th></tr></thead><tbody>${items.map(it=>`<tr>${check?'<td class="ck"><span class="box"></span></td>':''}<td><b>${esc(clean(it.name))}</b>${flags(it)}${it.desc?`<div class="d">${esc(clean(it.desc))}</div>`:''}</td><td class="n">${it.qty==null?'':esc(it.qty)}</td></tr>`).join('')}</tbody></table>`;
+}
+function buildStaff(){
+  const tier=parseInt(S['din.tier'])||0;
+  const dg=num('din.guests');
+  const pre=S['din.mode']!=='table';
+  const TD={
+    'sr.crab':tier===165?'Old Bay aioli, charred lemon':'Old Bay aioli, roasted corn hash',
+    'en.short':tier===165?'':'Béarnaise',
+    'en.salmon':tier===165?'Tomato garlic vinaigrette, candied lemon':'Tomato garlic vinaigrette'};
+  const pick=list=>list.filter(it=>S[it.key+'.sel']&&(!tier||it.t.includes(tier))).map(it=>it.key in TD?{...it,desc:TD[it.key]}:it);
+  const G=num('ev.guar'),E=num('ev.expected');
+  const when=[fTime(val('ev.start')),fTime(val('ev.end'))].filter(Boolean).join(' – ');
+  const contact=[val('ev.contact'),val('ev.phone')].filter(Boolean).join(' · ');
+  const head=(dept,title)=>`<div class="ss-head"><div><div class="ss-dept">${dept}</div><h1>${esc(title)}</h1></div><div class="ss-ev"><b>${esc(val('ev.name')||'Untitled event')}</b><br>${esc(fDate(val('ev.date')))}${val('ev.beo')?`<br>BEO #${esc(val('ev.beo'))}`:''}</div></div>`;
+  const evInfo=kv([['Event type',val('ev.type')],['Date',fDate(val('ev.date'))],['Time',when],['Location / room',roomLabel()],
+    [G?'Final guarantee':'Expected guests (no final yet)',G||E||''],['Client',val('ev.client')],['On-site contact',contact],['Event manager',val('ev.manager')],['Dinner service',S['ev.alacarte']?'À la carte':'']]);
+
+  // Timeline
+  const tl=timeline.map((a,i)=>({time:val(`tl.${i}.time`),act:val(`tl.${i}.act`)||a,loc:val(`tl.${i}.loc`),notes:val(`tl.${i}.notes`),used:!!(val(`tl.${i}.time`)||val(`tl.${i}.act`)||(val(`tl.${i}.loc`)&&val(`tl.${i}.loc`)!==val('tl.autoLoc'))||val(`tl.${i}.notes`))})).filter(r=>r.used);
+  const tlHtml=tl.length?`<table><thead><tr><th style="width:80px">Time</th><th>Activity</th><th>Location</th><th>Notes</th></tr></thead><tbody>${tl.map(r=>`<tr><td><b>${esc(fTime(r.time))}</b></td><td>${esc(r.act)}</td><td>${esc(r.loc)}</td><td>${esc(r.notes)}</td></tr>`).join('')}</tbody></table>`:'<p class="none">No timeline entered.</p>';
+
+  // Dietary
+  const diet=S.__diet.filter(r=>r&&(r.name||r.table||r.allergy||r.sub));
+  const dietHtml=`<div class="alert"><h2>Allergies and dietary needs${diet.length?` (${diet.length})`:''}</h2>${diet.length?`<table><thead><tr><th>Guest</th><th>Table</th><th>Allergy / restriction</th><th>Substitute meal</th><th>Chef confirmed</th></tr></thead><tbody>${diet.map(r=>`<tr><td><b>${esc(r.name||'')}</b></td><td>${esc(r.table||'')}</td><td><b>${esc(r.allergy||'')}</b></td><td>${esc(r.sub||'')}</td><td>${r.ok?'Yes':'<b>NOT YET</b>'}</td></tr>`).join('')}</tbody></table>`:'<p class="none">None listed.</p>'}</div>`;
+
+  // Orders
+  const oSuite=ordered(suite),oBrunch=ordered(brunch),oSt=ordered(stations),oHot=ordered(hot),oCold=ordered(cold),oEnh=ordered(enh),oDess=ordered(desserts),oBev=ordered(bev);
+  const stAtt=oSt.map(s=>({...s,desc:(s.key==='st.carving'?`Protein: ${val('carv.protein')||'NY strip loin'}. `:'')+`${Math.ceil(s.qty/35)} attendant${Math.ceil(s.qty/35)>1?'s':''}`}));
+  const salad=pick(salads),starter=S['din.dessertInstead']?[]:pick(starters),ent=pick(entrees),side=pick(sides);
+  const bg=num('bf.guests'),bS=bfItems(salads),bE=bfItems(entrees),bD=bfItems(sides);
+  const pieces=[...oHot,...oCold].reduce((a,i)=>a+i.qty,0);
+  const recLen=S['rec.len']==='2'?'Two hours':'One hour';
+
+  function services(check,boh){
+    let h='';
+    if(oSuite.length){h+=`<h2>In-suite dining</h2>${kv([['Delivery time',fTime(val('suite.time'))],['Suite / room',val('suite.room')]])}${itemRows(oSuite,'Guests',check)}`;}
+    if(oBrunch.length||oSt.length){h+=`<h2>Breakfast and brunch buffet</h2>${boh?'':'<p class="d">Includes coffee station and chilled juices.</p>'}${itemRows(oBrunch,'Guests',check)}${oSt.length?`<h3>Chef-attended stations</h3>${itemRows(stAtt,'Guests',check)}`:''}`;}
+    if(oHot.length||oCold.length||oEnh.length){
+      h+=`<h2>Social hour reception</h2>${kv([['Guests',num('rec.guests')||''],['Length',recLen],['Total canapé pieces',pieces||'']])}`;
+      if(oHot.length)h+=`<h3>Hot canapés</h3>${itemRows(oHot,'Pieces',check)}`;
+      if(oCold.length)h+=`<h3>Chilled canapés</h3>${itemRows(oCold,'Pieces',check)}`;
+      if(oEnh.length)h+=`<h3>Enhancements and stations</h3>${itemRows(oEnh,'Guests',check)}`;
+    }
+    if(tier){
+      const c=dg||'';
+      h+=`<h2>Plated dinner</h2>${kv([['Dinner guests',dg||''],['Entree service',pre?'Pre-selected (place cards)':'Tableside selection'],['Beef temperature',val('din.temp')]])}`;
+      h+=`<h3>First course — salad</h3>${salad.length?itemRows(salad.map(s=>({...s,qty:c})),'Covers',check):'<p class="none">Not selected.</p>'}`;
+      h+=`<h3>Second course — ${S['din.dessertInstead']?'dessert in place of starter':'starter'}</h3>`+(S['din.dessertInstead']?'<p class="d">A dessert is served instead of a starter; see Desserts.</p>':(starter.length?itemRows(starter.map(s=>({...s,qty:c})),'Covers',check):'<p class="none">Not selected.</p>'));
+      h+=`<h3>Entrees</h3>${ent.length?itemRows(ent.map(e=>({...e,qty:pre?(num(e.key+'.cnt')||''):'par'})),pre?'Count':'Tableside',check):'<p class="none">Not selected.</p>'}`;
+      if(!pre)h+=`<p class="d">Tableside selection: guests choose at the table. ${boh?'Prep a par for each entree; counts are called at service.':'Take each order at the table and call counts to the kitchen.'}</p>`;
+      h+=`<h3>Sides (all guests)</h3>${side.length?itemRows(side.map(s=>({...s,qty:c})),'Covers',check):'<p class="none">Not selected.</p>'}`;
+    }
+    if(bS.length||bE.length||bD.length){
+      const c=bg||'';
+      h+=`<h2>Dinner buffet</h2>${kv([['Buffet guests',bg||''],['Beef temperature',val('bf.temp')],['Service','90 minutes']])}`;
+      h+=`<h3>Salads</h3>${bS.length?itemRows(bS.map(s=>({...s,qty:c})),'Guests',check):'<p class="none">Not selected.</p>'}`;
+      h+=`<h3>Entrees</h3>${bE.length?itemRows(bE.map(s=>({...s,qty:c})),'Guests',check):'<p class="none">Not selected.</p>'}`;
+      h+=`<h3>Sides</h3>${bD.length?itemRows(bD.map(s=>({...s,qty:c})),'Guests',check):'<p class="none">Not selected.</p>'}`;
+    }
+    if(oDess.length)h+=`<h2>Desserts</h2>${itemRows(oDess,'Guests',check)}`;
+    return h||'<p class="none">No food ordered yet.</p>';
+  }
+
+  /* Prep list: every prepared component, totaled across all services */
+  const PREP={
+   'suite.bridal':['Croque madame','Scrambled egg and cheese croissants','Mini cheese boards','Crudité','Hummus','Seasonal vegetable display','Macarons','Chocolate chip cookies'],
+   'suite.groom':['Croque monsieur','Roast beef tartines','Turkey and roasted garlic aioli sandwiches on sourdough','Ember roasted crackers','Basil salsa verde','Cookies','Brownies'],
+   'br.classic':['Fresh juices','Fruit and berries','Smoked salmon display','Pastries','Applewood smoked bacon','Ginger and sage sausage','Breakfast potatoes','French toast','NY maple syrup','Coffee station'],
+   'br.cont':['Fresh juices','Fruit and berries','House granola','Milks','Greek yogurt','Pastries','Bagels','Smoked salmon display','Coffee station'],
+   'st.omelet':['Eggs and egg whites (omelets)','Omelet vegetables','Maple ham','Turkey','Mozzarella','Cheddar'],
+   'st.carving':[`Carving ${(val('carv.protein')||'NY strip loin').toLowerCase()}`,'Chimichurri','Whole grain mustard','Mornay','Horseradish aioli'],
+   'cn.well':['Beef Wellington','Béarnaise'],'cn.bun':['Steamed buns','Asian brined pork','Pickled vegetables','Hoisin'],
+   'cn.dump':['Steamed beef dumplings','Soy sauce'],'cn.fennel':['Prosciutto wrapped fennel'],
+   'cn.mush':['Roasted mushroom crostini','Aioli','Chives'],'cn.rb':['Roast beef canapés','Chimichurri','Crème fraîche','Hawaiian rolls'],
+   'cn.crab':['Crab cakes','Old Bay aioli'],'cn.crep':['Seafood crépinettes','Preserved lemon aioli'],
+   'cn.goy':['Grilled oysters','Hot pepper jam'],'cn.oct':['Grilled octopus','Romesco'],
+   'cn.tart':['Beef tartare','Preserved lemon','Crostini'],'cn.egg':['Masala deviled eggs','Indian pickle'],
+   'cn.brus':['Tomato basil bruschetta','Sourdough baguette'],'cn.burr':['Burrata','Tomato jam','Focaccia'],
+   'cn.tuna':['Tuna tartare','Cucumber','Hoisin','Wasabi'],'cn.oys':['Oysters on the half shell','Lemon','Horseradish'],
+   'cn.shrimp':['Shrimp cocktail','Charred lemon'],'cn.crabsal':['Crab salad','Rice crackers'],
+   'en.crud':['Vegetable crudité','Fresh fruit','Hummus','Crème fraîche','Romesco','Grilled bread'],
+   'en.cheese':['Finger Lakes cheeses','Baguette','Crackers','Dried fruit','Grapes','Nuts'],
+   'en.mezze':['Cured meats','Olives','Cheeses','Tomato and mozzarella salad','Hummus','Crackers','Pita','Naan'],
+   'en.raw':['Shrimp cocktail','Oysters on the half shell','Tuna crudo','Mignonette','Horseradish','Hot sauce','Lemon'],
+   'sa.greens':['Heritage blend greens','Maple ginger vinaigrette','Cucumber','Grapes','Carrots'],
+   'sa.beet':['Roasted beets','Goat cheese','Almond brittle','Orange'],
+   'sa.carrot':['Ember roasted carrots','Basil salsa verde','Fromage blanc','Candied hazelnuts'],
+   'sa.panz':['Panzanella','Roasted red pepper','Heirloom tomato','Mozzarella','Pickled watermelon'],
+   'sr.burr':['Baked burrata','Tomato jam','Basil salsa verde','Grilled bread'],
+   'sr.pear':['Poached pears','Arugula','Blue cheese','Candied walnuts'],
+   'sr.mush':['Mushroom toast','Poached eggs','Bacon','Grilled bread'],
+   'sr.oct':['Grilled octopus','Romesco','Marinated olives','Fresh basil'],
+   'sr.crab':['Crab cakes','Old Bay aioli',tier===165?'Charred lemon':'Roasted corn hash'],
+   'en.strip':['NY strip','Basil chimichurri'],'en.tend':['Beef tenderloin','Basil chimichurri','Kashmiri chili butter'],
+   'en.short':['Braised beef short rib',...(tier===165?[]:['Béarnaise'])],'en.duck':['Duck breast','Sour cherry gastrique'],
+   'en.chick':['Roasted chicken breast','Orange honey gastrique'],'en.tand':['Tandoori chicken','Indian pickle','Raita'],
+   'en.salmon':['Atlantic salmon','Tomato garlic vinaigrette',...(tier===165?['Candied lemon']:[])],
+   'en.bronz':['Branzino','Verjus–chardonnay butter'],'en.capp':['Goat cheese cappelletti','Lemon brown butter'],
+   'en.ris':['Sweet corn risotto','Local mushrooms'],'en.caul':['Roasted cauliflower','Red pepper hummus'],
+   'ds.lemon':['Lemon tarts','Toasted meringue','Candied lemon'],'ds.pot':['Chocolate pot de crème','Toasted meringue','Strawberry coulis','Tuiles'],
+   'ds.olive':['Olive oil cake','Orange sherbet','Chantilly'],'ds.brulee':['Crème brûlée','Fresh fruit','Chantilly'],
+   'ds.apple':['Apple crumble','Granola','Crème fraîche sorbet']};
+  const uses=[]; // {it, qty (null = par), unit, svc}
+  const addUse=(list,unit,svc,q)=>list.forEach(it=>uses.push({it,qty:q?q(it):it.qty,unit,svc}));
+  addUse(oSuite,'portions','In-suite');addUse(oBrunch,'guests','Brunch');addUse(oSt,'guests','Station');
+  addUse(oHot,'pcs','Reception');addUse(oCold,'pcs','Reception');addUse(oEnh,'guests','Reception display');
+  if(tier){
+    addUse(salad,'portions','Salad',()=>dg);addUse(starter,'portions','Starter',()=>dg);
+    addUse(ent,'portions','Entree',e=>pre?num(e.key+'.cnt'):null);addUse(side,'portions','Side',()=>dg);
+  }
+  addUse(bS,'guests','Buffet',()=>bg);addUse(bE,'guests','Buffet',()=>bg);addUse(bD,'guests','Buffet',()=>bg);
+  addUse(oDess,'portions','Dessert');
+  const P=new Map();
+  uses.forEach(u=>{
+    const comps=PREP[u.it.key]||[clean(u.it.name)];
+    comps.forEach((c,i)=>{
+      if(!P.has(c))P.set(c,{units:{},par:false,used:[]});
+      const r=P.get(c);
+      if(u.qty==null)r.par=true;else if(u.qty>0)r.units[u.unit]=(r.units[u.unit]||0)+u.qty;
+      const where=i?`${u.svc}: ${clean(u.it.name)}`:u.svc;
+      if(!r.used.includes(where))r.used.push(where);
+    });
+  });
+  const prepRows=[...P.entries()].map(([name,r])=>{
+    const q=Object.entries(r.units).map(([u,n])=>`${n} ${u}`).concat(r.par?['par (tableside)']:[]).join(' + ')||'Qty not set';
+    return `<tr><td class="ck"><span class="box"></span></td><td><b>${esc(name)}</b><div class="d">${esc(r.used.join('; '))}</div></td><td class="n">${esc(q)}</td><td style="width:90px"></td></tr>`;}).join('');
+  const subs={};S.__diet.filter(r=>r&&r.sub).forEach(r=>{const k=r.sub.trim();(subs[k]=subs[k]||[]).push([r.name,r.table?'table '+r.table:''].filter(Boolean).join(', '));});
+  const subRows=Object.entries(subs).map(([k,g])=>`<tr><td class="ck"><span class="box"></span></td><td><b>${esc(k)}</b><div class="d">${esc(g.join('; '))}</div></td><td class="n">${g.length} portion${g.length>1?'s':''}</td><td style="width:90px"></td></tr>`).join('');
+  const prepHtml=P.size?`<div style="break-before:page"></div><h2>Prep list</h2><p class="d">Every prepared item, totaled across the event. Sauces, garnishes and accompaniments show how many pieces, portions or guests they need to cover.</p><table><thead><tr><th></th><th>Item / used in</th><th style="text-align:right">Quantity</th><th>Prepped by</th></tr></thead><tbody>${prepRows}${subRows?`<tr><td colspan="4" style="padding-top:10px"><b>Dietary substitutes</b></td></tr>${subRows}`:''}</tbody></table>`:'';
+
+  const setupPairs=[['Setup style','rm.style'],['Tables / seats per table','rm.tables'],['Head / sweetheart table','rm.head'],['Buffet / station tables','rm.buffet'],['Bar location','rm.bar'],['Linen and napkins','rm.linen'],['Centerpieces / décor','rm.decor'],['A/V, mic, music','rm.av'],['Vendor load-in','rm.vendors'],['Place cards','rm.cards']].map(([l,k])=>[l,val(k)]);
+  const setupHtml=setupPairs.some(p=>p[1])?kv(setupPairs):'<p class="none">No room setup entered.</p>';
+  const barWhen=[fTime(val('bev.open')),fTime(val('bev.close'))].filter(Boolean).join(' – ');
+  const bevHtml=(oBev.length||barWhen||num('bev.staff'))?`${kv([['Bar hours',barWhen],['Bartenders',num('bev.staff')||''],['Bar location',val('rm.bar')]])}${itemRows(oBev,'Qty',false)}`:'<p class="none">No beverage service entered.</p>';
+  const notesHtml=val('notes')?`<h2>Notes</h2><div class="notes">${esc(val('notes'))}</div>`:'';
+  const anyRaw=[...oSuite,...oBrunch,...oSt,...oHot,...oCold,...oEnh,...salad,...starter,...ent,...bE].some(raw);
+  const foot=`<div class="foot">${anyRaw?'Items marked RAW / UNDERCOOKED carry the consumer advisory: consuming raw or undercooked meats, poultry, seafood, shellfish, oysters, or eggs may increase the risk of foodborne illness. ':''}Printed ${new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}.</div>`;
+
+  const foh=`<section class="ss">${head('Front of house','Service sheet')}${evInfo}<h2>Timeline</h2>${tlHtml}<h2>Room setup</h2>${setupHtml}${dietHtml}${services(false,false)}<h2>Beverage service</h2>${bevHtml}${notesHtml}${foot}</section>`;
+  const boh=`<section class="ss">${head('Back of house','Kitchen production sheet')}${kv([['Date',fDate(val('ev.date'))],['Time',when],['Location / room',roomLabel()],[G?'Final guarantee':'Expected guests (no final yet)',G||E||''],['Event manager',val('ev.manager')],['Dinner service',S['ev.alacarte']?'À la carte':'']])}${dietHtml}<h2>Timeline</h2>${tlHtml}${services(true,true)}${notesHtml}${prepHtml}${foot}</section>`;
+  $('staff').innerHTML=foh+boh;
+}
+const baseTitle=document.title;
+function endStaff(){document.body.classList.remove('staff-print');document.title=baseTitle;}
+window.addEventListener('afterprint',endStaff);
+$('staffBtn').addEventListener('click',()=>{
+  buildStaff();
+  document.body.classList.add('staff-print');
+  document.title=`Staff sheets · ${val('ev.name')||'Event'}`;
+  try{window.print();}catch(e){endStaff();}
+});
+/* ---------- Client PDF (built in the browser, no external library) ---------- */
+const HW=[[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584,761,556,761,222,556,333,1000,556,556,333,1000,667,333,1000,761,611,761,761,222,222,333,333,350,556,1000,333,1000,500,333,944,761,500,667,278,333,556,556,556,556,260,556,333,737,370,556,584,333,737,333,400,584,333,333,333,556,537,278,333,333,365,556,834,834,834,611,667,667,667,667,667,667,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,500,556,556,556,556,278,278,278,278,556,556,556,556,556,556,556,584,611,556,556,556,556,500,556,500],
+[278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584,761,556,761,278,556,500,1000,556,556,333,1000,667,333,1000,761,611,761,761,278,278,500,500,350,556,1000,333,1000,556,333,944,761,500,667,278,333,556,556,556,556,280,556,333,737,370,556,584,333,737,333,400,584,333,333,333,611,556,278,333,333,365,556,834,834,834,611,722,722,722,722,722,722,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,556,556,556,556,556,278,278,278,278,611,611,611,611,611,611,611,584,611,611,611,611,611,556,611,556]];
+const WIN={0x20AC:128,0x201A:130,0x0192:131,0x201E:132,0x2026:133,0x2020:134,0x2021:135,0x02C6:136,0x2030:137,0x0160:138,0x2039:139,0x0152:140,0x017D:142,0x2018:145,0x2019:146,0x201C:147,0x201D:148,0x2022:149,0x2013:150,0x2014:151,0x02DC:152,0x2122:153,0x0161:154,0x203A:155,0x0153:156,0x017E:158,0x0178:159};
+const winCode=ch=>{const c=ch.codePointAt(0);if(c>=32&&c<127)return c;if(c>=160&&c<=255)return c;return WIN[c]||63;};
+const tw=(s,bold,size,cs=0)=>{let t=0,n=0;for(const ch of String(s)){t+=HW[bold?1:0][winCode(ch)-32]||556;n++;}return t*size/1000+cs*n;};
+const pStr=s=>{let o='';for(const ch of String(s)){const c=winCode(ch);if(c===40||c===41||c===92)o+='\\'+String.fromCharCode(c);else if(c<128)o+=String.fromCharCode(c);else o+='\\'+c.toString(8).padStart(3,'0');}return '('+o+')';};
+const C={ink:[.11,.14,.125],muted:[.36,.4,.37],moss:[.184,.29,.227],brass:[.55,.43,.13],rule:[.8,.83,.8],soft:[.894,.922,.898]};
+const rgb=c=>c.map(v=>+v.toFixed(3)).join(' ');
+
+function PDFDoc(){
+  const W=612,H=792,M=50,pages=[];let ops,y;
+  const d={W,H,M,CW:W-2*M,pages};
+  d.newPage=()=>{ops=[];pages.push(ops);y=H-M;};
+  d.get=()=>y;d.set=v=>{y=v;};d.down=v=>{y-=v;};
+  d.room=h=>{if(y-h<M+24){d.newPage();return true;}return false;};
+  d.text=(x,yy,s,o={})=>{const size=o.size||10,bold=!!o.bold,cs=o.cs||0;s=String(s).replace(/\s+/g,' ');
+    if(o.align==='right')x-=tw(s,bold,size,cs);else if(o.align==='center')x-=tw(s,bold,size,cs)/2;
+    ops.push(`BT /${o.italic?'F3':bold?'F2':'F1'} ${size} Tf ${cs} Tc ${rgb(o.color||C.ink)} rg ${x.toFixed(2)} ${yy.toFixed(2)} Td ${pStr(s)} Tj ET`);};
+  d.line=(x1,y1,x2,y2,w=.6,c=C.rule)=>ops.push(`${rgb(c)} RG ${w} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  d.rect=(x,yy,w,h,c)=>ops.push(`${rgb(c)} rg ${x.toFixed(2)} ${yy.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+  d.wrap=(s,width,bold,size)=>{const out=[];String(s==null?'':s).split(/\n/).forEach(par=>{let cur='';par.split(/\s+/).filter(Boolean).forEach(word=>{
+      while(tw(word,bold,size)>width){let i=word.length;while(i>1&&tw(word.slice(0,i),bold,size)>width)i--;if(cur){out.push(cur);cur='';}out.push(word.slice(0,i));word=word.slice(i);}
+      const t=cur?cur+' '+word:word;if(tw(t,bold,size)<=width)cur=t;else{out.push(cur);cur=word;}});out.push(cur);});return out.length?out:[''];};
+  d.para=(s,o={})=>{const size=o.size||10,lead=o.lead||size*1.35,x=o.x||M;d.wrap(s,o.width||d.CW,o.bold,size).forEach(l=>{d.room(lead);d.text(x,y-size,l,o);y-=lead;});};
+  d.build=footer=>{
+    const objs=[];const add=s=>{objs.push(s);return objs.length;};
+    add('<< /Type /Catalog /Pages 2 0 R >>');add('PAGES');
+    ['Helvetica','Helvetica-Bold','Helvetica-Oblique'].forEach(f=>add(`<< /Type /Font /Subtype /Type1 /BaseFont /${f} /Encoding /WinAnsiEncoding >>`));
+    const kids=[];
+    pages.forEach((p,i)=>{ops=p;if(footer)footer(d,i+1,pages.length);const s=p.join('\n');
+      const c=add(`<< /Length ${s.length} >>\nstream\n${s}\nendstream`);
+      kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${c} 0 R >>`));});
+    objs[1]=`<< /Type /Pages /Kids [${kids.map(k=>k+' 0 R').join(' ')}] /Count ${kids.length} >>`;
+    const u16=s=>'<FEFF'+Array.from(String(s)).map(ch=>{const c=ch.codePointAt(0);return c>0xFFFF?'003F':c.toString(16).padStart(4,'0').toUpperCase();}).join('')+'>';
+    const info=add(`<< /Title ${u16(d.title||'Banquet event order')} /Producer (Eden BEO) >>`);
+    let out='%PDF-1.4\n%âãÏÓ\n';const off=[];
+    objs.forEach((o,i)=>{off.push(out.length);out+=`${i+1} 0 obj\n${o}\nendobj\n`;});
+    const xref=out.length;
+    out+=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`+off.map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('');
+    out+=`trailer\n<< /Size ${objs.length+1} /Root 1 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;return bytes;};
+  d.newPage();return d;
+}
+
+// Due dates counted back from the event date (weekends skipped; holidays are not)
+function eventDate(){const p=val('ev.date').split('-').map(Number);return p.length===3&&p[0]?new Date(p[0],p[1]-1,p[2]):null;}
+function minusDays(d,n){const r=new Date(d);r.setDate(r.getDate()-n);return r;}
+function minusBizDays(d,n){const r=new Date(d);while(n>0){r.setDate(r.getDate()-1);const w=r.getDay();if(w&&w<6)n--;}return r;}
+const longDate=d=>d?d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):'';
+function deadlines(){const d=eventDate();if(!d)return null;return {menu:longDate(minusDays(d,21)),signed:longDate(minusBizDays(d,14)),guar:longDate(minusBizDays(d,5)),entrees:longDate(minusDays(d,14))};}
+
+function clientPdf(){
+  const d=PDFDoc(),M=d.M,CW=d.CW,R=M+CW;
+  const L=LAST,tier=L.tier,dg=L.dg,pre=S['din.mode']!=='table';
+  d.title=`Banquet Event Order - ${val('ev.name')||'Event'}`;
+  const when=[fTime(val('ev.start')),fTime(val('ev.end'))].filter(Boolean).join(' – ');
+  const DL=deadlines();
+
+  // Masthead
+  let y=d.get();
+  d.text(M,y-18,'EDEN',{size:18,cs:5,color:C.moss});
+  d.text(R,y-8,'BANQUET EVENT ORDER',{size:7.5,bold:true,cs:1,color:C.muted,align:'right'});
+  d.text(R,y-20,(val('ev.beo')?`BEO #${val('ev.beo')} · `:'')+'Prepared '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}),{size:8.5,color:C.muted,align:'right'});
+  d.down(42);
+  d.para(val('ev.name')||'Banquet event order',{size:21,lead:25});
+  d.para([fDate(val('ev.date')),when,roomLabel()].filter(Boolean).join('  ·  '),{size:10.5,color:C.muted});
+  d.down(4);y=d.get();d.line(M,y,R,y,1.2,C.moss);d.down(6);
+
+  const section=t=>{d.room(70);d.down(14);const yy=d.get();d.text(M,yy-12,t,{size:12.5,bold:true,color:C.moss});d.down(17);d.line(M,d.get(),R,d.get(),.6,C.rule);d.down(8);};
+  const sub=t=>{d.room(90);d.down(4);d.text(M,d.get()-10,t,{size:10,bold:true});d.down(15);};
+  const kvs=(pairs,cols=3)=>{pairs=pairs.filter(p=>p[1]!==''&&p[1]!=null);const cw=CW/cols;
+    for(let i=0;i<pairs.length;i+=cols){const row=pairs.slice(i,i+cols).map(([k,v])=>({k,lines:d.wrap(v,cw-12,false,9.5)}));
+      const h=12+Math.max(...row.map(r=>r.lines.length))*12.5+6;d.room(h);const yy=d.get();
+      row.forEach((r,j)=>{const x=M+j*cw;d.text(x,yy-7,String(r.k).toUpperCase(),{size:6.5,bold:true,cs:.4,color:C.muted});r.lines.forEach((l,n)=>d.text(x,yy-19-n*12.5,l,{size:9.5}));});d.down(h);}};
+  const table=(cols,rows)=>{ // cols: [{h,w(frac),align}] ; cell: string | {t,sub,bold}
+    const xs=[];let acc=M;cols.forEach(c=>{xs.push(acc);acc+=c.w*CW;});
+    const head=()=>{const yy=d.get();cols.forEach((c,i)=>d.text(c.align==='right'?xs[i]+c.w*CW-4:xs[i]+4,yy-8,c.h.toUpperCase(),{size:6.5,bold:true,cs:.4,color:C.muted,align:c.align}));d.down(12);d.line(M,d.get(),R,d.get(),.8,C.ink);};
+    d.room(40);head();
+    rows.forEach(r=>{
+      const cells=r.cells.map((c,i)=>{c=typeof c==='object'&&c?c:{t:c==null?'':String(c)};const w=cols[i].w*CW-8;
+        return {main:d.wrap(c.t,w,!!(c.bold||r.bold),9.5),sub:c.sub?d.wrap(c.sub,w,false,8):[],bold:!!(c.bold||r.bold),flag:c.flag};});
+      const h=8+Math.max(...cells.map(c=>c.main.length*12+c.sub.length*10.5))+4;
+      if(d.room(h))head();const yy=d.get();
+      if(r.shade)d.rect(M,yy-h,CW,h,C.soft);
+      cells.forEach((c,i)=>{const col=cols[i],x=col.align==='right'?xs[i]+col.w*CW-4:xs[i]+4;let ly=yy-14;
+        c.main.forEach((l,n)=>{d.text(x,ly,l,{size:9.5,bold:c.bold,align:col.align});if(n===c.main.length-1&&c.flag){d.text(x+tw(l,c.bold,9.5)+3,ly+1,c.flag,{size:6.5,bold:true,color:C.muted});}ly-=12;});
+        c.sub.forEach(l=>{d.text(x,ly+1,l,{size:8,color:C.muted,align:col.align});ly-=10.5;});});
+      d.down(h);d.line(M,d.get(),R,d.get(),.4,C.rule);});
+    d.down(4);};
+  const priceCols=[{h:'Item',w:.58},{h:'Price',w:.14,align:'right'},{h:'Qty',w:.12,align:'right'},{h:'Total',w:.16,align:'right'}];
+  const priceRows=(items,unitLbl)=>items.map(it=>{const p=unitPrice(it);return {cells:[{t:clean(it.name),sub:clean(it.desc),flag:raw(it)?'*':''},p?fmt(p)+(unitLbl?` /${unitLbl}`:''):'To be quoted',String(it.qty),p?fmt(p*it.qty):'—']};});
+
+  // Event details
+  section('Event details');
+  kvs([['Client / organization',val('ev.client')],['On-site contact',val('ev.contact')],['Phone',val('ev.phone')],['Email',val('ev.email')],['Billing address',val('ev.address')],['Event type',val('ev.type')],
+    ['Date',fDate(val('ev.date'))],['Time',when],['Location / room',roomLabel()],['Expected guests',num('ev.expected')||''],['Final guaranteed count',num('ev.guar')||''],['Event manager',val('ev.manager')],['Dinner service',S['ev.alacarte']?'À la carte':'']]);
+
+  // Timeline
+  const tl=timeline.map((a,i)=>({time:val(`tl.${i}.time`),act:val(`tl.${i}.act`)||a,loc:val(`tl.${i}.loc`),notes:val(`tl.${i}.notes`),used:!!(val(`tl.${i}.time`)||val(`tl.${i}.act`)||(val(`tl.${i}.loc`)&&val(`tl.${i}.loc`)!==val('tl.autoLoc'))||val(`tl.${i}.notes`))})).filter(r=>r.used);
+  if(tl.length){section('Event timeline');table([{h:'Time',w:.14},{h:'Activity',w:.34},{h:'Location',w:.22},{h:'Notes',w:.30}],tl.map(r=>({cells:[{t:fTime(r.time),bold:true},r.act,r.loc,r.notes]})));}
+
+  // Room setup
+  const rs=[['Setup style','rm.style'],['Tables / seats per table','rm.tables'],['Head / sweetheart table','rm.head'],['Buffet / station tables','rm.buffet'],['Bar location','rm.bar'],['Linen and napkins','rm.linen'],['Centerpieces / décor','rm.decor'],['A/V, microphone, music','rm.av'],['Vendor load-in','rm.vendors'],['Place cards','rm.cards']].map(([l,k])=>[l,val(k)]);
+  if(rs.some(p=>p[1])){section('Room setup');kvs(rs);}
+
+  // Menu
+  const oSuite=ordered(suite),oBrunch=ordered(brunch),oSt=ordered(stations),oHot=ordered(hot),oCold=ordered(cold),oEnh=ordered(enh),oDess=ordered(desserts),oBev=ordered(bev);
+  const TD={'sr.crab':tier===165?'Old Bay aioli, charred lemon':'Old Bay aioli, roasted corn hash','en.short':tier===165?'':'Béarnaise','en.salmon':tier===165?'Tomato garlic vinaigrette, candied lemon':'Tomato garlic vinaigrette'};
+  const pick=list=>list.filter(it=>S[it.key+'.sel']&&(!tier||it.t.includes(tier))).map(it=>it.key in TD?{...it,desc:TD[it.key]}:it);
+  const bS=bfItems(salads),bE=bfItems(entrees),bD=bfItems(sides),bfAny=bS.length||bE.length||bD.length;
+  if(oSuite.length||oBrunch.length||oSt.length||oHot.length||oCold.length||oEnh.length||tier||bfAny||oDess.length){
+    section('Menu selections');
+    if(oSuite.length){sub('In-suite dining');kvs([['Delivery time',fTime(val('suite.time'))],['Suite / room',val('suite.room')]]);table(priceCols,priceRows(oSuite,'pp'));}
+    if(oBrunch.length||oSt.length){sub('Breakfast and brunch buffet');
+      const rows=[...priceRows(oBrunch,'pp'),...priceRows(oSt.map(s=>s.key==='st.carving'?{...s,desc:`${val('carv.protein')||'NY strip loin'}; chimichurri, whole grain mustard, mornay, horseradish aioli`}:s),'pp')];
+      oSt.forEach(s=>{const n=Math.ceil(s.qty/35);rows.push({cells:[{t:`${s.name} attendant${n>1?'s':''}`,sub:'One per 35 guests'},fmt(150),String(n),fmt(150*n)]});});
+      table(priceCols,rows);}
+    if(oHot.length||oCold.length||oEnh.length){sub(`Social hour reception${num('rec.guests')?` · ${num('rec.guests')} guests`:''} · ${S['rec.len']==='2'?'two hours':'one hour'}`);
+      table(priceCols,[...priceRows(oHot,'pc'),...priceRows(oCold,'pc'),...priceRows(oEnh,'pp')]);}
+    if(tier){sub(`Plated dinner · $${tier} per person`);
+      kvs([['Dinner guests',dg||''],['Entree service',pre?'Pre-selected (place cards required)':'Tableside selection'],['Beef temperature',val('din.temp')]]);
+      const rows=[];const course=(lbl,list,cnt)=>list.forEach((it,i)=>rows.push({cells:[i?'':{t:lbl,bold:true},{t:clean(it.name)+(it.veg?' (vegetarian)':''),sub:clean(it.desc),flag:raw(it)?'*':''},cnt(it)]}));
+      course('Salad',pick(salads),()=>dg?String(dg):'');
+      if(S['din.dessertInstead'])rows.push({cells:[{t:'Second course',bold:true},'Dessert served in place of a starter (see Desserts)','']});
+      else course('Starter',pick(starters),()=>dg?String(dg):'');
+      course('Entrees',pick(entrees),it=>pre?(num(it.key+'.cnt')?String(num(it.key+'.cnt')):''):'Tableside');
+      course('Sides',pick(sides),()=>'All guests');
+      if(rows.length)table([{h:'Course',w:.18},{h:'Selection',w:.62},{h:'Count',w:.20,align:'right'}],rows);
+      const pr=[{cells:[{t:'Three-course plated dinner'},fmt(tier)+' /pp',String(dg||0),fmt(tier*dg)]}];
+      if(L.tableT)pr.push({cells:[{t:'Tableside entree selection'},fmt(35)+' /pp',String(dg),fmt(L.tableT)]});
+      table(priceCols,pr);}
+    if(bfAny){sub(`Dinner buffet${L.bp?` · ${fmt(L.bp)} per person`:''}`);
+      kvs([['Buffet guests',L.bg||''],['Service','90 minutes'],['Beef temperature',val('bf.temp')]]);
+      const rows=[];const course=(lbl,list)=>list.forEach((it,i)=>rows.push({cells:[i?'':{t:lbl,bold:true},{t:clean(it.name)+(it.veg?' (vegetarian)':''),sub:clean(it.desc||''),flag:raw(it)?'*':''}]}));
+      course('Salads',bS);course('Entrees',bE);course('Sides',bD);
+      table([{h:'Course',w:.18},{h:'Selection',w:.82}],rows);
+      table(priceCols,[{cells:[{t:'Dinner buffet'},L.bp?fmt(L.bp)+' /pp':'To be quoted',String(L.bg||0),L.bufT?fmt(L.bufT):'—']}]);}
+    if(oDess.length){sub('Desserts');table(priceCols,priceRows(oDess,'pp'));}
+  }
+  if(oBev.length||val('bev.open')){section('Beverage service');
+    kvs([['Bar hours',[fTime(val('bev.open')),fTime(val('bev.close'))].filter(Boolean).join(' – ')],['Bartenders',num('bev.staff')||''],['Bar location',val('rm.bar')]]);
+    if(oBev.length)table(priceCols,priceRows(oBev,''));}
+
+  const diet=S.__diet.filter(r=>r&&(r.name||r.table||r.allergy||r.sub));
+  if(diet.length){section('Dietary restrictions and allergies');table([{h:'Guest',w:.22},{h:'Table',w:.1},{h:'Allergy / restriction',w:.26},{h:'Substitute meal',w:.27},{h:'Kitchen',w:.15}],diet.map(r=>({cells:[{t:r.name||'',bold:true},r.table||'',r.allergy||'',r.sub||'',r.ok?'Confirmed':'Pending']})));}
+  if(val('notes')){section('Notes and special requests');d.para(val('notes'),{size:9.5});}
+
+  // Billing summary
+  section('Billing summary');
+  const bl=L.lines.filter(([,v])=>v).map(([l,v])=>({cells:[l,fmt(v)]}));
+  if(!bl.length)bl.push({cells:['No charges yet','—']});
+  bl.push({bold:true,cells:['Subtotal',fmt(L.sub)]});
+  if(L.svc)bl.push({cells:[{t:`Service charge (${L.svcPct}%)`,sub:'On food and beverage'},fmt(L.svc)]});
+  if(L.tax)bl.push({cells:[`Sales tax (${L.taxPct}%)`,fmt(L.tax)]});
+  table([{h:'Description',w:.7},{h:'Amount',w:.3,align:'right'}],bl);
+  d.room(80);let yy=d.get()-4;
+  d.rect(M,yy-34,CW,34,C.soft);
+  d.text(M+10,yy-21,'TOTAL',{size:9,bold:true,cs:1,color:C.muted});
+  d.text(R-10,yy-24,fmt(L.total),{size:19,bold:true,color:C.brass,align:'right'});
+  d.down(42);
+  const pay=[[`Deposit received${val('bill.depdate')?' ('+fDate(val('bill.depdate'))+')':''}`,fmt(L.dep)],['Balance due'+(val('bill.duedate')?' by '+fDate(val('bill.duedate')):''),fmt(L.total-L.dep)]];
+  if(val('bill.method'))pay.push(['Payment method',val('bill.method')]);
+  pay.forEach(([a,b],i)=>{d.room(16);const y2=d.get();d.text(M+10,y2-11,a,{size:9.5,bold:i===1});d.text(R-10,y2-11,b,{size:9.5,bold:i===1,align:'right'});d.down(16);});
+
+  // Terms
+  section('Terms and deadlines');
+  [`Menu selections are due 21 days before the event${DL?` (${DL.menu})`:''}.`,
+   `The signed BEO is due to the event manager 14 business days before the event${DL?` (${DL.signed})`:''}.`,
+   ...(tier&&pre?[`Pre-selected entree counts are due 14 days before the event${DL?` (${DL.entrees})`:''}.`]:[]),
+   `The final guaranteed guest count is due by 11:00 am, 5 business days before the event${DL?` (${DL.guar})`:''}. If it isn't received, the expected count becomes the minimum guarantee.`,
+   'Buffets and reception stations run 90 minutes, plated dinners 120 to 180 minutes, and breaks 30 minutes. Longer service carries an additional fee.',
+   'Changes after signing must be made in writing and approved by the event manager.'
+  ].forEach(t=>{const lines=d.wrap(t,CW-14,false,9.5);d.room(lines.length*12.5+3);const y3=d.get();d.text(M+2,y3-9.5,'•',{size:9.5,color:C.moss});lines.forEach((l,n)=>d.text(M+14,y3-9.5-n*12.5,l,{size:9.5}));d.down(lines.length*12.5+3);});
+
+  // Approval
+  section('Approval');
+  d.para('By signing, the client confirms the selections, guest counts, and charges on this BEO.',{size:9.5});
+  d.room(110);d.down(8);
+  const colW=(CW-30)/2;
+  [[M,'Client',val('sig.client')||val('ev.contact')],[M+colW+30,'Eden Hospitality event manager',val('sig.mgr')||val('ev.manager')]].forEach(([x,lbl,name])=>{
+    const y4=d.get();d.text(x,y4-8,lbl.toUpperCase(),{size:6.5,bold:true,cs:.4,color:C.muted});
+    [['Name',name],['Signature',''],['Date','']].forEach(([f,v],i)=>{const ly=y4-40-i*28;d.line(x,ly,x+colW,ly,.6,C.muted);if(v)d.text(x+2,ly+4,v,{size:10});d.text(x,ly-9,f,{size:7,color:C.muted});});});
+  d.down(126);
+  d.para('*Consuming raw or undercooked meats, poultry, seafood, shellfish, oysters, or eggs may increase your risk of foodborne illness.',{size:8,italic:true,color:C.muted});
+
+  return d.build((doc,i,n)=>{doc.line(M,M-6,R,M-6,.4,C.rule);
+    doc.text(M,M-18,['Eden Hospitality',val('ev.beo')?'BEO #'+val('ev.beo'):'',val('ev.name')].filter(Boolean).join('  ·  '),{size:7.5,color:C.muted});
+    doc.text(R,M-18,`Page ${i} of ${n}`,{size:7.5,color:C.muted,align:'right'});});
+}
+
+const pdfName=()=>('BEO'+(val('ev.beo')?' '+val('ev.beo'):'')+' - '+(val('ev.name')||'Eden event')).replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim()+'.pdf';
+
+// Save a file: Desktop save dialog (Chrome/Edge), share sheet (phones), or download
+async function saveFile(blob,name,desc,mime,ext,doneMsg){
+  const st=$('pdfStatus');const done=doneMsg||'Attach it to an email to send it to the client.';
+  if(window.showSaveFilePicker&&!matchMedia('(pointer:coarse)').matches){
+    try{
+      const h=await window.showSaveFilePicker({suggestedName:name,startIn:'desktop',types:[{description:desc,accept:{[mime]:[ext]}}]});
+      const w=await h.createWritable();await w.write(blob);await w.close();
+      st.textContent=`Saved ${h.name}. ${done}`;return 'saved';
+    }catch(e){if(e&&e.name==='AbortError'){st.textContent='Saving was canceled.';return 'canceled';}}
+  }
+  try{
+    const file=new File([blob],name,{type:mime});
+    if(navigator.canShare&&navigator.canShare({files:[file]})&&matchMedia('(pointer:coarse)').matches){
+      await navigator.share({files:[file],title:name});st.textContent=`Created ${name}.`;return 'saved';}
+  }catch(e){if(e&&e.name==='AbortError'){st.textContent='Sharing was canceled.';return 'canceled';}}
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  st.textContent=`Downloaded ${name}. This browser saves to your Downloads folder; move it to the Desktop if you like.`;
+  return 'downloaded';
+}
+
+$('pdfBtn').addEventListener('click',()=>{
+  let bytes;
+  try{calc();bytes=clientPdf();}
+  catch(e){$('pdfStatus').textContent='The PDF couldn’t be created: '+e.message;return;}
+  saveFile(new Blob([bytes],{type:'application/pdf'}),pdfName(),'PDF document','application/pdf','.pdf');
+});
+
+/* ---------- Entree selection spreadsheet (.xlsx built in the browser) ---------- */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+const crc32=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+function zip(files){ // files: [{name, data:string}], stored (no compression)
+  const enc=new TextEncoder(),parts=[],cd=[];let off=0;
+  const u16=n=>[n&255,(n>>>8)&255],u32=n=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];
+  files.forEach(f=>{
+    const nm=enc.encode(f.name),d=enc.encode(f.data),c=crc32(d);
+    const common=[...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0)];
+    const lh=new Uint8Array([0x50,0x4b,3,4,...common]);
+    parts.push(lh,nm,d);
+    cd.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...common,...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nm);
+    off+=lh.length+nm.length+d.length;});
+  const cdLen=cd.reduce((a,x)=>a+x.length,0);
+  const end=new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cdLen),...u32(off),0,0]);
+  return new Blob([...parts,...cd,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const xe=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');
+const colL=i=>String.fromCharCode(65+i);
+// cell: string | number | {v, s(style), f(formula)}
+function sheetXml(rows,{widths=[],freeze=false,validation=''}={}){
+  const body=rows.map((row,ri)=>`<row r="${ri+1}">${row.map((c,ci)=>{
+    if(c==null||c==='')return '';
+    const o=typeof c==='object'?c:{v:c},ref=colL(ci)+(ri+1),st=o.s?` s="${o.s}"`:'';
+    if(o.f)return `<c r="${ref}"${st}><f>${xe(o.f)}</f></c>`;
+    if(typeof o.v==='number')return `<c r="${ref}"${st}><v>${o.v}</v></c>`;
+    if(o.v==null||o.v==='')return `<c r="${ref}"${st}/>`;
+    return `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${xe(o.v)}</t></is></c>`;}).join('')}</row>`).join('');
+  const pane=freeze?'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>':'<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+  const cols=widths.length?`<cols>${widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols>`:'';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${pane}${cols}<sheetData>${body}</sheetData>${validation}<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/></worksheet>`;
+}
+function entreeXlsx(){
+  const tier=parseInt(S['din.tier'])||0,dg=num('din.guests');
+  const ent=entrees.filter(it=>S[it.key+'.sel']&&it.t.includes(tier));
+  const names=ent.map(e=>clean(e.name)+(e.veg?' (vegetarian)':''));
+  const last=dg+1,DL=deadlines();
+  // Sheet 1: one row per dinner guest
+  const s1=[[{v:'Guest #',s:1},{v:'Guest name',s:1},{v:'Table number',s:1},{v:'Seat number',s:1},{v:'Selected entree',s:1}]];
+  for(let i=1;i<=dg;i++)s1.push([i,{v:'',s:2},{v:'',s:2},{v:'',s:2},{v:'',s:2}]);
+  const dv=`<dataValidations count="3"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" errorTitle="Entree" error="Choose one of the entrees from the list." promptTitle="Selected entree" prompt="Choose from the list." sqref="E2:E${last}"><formula1>'Entree options'!$A$2:$A$${names.length+1}</formula1></dataValidation><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" error="Enter a table number." sqref="C2:C${last}"><formula1>0</formula1></dataValidation><dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" error="Enter a seat number." sqref="D2:D${last}"><formula1>0</formula1></dataValidation></dataValidations>`;
+  // Sheet 2: the entree choices from the BEO, with a running tally
+  const s2=[[{v:'Entree',s:1},{v:'Count on BEO',s:1},{v:'Selected in sheet',s:1}]];
+  ent.forEach((e,i)=>s2.push([names[i],num(e.key+'.cnt')||'',{f:`COUNTIF('Entree selections'!$E$2:$E$${last},A${i+2})`}]));
+  s2.push([{v:'Total',s:3},{f:`SUM(B2:B${names.length+1})`,s:3},{f:`SUM(C2:C${names.length+1})`,s:3}],[],
+    [{v:'Event',s:3},val('ev.name')],[{v:'Date',s:3},fDate(val('ev.date'))],[{v:'Location',s:3},roomLabel()],
+    [{v:'Dinner guests',s:3},dg],[{v:'Plated dinner',s:3},`$${tier} per person`]);
+  if(DL)s2.push([{v:'Please return by',s:3},DL.entrees]);
+  s2.push([],[{v:'Choose each guest’s entree from the drop-down list on the Entree selections sheet.'}]);
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2F4A3A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFD6DCD5"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyProtection="1"><protection locked="0"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  return zip([
+    {name:'[Content_Types].xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+    {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Entree selections" sheetId="1" r:id="rId1"/><sheet name="Entree options" sheetId="2" r:id="rId2"/></sheets><calcPr calcId="0" fullCalcOnLoad="1"/></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name:'xl/styles.xml',data:styles},
+    {name:'xl/worksheets/sheet1.xml',data:sheetXml(s1,{widths:[9,28,14,13,40],freeze:true,validation:dv})},
+    {name:'xl/worksheets/sheet2.xml',data:sheetXml(s2,{widths:[40,16,18]})}]);
+}
+$('xlsxBtn').addEventListener('click',()=>{
+  const st=$('pdfStatus'),tier=parseInt(S['din.tier'])||0,dg=num('din.guests');
+  const ent=entrees.filter(it=>S[it.key+'.sel']&&it.t.includes(tier));
+  if(!dg){st.textContent='Enter the number of dinner guests first.';return;}
+  if(!ent.length){st.textContent='Select the entrees in the Plated dinner section first.';return;}
+  let blob;
+  try{blob=entreeXlsx();}catch(e){st.textContent='The spreadsheet couldn’t be created: '+e.message;return;}
+  const name=('Entree selections'+(val('ev.beo')?' BEO '+val('ev.beo'):'')+' - '+(val('ev.name')||'Eden event')).replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim()+'.xlsx';
+  saveFile(blob,name,'Excel spreadsheet','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
+});
+
+$('printBtn').addEventListener('click',()=>{endStaff();try{window.print();}catch(e){}});
+if(DOC){
+  document.title=DOC.title;
+  const h=document.querySelector('.masthead h1');if(h)h.textContent=DOC.title;
+  $('docBtn').textContent='Save changes to BEO file';
+  const src=(S&&S.__src)||{};
+  $('saved').textContent=(FRESH_DOC?'Created from the client questionnaire'+(src.version?` (menu and prices dated ${src.version})`:'')+'. ':'')+'Changes save in this browser as you work. To keep them in the file itself, click Save changes to BEO file and replace this file.';
+}
+try{if(sessionStorage.getItem('eden-beo-imported')){IMPORTED=true;sessionStorage.removeItem('eden-beo-imported');}}catch(e){}
+if(IMPORTED){
+  const src=S.__src||{};
+  $('saved').textContent='Filled in from the client questionnaire'+(src.version?` (menu and prices dated ${src.version})`:'')+'.'+(src.estimate?` The client saw an estimate of ${fmt(src.estimate)}.`:'')+' Review each section, then add the BEO number, event manager and final details.';
+}
+$('importBtn').addEventListener('click',()=>$('importFile').click());
+/* ---------- Event BEO files: every imported client file becomes its own '<Event> BEO.html' ---------- */
+const fileSafe=t=>t.replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,' ').trim();
+const eventTitle=d=>fileSafe(String(d['ev.name']||d['ev.contact']||'Event').trim()+' BEO');
+const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+function makeEventHtml(data,id,title){
+  const payload=JSON.stringify({id,title,data,created:new Date().toISOString()}).replace(/</g,'\\u003c');
+  return PRISTINE.replace(/<head>/i,'<head><script id="beo-data">window.__BEO_DOC='+payload+';<\/script>').replace(/<title>[^<]*<\/title>/i,'<title>'+esc(title)+'</title>');
+}
+function openHtml(html){
+  const w=window.open('','_blank');
+  if(w){try{w.document.open();w.document.write(html);w.document.close();return;}catch(e){}}
+  location.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+}
+const evDlg=$('evDlg'),evBody=$('evBody');
+function showEv(html){evBody.innerHTML=html;try{if(!evDlg.open)evDlg.showModal();}catch(e){evDlg.setAttribute('open','');}}
+evDlg.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]');if(!b||!evDlg._job)return;
+  const J=evDlg._job;
+  if(b.dataset.act==='cancel'||b.dataset.act==='done'){evDlg.close();return;}
+  if(b.dataset.act==='open'){openHtml(J.html);evDlg.close();return;}
+  if(b.dataset.act==='save'){
+    const res=await saveFile(new Blob([J.html],{type:'text/html'}),J.fname,'BEO file','text/html','.html','Open it any time to review the BEO and print staff sheets.');
+    if(res==='canceled')return;
+    showEv(`<h2 id="evTitle">${esc(J.title)} is saved</h2><p class="note">${res==='downloaded'?`It's in your Downloads folder as “${esc(J.fname)}”. Move it wherever you keep event files.`:`Saved as “${esc(J.fname)}”.`} Double-click it any time to open the BEO, print the staff sheets and prep list, or make the PDF.</p><div class="actions"><button type="button" data-act="open">Open ${esc(J.title)}</button><button type="button" class="ghost" data-act="done">Done</button></div>`);
+  }
+});
+async function importFile(f){
+  let d=null,ver='';
+  try{const j=JSON.parse(await f.text());if(j&&j.beo){d=j.beo;ver=j.version||'';}}catch(err){d=null;}
+  if(!d){alert('That file isn’t a client selections file from the Eden questionnaire.');return;}
+  const title=eventTitle(d),fname=title+'.html';
+  evDlg._job={title,fname,html:makeEventHtml(d,newId(),title)};
+  const src=d.__src||{};
+  showEv(`<h2 id="evTitle">New event BEO: ${esc(title)}</h2><p class="note">This saves “${esc(fname)}” as its own file, with the client's selections already filled in. Your blank BEO form stays as it is for the next event.</p>${src.version||ver?`<p class="note">Client used the menu and prices dated ${esc(src.version||ver)}${src.estimate?`; their estimate was ${fmt(src.estimate)}`:''}.</p>`:''}<div class="actions"><button type="button" data-act="save">Save ${esc(fname)}</button><button type="button" class="ghost" data-act="cancel">Cancel</button></div>`);
+}
+// Save the current entries as an event BEO file (in an event file, this updates it)
+$('docBtn').addEventListener('click',async()=>{
+  const title=DOC?DOC.title:eventTitle(S),fname=title+'.html';
+  const html=makeEventHtml(S,DOC?DOC.id:newId(),title);
+  await saveFile(new Blob([html],{type:'text/html'}),fname,'BEO file','text/html','.html',DOC?'Choose the same file to replace it with your changes.':'Open it any time to review the BEO and print staff sheets.');
+});
+$('importFile').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)importFile(f);});
+// Drag the client's selections file anywhere onto the BEO
+const dropZone=$('dropZone');let dragDepth=0;
+const hasFiles=e=>e.dataTransfer&&[...e.dataTransfer.types].includes('Files');
+document.addEventListener('dragenter',e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth++;dropZone.hidden=false;});
+document.addEventListener('dragover',e=>{if(hasFiles(e))e.preventDefault();});
+document.addEventListener('dragleave',e=>{if(!hasFiles(e))return;if(--dragDepth<=0){dragDepth=0;dropZone.hidden=true;}});
+document.addEventListener('drop',e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth=0;dropZone.hidden=true;const f=e.dataTransfer.files[0];if(f)importFile(f);});
+$('clearBtn').addEventListener('click',()=>{
+  if(!confirm('Clear every entry on this BEO?'))return;
+  S={__diet:[{},{},{}],...DEFAULTS};try{localStorage.removeItem(STORE);}catch(e){}
+  document.querySelectorAll('[data-k]').forEach(el=>{if(el.type==='checkbox'||el.type==='radio')el.checked=false;else if(el.tagName==='SELECT')el.selectedIndex=0;else el.value=DEFAULTS[el.dataset.k]||'';});
+  renderDiet();showAddr();calc();$('saved').textContent='Form cleared.';
+});
+})();
+</script>
+</body>
+</html>

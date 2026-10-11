@@ -232,7 +232,7 @@
   function showEvent(e) {
     var t = typeOf(e.type), cl = clashes(e), d = parseDay(e.date);
     modal(e.title || 'Event', [
-      h('p', { cls: 'cl-dtype', style: '--c:' + t.color }, [h('i'), t.label + (e.source === 'beo' ? ' · from a BEO' : e.source === 'note' ? ' · from a note' : '')]),
+      h('p', { cls: 'cl-dtype', style: '--c:' + t.color }, [h('i'), t.label + (e.source === 'beo' ? ' · from a BEO' : e.source === 'note' ? ' · from a note' : e.source === 'inquiry' ? ' · from a catering inquiry' : '')]),
       h('dl', { cls: 'cl-dl' }, [
         h('dt', { text: 'When' }), h('dd', { text: d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ' · ' + timeText(e) }),
         e.room ? h('dt', { text: 'Where' }) : null, e.room ? h('dd', { text: e.room }) : null,

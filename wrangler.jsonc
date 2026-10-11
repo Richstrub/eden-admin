@@ -1,7 +1,8 @@
-// Cloudflare settings: publish this folder as the staff website, plus a tiny worker (worker.js)
-// that counts visits to the public website for Analytics > Website traffic.
+// Cloudflare settings: publish this folder as the staff website, plus a small worker (worker.js)
+// that counts visits to the public website and receives catering questionnaires.
 // The Supabase key below is the public "publishable" key (the same one in js/config.js).
-// Never put a secret key here.
+// Never put a secret key here: INQUIRY_KEY, TURNSTILE_SECRET and RESEND_API_KEY are added as
+// secrets in Cloudflare (Workers > eden-admin > Settings > Variables and Secrets). See README.
 {
   "name": "eden-admin",
   "compatibility_date": "2025-09-01",
@@ -9,6 +10,10 @@
   "assets": { "directory": ".", "binding": "ASSETS" },
   "vars": {
     "SUPABASE_URL": "https://qmblccwyxbpvziiwrlne.supabase.co",
-    "SUPABASE_KEY": "sb_publishable_Nbp1K_Co8tDVB-jNjBRs3w_D40qm4Mg"
-  }
+    "SUPABASE_KEY": "sb_publishable_Nbp1K_Co8tDVB-jNjBRs3w_D40qm4Mg",
+    "SITE_URL": "https://edencny.com/",
+    "MAIL_FROM": "Eden Events <events@edencny.com>",
+    "NOTIFY_TO": "Tyler@edencny.com,Rich@edencny.com"
+  },
+  "keep_vars": true
 }

@@ -73,10 +73,26 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   times, room, guests, notes) with double-booking warnings per room; the whole team can read. Events carry
   `source`/`beo_id` so BEOs can add them later. One-time setup: `supabase/calendar.sql`.
 - **Weeks start on Sunday** (Sun–Sat) on the Schedule, staff page and Calendar. Existing Monday-start weeks: run `supabase/sunday-weeks.sql` once. Each person on the Schedule grid has "Copy last week" (skips days with approved time off).
+- **Catering & BEOs** (`#catering`, Owner and managers): catering questionnaires sent from edencny.com/#catering. Filters: Needs a reply, In progress, Booked, All, Unconfirmed, Spam & declined. Each inquiry shows the guest's contact details, event, estimate, menu choices and message, with **Email guest**, **Open as BEO** (the BEO form in `templates/beo-form.html`, filled in with their answers), **Add to calendar**, **Download answers**, a status and team notes. Owner can delete. Staff changes are recorded in History. See *Online catering inquiries* below for setup; until it's set up, guests keep emailing their questionnaire file.
 - **Analytics** (`#analytics`, Owner only, top bar after Reservations), two sub-pages:
   - **Website traffic** (`#analytics`): visitors and page views on edencny.com over 7 days, 30 days, 90 days or 12 months (with the previous period for comparison), a world map (or United States map) shaded by visitors with a dot per city, and lists of countries, cities, US states, how people found the site, pages and devices. Visits are sent by the public site (`js/analytics.js` there) to `/t` on this site, where `worker.js` adds Cloudflare's approximate location and saves them with the publishable key (`supabase/analytics.sql`: anyone may add a visit, only the Owner can read them). No IP addresses, names or cookies are stored; a visitor is an anonymous code that changes daily. The map files load from cdn.jsdelivr.net.
   - **History** (`#analytics/history`; old `#history` links still work): every add/change/delete on the staff site and staff page, by whom and when, written by database triggers (`supabase/history.sql`). Quick repeat saves fold into one line; private notes are not logged.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
+
+## Online catering inquiries (setup)
+
+How it works: the questionnaire on the website sends its answers to `/inquiry` on this site (`worker.js`). The worker screens out bots, saves the inquiry in Supabase with a private key only it and the database know, and (once email is set up) emails the guest a **Confirm my inquiry** link. The inquiry shows under Needs a reply once they click it, and Tyler and Rich (`NOTIFY_TO` in `wrangler.jsonc`) get an email about it.
+
+Bot screening, in order: Cloudflare Turnstile (invisible for most people), a hidden field only bots fill in, a "sent within 30 seconds of starting" check, sanity checks (real email, a date between today and three years out, a guest count), and at most 3 inquiries an hour from one connection or 3 a day for one email address. Inquiries that trip the hidden field, timing, link or alphabet checks are kept but filed under **Spam**, with the reason, so a real one can be rescued with **Not spam**.
+
+Each step can be done on its own; anything not set up yet is simply skipped:
+
+1. **Database** (required): in Supabase → SQL Editor, run `supabase/inquiries.sql` (after `history.sql`). Then run `select public.new_inquiry_key();` and copy the long code it shows.
+2. **Inquiry key** (required): Cloudflare → Workers & Pages → eden-admin → Settings → Variables and Secrets → Add → type **Secret**, name `INQUIRY_KEY`, value: the code from step 1. Online sending is switched on from now on.
+3. **Turnstile** (recommended): Cloudflare → Turnstile → Add widget, name "Eden catering", hostnames `edencny.com`, `www.edencny.com` and `eden-website.richard-a-strub.workers.dev`, widget mode **Managed**. Add the **Site Key** as secret `TURNSTILE_SITE_KEY` and the **Secret Key** as secret `TURNSTILE_SECRET` on the eden-admin worker. (Both are needed; with only one it stays off.)
+4. **Email** (recommended, turns on email confirmation and the new-inquiry notices): create a free account at resend.com, add the domain `edencny.com` and add the DNS records it shows wherever edencny.com's DNS is managed, then create an API key and add it as secret `RESEND_API_KEY`. Emails come from `MAIL_FROM` (Eden Events <events@edencny.com>). If an email can't be sent, the inquiry still arrives, flagged "email not verified".
+
+To change the private key later, run `select public.new_inquiry_key();` again and update `INQUIRY_KEY` in Cloudflare.
 
 ## Roles
 
