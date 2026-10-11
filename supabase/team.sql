@@ -40,7 +40,7 @@ language sql stable security definer set search_path = public as $$
     'role', public.staff_role())
 $$;
 
--- 3. The published schedule for a week, without any contact details
+-- 3. The published schedule for a week: coworkers' names and positions, without any contact details
 create or replace function public.team_schedule(p_week date) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare w public.schedule_weeks%rowtype; me uuid; res jsonb;
@@ -52,7 +52,7 @@ begin
     return jsonb_build_object('week_start', p_week, 'published', false);
   end if;
   select coalesce(jsonb_agg(jsonb_build_object(
-      'name', coalesce(public.short_name(e.name), 'Team member'),
+      'name', coalesce(nullif(trim(e.name), ''), 'Team member'),
       'position', coalesce(e.position, ''),
       'mine', me is not null and (s ->> 'emp') = me::text,
       'day', (s ->> 'day')::int,

@@ -1,7 +1,7 @@
 /* Eden team page: each employee's published shifts, who's working, and the message board.
  *
  * Privacy: this page never reads the employees table. The schedule comes from the database
- * function team_schedule(), which returns only first name + last initial, position and shift
+ * function team_schedule(), which returns only coworkers' names, positions and shift
  * times for published weeks. Phone numbers and emails are never sent to this page.
  * Only people on the staff list (an active employee email, or a staff role) get any data.
  */

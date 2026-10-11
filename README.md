@@ -27,7 +27,7 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 - **Staff schedule page** (`/team/`, every employee): published schedules and the message board.
   One-time setup: run `supabase/team.sql` (after `schedule.sql`), and in Supabase Authentication turn
   **on** "Allow new users to sign up" and turn **off** "Confirm email". Only emails on the employee list
-  can create an account (enforced by a database trigger). The page shows first name + last initial,
+  can create an account (enforced by a database trigger). The page shows coworkers' full names (supabase/full-names.sql),
   position and shift times only; phone numbers and emails never leave the admin side.
   Forgotten password: in Supabase > Authentication > Users, delete that user; they then create a new
   account with the same email. (Email-based resets need a custom email sender, e.g. Google Workspace SMTP.)
