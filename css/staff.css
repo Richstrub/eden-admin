@@ -595,3 +595,11 @@ body.nt-open #app{visibility:hidden!important}
 .nt-text::placeholder{color:#a9a39a}
 .nt-hint{display:flex;gap:6px 18px;flex-wrap:wrap;justify-content:space-between}
 .nt-hint-off{color:var(--stone)}
+
+/* Notes: dictation */
+.nt-mic{display:inline-flex;align-items:center;gap:8px}
+.nt-mic-dot{width:9px;height:9px;border-radius:50%;background:#e06b5b;box-shadow:0 0 0 0 rgba(224,107,91,.6)}
+.nt-mic.on{background:#b3261e;border-color:#b3261e}
+.nt-mic.on .nt-mic-dot{background:#fff;animation:ntpulse 1.2s infinite}
+@keyframes ntpulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}100%{box-shadow:0 0 0 9px rgba(255,255,255,0)}}
+.nt-live{padding:8px 16px;background:#fdf1ee;border-top:1px solid #f0c9c2;color:#8a2a1e;font-size:.9rem}

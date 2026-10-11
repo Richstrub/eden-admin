@@ -95,6 +95,7 @@
     loadNotes().then(function () { paintList(); if (N.dirty) saveNote(); });
   }
   function close() {
+    stopDictation();
     var done = function () { if (N.el) { N.el.remove(); N.el = null; } document.body.classList.remove('nt-open'); window.removeEventListener('resize', onResize); };
     clearTimeout(N.saveT);
     if (N.dirty && hasContent(N.note)) saveNote().then(done); else done();
@@ -113,6 +114,7 @@
       ]),
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
+        h('button', { type: 'button', cls: 'nt-b nt-mic', 'aria-pressed': 'false', title: 'Speak your note; it’s typed on the Write page', on: { click: toggleDictation } }, [h('span', { cls: 'nt-mic-dot', 'aria-hidden': 'true' }), h('span', { cls: 'nt-mic-l', text: 'Dictate' })]),
         h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
         share,
         h('button', { type: 'button', cls: 'nt-b', text: 'Add to to-do', on: { click: toTodo } }),
@@ -148,7 +150,7 @@
       h('span', { text: 'Pencil tips: scratch out to delete · circle to select · touch and hold to make space · vertical line to join or split words.' }),
       h('span', { cls: 'nt-hint-off', text: 'Writing stays as ink? Turn on Settings → Apple Pencil → Scribble.' })
     ]);
-    el.appendChild(h('div', { cls: 'nt-body' }, [list, h('div', { cls: 'nt-page' }, [paper, h('div', { cls: 'nt-textwrap' }, [text, hint])])]));
+    el.appendChild(h('div', { cls: 'nt-body' }, [list, h('div', { cls: 'nt-page' }, [paper, h('div', { cls: 'nt-textwrap' }, [text, h('div', { cls: 'nt-live', role: 'status', 'aria-live': 'polite', hidden: true }), hint])])]));
     el.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input, textarea')) e.preventDefault(); });
     el.addEventListener('contextmenu', function (e) { if (!e.target.closest('input, textarea')) e.preventDefault(); });
     document.body.appendChild(el);
@@ -190,6 +192,7 @@
     });
   }
   function load(n) {
+    stopDictation();
     N.note = n; N.redo = []; N.dirty = false;
     N.titleEl.value = n.title || ''; N.text.value = n.body || '';
     N.paper.scrollTop = 0; N.extra = 0;
@@ -292,6 +295,78 @@
     ink.forEach(function (s) { var t = forOcr && !s.e ? Object.assign({}, s, { c: '#000', w: Math.max(s.w, 2.6) * 1.15 }) : s; drawStroke(lc, t); });
     ctx.drawImage(layer, 0, 0);
     return cv;
+  }
+
+  /* ---------- speech to text ----------
+   * Uses the browser's built-in speech recognition (on iPad/iPhone it's Apple's, the same as Siri dictation;
+   * also Chrome and Edge). Words are typed into the Write page at the cursor. Say "period", "comma",
+   * "question mark", "new line" or "new paragraph" for punctuation. */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var D = { rec: null, on: false, interim: '' };
+  var SPOKEN = [
+    [/\s*\b(new paragraph)\b\s*/gi, '\n\n'], [/\s*\b(new line|next line)\b\s*/gi, '\n'],
+    [/\s*\b(period|full stop)\b/gi, '.'], [/\s*\bcomma\b/gi, ','], [/\s*\bquestion mark\b/gi, '?'],
+    [/\s*\bexclamation (point|mark)\b/gi, '!'], [/\s*\bcolon\b/gi, ':'], [/\s*\bdash\b\s*/gi, ' – ']
+  ];
+  function spoken(t) { SPOKEN.forEach(function (r) { t = t.replace(r[0], r[1]); }); t = t.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
+    return t.replace(/([.!?]\s+|\n)([a-z])/g, function (m, p, c) { return p + c.toUpperCase(); }); }
+  function insertSpeech(raw) {
+    if (!N.el || !N.note || N.note.id !== D.noteId) return;
+    var ta = N.text, txt = spoken(String(raw || '').trim()); if (!txt) return;
+    var v = ta.value, at = typeof ta.selectionStart === 'number' && document.activeElement === ta ? ta.selectionStart : (D.pos != null ? D.pos : v.length), end = typeof ta.selectionEnd === 'number' && document.activeElement === ta ? ta.selectionEnd : at;
+    var before = v.slice(0, at), after = v.slice(end);
+    var startSentence = !before.trim() || /[.!?]\s*$|\n\s*$/.test(before);
+    if (startSentence) txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+    var sep = !before || /\s$/.test(before) || /^[.,!?:\n]/.test(txt) ? '' : ' ';
+    var tail = after && !/^[\s.,!?:]/.test(after) ? ' ' : '';
+    ta.value = before + sep + txt + tail + after;
+    D.pos = (before + sep + txt).length;
+    try { ta.setSelectionRange(D.pos, D.pos); } catch (e) {}
+    N.note.body = ta.value; changed(); paintList();
+  }
+  function live(t) { var el = N.el && N.el.querySelector('.nt-live'); if (!el) return; el.hidden = !t; el.textContent = t || ''; }
+  function paintMic() {
+    var b = N.el && N.el.querySelector('.nt-mic'); if (!b) return;
+    b.setAttribute('aria-pressed', D.on ? 'true' : 'false'); b.classList.toggle('on', D.on);
+    b.querySelector('.nt-mic-l').textContent = D.on ? 'Stop' : 'Dictate';
+  }
+  function toggleDictation() { if (D.on) stopDictation(); else startDictation(); }
+  function startDictation() {
+    if (!SR) {
+      setMode('text');
+      toast('This browser can’t dictate here. Tap the page, then use the microphone key on the keyboard instead.', 'err');
+      return;
+    }
+    setMode('text');
+    D.noteId = N.note.id;
+    var ta = N.text; D.pos = document.activeElement === ta ? ta.selectionStart : ta.value.length;
+    var rec = new SR();
+    rec.lang = navigator.language || 'en-US'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    rec.onresult = function (e) {
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var r = e.results[i];
+        if (r.isFinal) insertSpeech(r[0].transcript); else interim += r[0].transcript;
+      }
+      live(interim ? '“' + interim.trim() + '…”' : 'Listening…');
+    };
+    rec.onerror = function (e) {
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      D.on = false; paintMic(); live('');
+      toast(e.error === 'not-allowed' || e.error === 'service-not-allowed' ? 'Microphone access is off. Allow it for this site (on iPad: Settings → Safari → Microphone), then try again.' : 'Dictation stopped (' + e.error + '). Tap Dictate to try again.', 'err');
+    };
+    rec.onend = function () {
+      if (D.on && D.rec === rec) { try { rec.start(); return; } catch (x) {} } // keep listening through pauses
+      if (D.rec === rec) { D.on = false; D.rec = null; paintMic(); live(''); }
+    };
+    try { rec.start(); } catch (x) { toast('Couldn’t start dictation. Try again.', 'err'); return; }
+    D.rec = rec; D.on = true; paintMic(); live('Listening… say “period”, “comma” or “new line” for punctuation.');
+  }
+  function stopDictation() {
+    if (!D.rec) { D.on = false; paintMic(); return; }
+    var rec = D.rec; D.on = false; paintMic(); live('');
+    try { rec.stop(); } catch (x) {}
+    setTimeout(function () { if (D.rec === rec) D.rec = null; }, 1500); // let the last words arrive
   }
 
   /* ---------- email, share ---------- */
@@ -590,6 +665,6 @@
     init: function (ctx) { C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; },
     open: open, close: close,
     showTodo: function (ctx) { if (ctx) window.EdenNotes.init(ctx); T.el = ctx.el; T.loaded = false; renderTodo(); loadTodos().then(renderTodo); },
-    _test: { N: N, T: T, inkImage: inkImage, mailUrl: mailUrl, segmentLines: segmentLines }
+    _test: { N: N, T: T, inkImage: inkImage, mailUrl: mailUrl, D: D, spoken: spoken, segmentLines: segmentLines }
   };
 })();
