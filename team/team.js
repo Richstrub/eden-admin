@@ -72,7 +72,8 @@
       sb.auth.signUp({ email: email, password: pw }).then(function (r) {
         if (r.error) {
           var m = r.error.message || '';
-          msg.textContent = /staff list|database error/i.test(m) ? 'That email isn’t on Eden’s staff list yet. Ask a manager to add it, then try again.'
+          msg.textContent = /rate limit|confirmation|sending/i.test(m) ? 'Sign-up is waiting on a setting: a manager needs to turn off \u201cConfirm email\u201d in Supabase, then you can try again.'
+            : /staff list|database error/i.test(m) ? 'That email isn\u2019t on Eden\u2019s staff list yet. Ask a manager to add it, then try again.'
             : /already|registered|exists/i.test(m) ? 'There’s already an account for that email. Choose Sign in instead.'
             : /password/i.test(m) ? m : 'Couldn’t create the account: ' + m;
           return;
@@ -82,7 +83,8 @@
     } else {
       msg.textContent = 'Signing in…';
       sb.auth.signInWithPassword({ email: email, password: pw }).then(function (r) {
-        if (r.error) msg.textContent = /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : 'That email and password didn’t work. New here? Choose Create account.';
+        if (r.error) msg.textContent = /not confirmed/i.test(r.error.message || '') ? 'This account was never confirmed. Ask a manager to delete it in Supabase (Authentication \u2192 Users), then choose Create account again.'
+          : /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : 'That email and password didn\u2019t work. New here? Choose Create account.';
       });
     }
   });
