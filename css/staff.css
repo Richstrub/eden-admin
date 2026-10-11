@@ -239,102 +239,127 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 @media print{.sc-viewtog{display:none!important}.sc-cal{min-width:0}.sc-cal-d{min-height:90px}}
 
 /* ---------- prep list ---------- */
-.pp-in{max-width:980px;margin:0 auto;padding:28px 32px 80px}
+.pp-in{max-width:1500px;margin:0 auto;padding:28px 32px 80px}
 .pp-controls{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
-.pp-ctl{display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.pp-ctl{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
 .pp-ctl .sc-f input{width:auto;padding:8px 10px;font-size:.95rem}
 .pp-ctl .sc-viewtog{margin-right:0}
-.pp-help{margin:12px 0 22px;font-size:.86rem;color:var(--stone);max-width:70ch}
-.pp-sheet{background:#fff;border:1px solid var(--line);padding:30px 34px 34px;color:#111}
-.pp-head{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:6px}
-.pp-brand{font-family:var(--serif);font-size:1.9rem;letter-spacing:.32em;line-height:1}
-.pp-title{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;margin-top:6px}
-.pp-meta{display:grid;grid-template-columns:auto auto auto;gap:6px 22px;align-items:end}
+.pp-help{margin:12px 0 22px;font-size:.86rem;color:var(--stone);max-width:80ch}
+
+/* the sheet: a landscape page; each section is a panel; three columns */
+.pp-sheet{background:#fff;border:1px solid var(--line);padding:26px 28px 30px;color:#111;box-shadow:0 10px 30px rgba(15,18,21,.06)}
+.pp-head{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:3px double #111;padding-bottom:12px;margin-bottom:16px}
+.pp-head-l{display:flex;align-items:baseline;gap:18px}
+.pp-brand{font-family:var(--serif);font-size:2rem;letter-spacing:.34em;line-height:1}
+.pp-title{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase}
+.pp-meta{display:grid;grid-template-columns:auto auto auto;gap:6px 26px;align-items:end}
 .pp-meta div{display:grid;gap:2px}
 .pp-meta span{font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;color:#555}
 .pp-meta b{font-weight:500;font-size:.92rem}
-.pp-meta i{display:block;width:110px;border-bottom:1px solid #111;height:1.2em}
-.pp-sec{margin-top:20px;break-inside:auto}
-.pp-sec-h{font-family:var(--serif);font-weight:500;font-size:1.35rem;display:flex;align-items:baseline;gap:10px;margin-bottom:4px;break-after:avoid}
-.pp-sec-h span{font-family:var(--sans);font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;border:1px solid #111;padding:2px 6px}
-.pp-table{width:100%;border-collapse:collapse;font-size:.9rem}
-.pp-table th{font-size:.55rem;letter-spacing:.22em;text-transform:uppercase;font-weight:500;color:#555;text-align:left;padding:4px 6px;border-bottom:1px solid #111}
-.pp-table td{padding:5px 6px;border-bottom:1px solid #d6d2ca;vertical-align:middle}
+.pp-meta i{display:block;width:120px;border-bottom:1px solid #111;height:1.2em}
+.pp-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:stretch}
+.pp-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.pp-sec,.pp-notes{border:1.5px solid #111;background:#fff;break-inside:avoid}
+.pp-sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;background:#111;color:#f3eee5;padding:7px 10px 6px}
+.pp-sec-h h2{font-family:var(--serif);font-weight:500;font-size:1.3rem;letter-spacing:.04em;line-height:1.1}
+.pp-sec-h span{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(243,238,229,.72);white-space:nowrap}
+.pp-basics{border-style:solid;border-width:1.5px 1.5px 1.5px 6px}
+.pp-table{width:100%;border-collapse:collapse;font-size:.88rem;table-layout:fixed}
+.pp-table th{font-size:.52rem;letter-spacing:.18em;text-transform:uppercase;font-weight:500;color:#555;text-align:left;padding:5px 5px 4px;border-bottom:1px solid #111;background:#f4f1eb}
+.pp-table td{padding:4px 5px;border-bottom:1px solid #dcd8d0;vertical-align:middle}
 .pp-table tr,.pp-group{break-inside:avoid}
-.pp-chk{width:26px;text-align:center!important}
-.pp-box{display:inline-block;width:13px;height:13px;border:1.5px solid #111;vertical-align:middle}
-.pp-item span{display:block}
-.pp-item small{display:block;font-size:.72rem;color:#666;margin-top:1px}
-.pp-num{width:76px;text-align:center!important;border-left:1px solid #e3dfd7}
-.pp-ini{width:52px;border-left:1px solid #e3dfd7}
-.pp-tool{width:30px;text-align:right}
+.pp-chk{width:24px;text-align:center!important}
+.pp-box{display:inline-block;width:12px;height:12px;border:1.5px solid #111;vertical-align:middle}
+.pp-item span{display:inline}
+.pp-item small{font-size:.7rem;color:#666;margin-left:6px}
+.pp-num{width:13%;text-align:center!important;border-left:1px solid #e3dfd7}
+.pp-ini{width:9%;border-left:1px solid #e3dfd7}
+.pp-tool{width:26px;text-align:right}
 .pp-table .pp-par{width:100%;height:auto;min-height:0;margin:0;box-shadow:none;border-radius:0;border:0;border-bottom:1px dashed transparent;background:transparent;font:inherit;text-align:center;padding:2px 0;color:#111}
 .pp-table .pp-par:hover,.pp-table .pp-par:focus{border-bottom-color:#999;outline:none;background:#faf7f1}
+.pp-parv{display:block;text-align:center}
 .pp-x{background:none;border:0;color:#999;cursor:pointer;font-size:.8rem;padding:2px 4px;opacity:0;transition:opacity .15s}
 .pp-table tr:hover .pp-x,.pp-x:focus{opacity:1}
 .pp-x:hover{color:#a33}
-.pp-dish td{padding:10px 6px 4px;border-bottom:1px solid #bbb}
-.pp-dish b{font-weight:500;font-size:.95rem}
-.pp-dish span{margin-left:10px;font-size:.72rem;color:#666}
-.pp-shared .pp-item span{font-weight:500}
-.pp-main .pp-item span{font-weight:500}
-.pp-main .pp-item small{font-style:italic}
-.pp-extra .pp-item small{font-style:italic}
-.pp-add{display:flex;gap:8px;margin-top:8px}
-.pp-addin{flex:1;min-width:0;font:inherit;font-size:.85rem;padding:6px 10px;border:1px dashed var(--line);background:transparent;color:var(--ink)}
+.pp-dish td{padding:8px 5px 3px;border-bottom:1px solid #999;background:#faf8f4}
+.pp-dish b{font-weight:500;font-size:.9rem}
+.pp-dish span{margin-left:8px;font-size:.68rem;color:#666}
+.pp-group:first-of-type .pp-dish td{padding-top:6px}
+.pp-shared .pp-item span,.pp-main .pp-item span{font-weight:500}
+.pp-main .pp-item small,.pp-extra .pp-item small{font-style:italic}
+.pp-none{padding:12px 10px;color:#777;font-size:.85rem}
+.pp-add{display:flex;gap:8px;padding:8px}
+.pp-addin{flex:1;min-width:0;font:inherit;font-size:.82rem;padding:6px 9px;border:1px dashed var(--line);background:transparent;color:var(--ink)}
 .pp-addin:focus{outline:2px solid var(--ember-hot);outline-offset:-1px;border-style:solid}
-.pp-notes{margin-top:26px;display:grid;gap:14px}
-.pp-notes span{font-size:.56rem;letter-spacing:.24em;text-transform:uppercase;color:#555}
-.pp-notes i{display:block;border-bottom:1px solid #999;height:1em}
+.pp-notes{flex:1;display:flex;flex-direction:column;min-height:120px}
+.pp-lines{flex:1;min-height:90px;margin:4px 10px 10px;background:repeating-linear-gradient(to bottom,transparent 0,transparent 23px,#bbb 23px,#bbb 24px)}
+.pp-barbtn{min-width:96px}
+.pp-printbtn{min-width:110px}
 @media (hover:none){.pp-x{opacity:1}}
-@media (max-width:700px){
+@media (max-width:1100px){.pp-body{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){
   .pp-in{padding:20px 16px 60px}
-  .pp-sheet{padding:18px 14px}
+  .pp-sheet{padding:16px 12px}
   .pp-head{flex-direction:column;align-items:start}
   .pp-meta{grid-template-columns:1fr 1fr}
-  .pp-num{width:52px}.pp-ini{width:38px}
+  .pp-body{grid-template-columns:minmax(0,1fr)}
 }
-@media print{
-  @page prep{size:letter portrait;margin:.35in}
-  #viewPrep{page:prep}
-  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .pp-controls,.pp-help,.pp-add{display:none!important}
-  .pp-tool *{display:none!important}
-  .pp-in{padding:0;max-width:none}
-  .pp-sheet{border:0;padding:0;zoom:var(--pp-zoom,1)}
-  .pp-table .pp-par{border:0!important;background:none!important}
-}
-/* paper layout: two columns of compact rows, sized for one letter page */
-.pp-paper{font-size:8pt;line-height:1.15}
-.pp-paper .pp-head{padding-bottom:5px;margin-bottom:2px;border-bottom-width:1.5px}
-.pp-paper .pp-brand{font-size:16pt}
-.pp-paper .pp-title{font-size:6pt;margin-top:3px}
+
+/* paper layout (print and preview): compact, three columns, landscape letter */
+.pp-paper{zoom:var(--pp-zoom,1);font-size:7.5pt;line-height:1.15;border:0;padding:0;box-shadow:none}
+.pp-paper .pp-head{padding-bottom:5px;margin-bottom:8px;border-bottom-width:3px}
+.pp-paper .pp-head-l{gap:12px}
+.pp-paper .pp-brand{font-size:17pt}
+.pp-paper .pp-title{font-size:6pt}
+.pp-paper .pp-meta{gap:4px 18px}
 .pp-paper .pp-meta b{font-size:8.5pt}
 .pp-paper .pp-meta span{font-size:5.5pt}
-.pp-paper .pp-meta i{width:1.1in}
-.pp-paper .pp-body{column-count:2;column-gap:.28in;column-fill:balance}
-.pp-paper .pp-sec{margin-top:7px;break-inside:auto}
-.pp-paper .pp-sec:first-child{margin-top:4px}
-.pp-paper .pp-sec-h{font-size:11.5pt;margin-bottom:1px}
-.pp-paper .pp-table{font-size:8pt;table-layout:fixed}
-.pp-paper .pp-table th{font-size:5pt;letter-spacing:.14em;padding:1px 3px}
-.pp-paper .pp-table td{padding:2.5px 3px;height:15px}
-.pp-paper .pp-dish td{padding:4px 3px 1px;height:auto}
-.pp-paper .pp-dish b{font-size:8pt}
-.pp-paper .pp-dish span{font-size:6.5pt;margin-left:6px}
-.pp-paper .pp-item small{font-size:6.5pt;display:inline;margin-left:5px}
-.pp-paper .pp-item span{display:inline}
-.pp-paper .pp-chk{width:14px}
-.pp-paper .pp-box{width:8px;height:8px;border-width:1px}
-.pp-paper .pp-num{width:.42in}
-.pp-paper .pp-ini{width:.32in}
+.pp-paper .pp-meta i{width:1.15in}
+.pp-paper .pp-body{grid-template-columns:repeat(3,minmax(0,1fr));gap:.16in}
+.pp-paper .pp-col{gap:.12in}
+.pp-paper .pp-sec,.pp-paper .pp-notes{border-width:1.2px}
+.pp-paper .pp-basics{border-left-width:4px}
+.pp-paper .pp-sec-h{padding:3px 6px 2px}
+.pp-paper .pp-sec-h h2{font-size:11pt}
+.pp-paper .pp-sec-h span{font-size:5pt;letter-spacing:.16em}
+.pp-paper .pp-table{font-size:7.5pt}
+.pp-paper .pp-table th{font-size:4.8pt;letter-spacing:.12em;padding:2px 3px}
+.pp-paper .pp-table td{padding:2px 3px;height:13px}
+.pp-paper .pp-dish td{padding:3px 3px 1px;height:auto}
+.pp-paper .pp-dish b{font-size:7.5pt}
+.pp-paper .pp-dish span{font-size:6pt;margin-left:5px}
+.pp-paper .pp-item small{font-size:6pt;margin-left:4px}
+.pp-paper .pp-chk{width:13px}
+.pp-paper .pp-box{width:7.5px;height:7.5px;border-width:1px}
 .pp-paper .pp-tool{width:0;padding:0!important;border:0}
-.pp-paper .pp-tool *{display:none}
-.pp-paper .pp-table .pp-par{font-size:8pt;padding:0}
-.pp-paper .pp-add{display:none}
-.pp-paper .pp-notes{margin-top:8px;gap:9px}
-.pp-paper .pp-notes span{font-size:5.5pt}
+.pp-paper .pp-tool *,.pp-paper .pp-add{display:none!important}
+.pp-paper .pp-table .pp-par{font-size:7.5pt;padding:0}
+.pp-paper .pp-notes{min-height:.9in}
+.pp-paper .pp-lines{margin:2px 6px 6px;min-height:.5in;background:repeating-linear-gradient(to bottom,transparent 0,transparent 17px,#aaa 17px,#aaa 18px)}
 
+/* print preview */
+.pp-preview{position:fixed;inset:0;z-index:1000;background:rgba(15,18,21,.97);display:flex;flex-direction:column}
+.pp-pbar{display:flex;align-items:center;gap:12px;padding:14px 22px;background:#0f1215;border-bottom:1px solid rgba(243,238,229,.14)}
+.pp-pbar-t{flex:1;display:grid;gap:2px;color:#f3eee5;min-width:0}
+.pp-pbar-t b{font-family:var(--serif);font-weight:500;font-size:1.25rem}
+.pp-pbar-t span{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(243,238,229,.6)}
+.pp-pbar .ed-btn.ghost{color:#f3eee5;border-color:rgba(243,238,229,.35)}
+.pp-confirm{padding-left:26px;padding-right:26px}
+.pp-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:24px}
+.pp-holder{position:relative;flex:none}
+.pp-page{position:absolute;left:0;top:0;width:11in;height:8.5in;background:#fff;transform-origin:0 0;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.pp-page-in{position:absolute;inset:.35in;overflow:hidden}
+@media (max-width:700px){.pp-pbar{flex-wrap:wrap}.pp-pbar-t{flex-basis:100%}}
+
+@media print{
+  @page prep{size:letter landscape;margin:.35in}
+  #viewPrep{page:prep}
+  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pp-controls,.pp-help,.pp-add,.pp-preview{display:none!important}
+  .pp-tool *{display:none!important}
+  .pp-in{padding:0;max-width:none}
+  .pp-table .pp-par{border:0!important;background:none!important}
+}
 
 /* ---------- shift end: set time, 1st cut, 2nd cut, close ---------- */
 .sc-endtog{display:flex;flex-wrap:wrap;margin-right:0;width:100%}
