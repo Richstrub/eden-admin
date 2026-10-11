@@ -135,6 +135,7 @@
     $('edSave').hidden = v !== 'menu';
     document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : 'Eden Staff';
     if (v === 'menu') {
+      INV.items = null; // pick up inventory changes made since
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
       else if (!store.loaded) status('Loading the menu…');
       else status(ed.dirty ? 'Unsaved changes. Publishing automatically…' : (ed.canWrite ? 'Ready. Changes publish to the website automatically.' : 'View only. Your role can see the menu but not change it.'), ed.dirty ? 'dirty' : (ed.canWrite ? '' : 'err'));
@@ -374,6 +375,8 @@
       }
     }
     var tn = document.createElement('div'); tn.className = 'ed-tabname'; tn.appendChild(field('Tab name', t.label, function (v) { t.label = v; h.textContent = v || 'Untitled'; side.children[ed.tab].textContent = v || 'Untitled'; })); main.appendChild(tn);
+    var kind = ed.canWrite ? invKind(t) : null;
+    if (kind) loadInv();
     t.groups.forEach(function (g, gi) {
       var box = document.createElement('section'); box.className = 'ed-group';
       var head = document.createElement('div'); head.className = 'ed-ghead';
@@ -395,6 +398,7 @@
         if (isWine(it)) {
           row.classList.add('ed-wine');
           var nm = field('Wine', it.name, function (v) { it.name = v; }); nm.classList.add('wide'); row.appendChild(nm);
+          if (kind) invCombo(nm, it, t, g, row, kind);
           row.appendChild(field('Country', it.country, function (v) { it.country = v; }));
           row.appendChild(field('Appellation', it.appellation, function (v) { it.appellation = v; }));
           row.appendChild(field('Grape', it.grape, function (v) { it.grape = v; }));
@@ -402,7 +406,8 @@
           row.appendChild(field('Glass price', it.glass, function (v) { if (v) it.glass = v; else delete it.glass; if (!it.bottle) it.price = v ? v + ' glass' : ''; }));
           var wd = field('Tasting note', it.desc, function (v) { it.desc = v; }); wd.classList.add('desc'); row.appendChild(wd);
         } else {
-          row.appendChild(field('Dish / drink', it.name, function (v) { it.name = v; }));
+          var dn = field(kind ? 'Drink' : 'Dish / drink', it.name, function (v) { it.name = v; }); row.appendChild(dn);
+          if (kind) invCombo(dn, it, t, g, row, kind);
           row.appendChild(field('Farm or producer', it.src, function (v) { it.src = v; }));
           var dsc = field('Description', it.desc, function (v) { it.desc = v; }); dsc.classList.add('desc'); row.appendChild(dsc);
           row.appendChild(field('Price', it.price, function (v) { it.price = v; }));
@@ -425,7 +430,13 @@
         markDirty(); edRender();
         var rows = main.querySelectorAll('.ed-group')[gi].querySelectorAll('.ed-item'); var last = rows[rows.length - 1]; if (last) last.querySelector('input').focus();
       }));
-      box.appendChild(foot); main.appendChild(box);
+      if (kind) {
+        var ib2 = btn(ed.invOpen === g.id ? 'Close inventory' : '+ From inventory', 'Add items from the inventory', function () { ed.invOpen = ed.invOpen === g.id ? null : g.id; ed.invQ = ''; edRender(); });
+        ib2.classList.add('ed-invbtn'); foot.appendChild(ib2);
+      }
+      box.appendChild(foot);
+      if (kind && ed.invOpen === g.id) box.appendChild(invPicker(t, g, kind));
+      main.appendChild(box);
     });
     var ag = btn('+ Add section', 'Add section', function () { t.groups.push({ id: newGid(), title: 'New section', note: '', noteAfter: '', items: [{ name: '', src: '', desc: '', price: '' }] }); markDirty(); edRender(); main.scrollTop = main.scrollHeight; });
     ag.classList.add('ed-addgroup'); main.appendChild(ag);
@@ -553,6 +564,208 @@
       else if (e.key === 'Escape') { close(); e.preventDefault(); }
     });
     return pr;
+  }
+
+  /* ---------- menu <-> inventory: wine, beer & soft drinks, spirits, coffee & tea (not kitchen or cocktails) ---------- */
+  var INV = { items: null, loading: null, missing: false };
+  function loadInv(force) {
+    if (INV.items && !force) return Promise.resolve(INV.items);
+    if (INV.loading) return INV.loading;
+    INV.loading = sb.from('inventory_items').select('*').then(function (r) {
+      INV.loading = null;
+      if (r.error) { INV.missing = true; INV.items = []; return INV.items; }
+      INV.missing = false; INV.items = r.data || []; return INV.items;
+    }, function () { INV.loading = null; INV.items = []; return INV.items; });
+    return INV.loading;
+  }
+  function invKind(t) {
+    if (!t || isKitchen(t)) return null;
+    var s = ((t.id || '') + ' ' + (t.label || '')).toLowerCase();
+    if (t.id === 'm-bar' || /cocktail/.test(s)) return null;
+    if (t.id === 'm-wine' || /wine/.test(s) || hasWine(t)) return 'wine';
+    if (t.id === 'm-spirits' || /spirit|liquor|whisk/.test(s)) return 'spirits';
+    if (t.id === 'm-beer' || /beer|soft|soda/.test(s)) return 'beer';
+    if (t.id === 'm-coffee' || /coffee|tea/.test(s)) return 'coffee';
+    return null;
+  }
+  var KIND_RE = {
+    wine: /wine|sparkling|ros[eé]|champagne|port\b|sherry|madeira/,
+    beer: /beer|draught|draft|cider|seltzer|soft|soda|juice|mixer|water|non-?alc/,
+    spirits: /bourbon|rye|whisk|malt|scotch|gin|vodka|agave|tequila|mezcal|rum|brandy|cognac|specialty|digestif|amaro|liqueur|aperitif|spirit|liquor|sake/,
+    coffee: /coffee|tea|espresso/
+  };
+  var KIND_NAME = { wine: 'wine', beer: 'beer & soft drink', spirits: 'spirit', coffee: 'coffee & tea' };
+  function invFor(kind) { return (INV.items || []).filter(function (x) { return KIND_RE[kind].test(fold(x.section)); }); }
+  function groupFit(x, g) { // does this inventory item's section match the menu section? ("Red" ~ "Red wine", "Cans" ~ "Canned beer")
+    var sec = fold(x.section), words = fold(g.title).split(/[^a-z]+/).filter(function (w) { return w.length >= 3; });
+    return words.some(function (w) { return sec.indexOf(w.slice(0, Math.max(3, w.length - 1))) !== -1; });
+  }
+  function onMenuSet(t) { var s = {}; (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { if (it.name) s[fold(it.name).trim()] = 1; }); }); return s; }
+  function invTarget(kind, g) { // where a new menu item goes in the inventory
+    var gt = String(g.title || '').trim(), gl = fold(gt);
+    if (kind === 'wine') {
+      var W = { sparkling: 'Sparkling wine', white: 'White wine', rose: 'Rosé', red: 'Red wine', dessert: 'Dessert wine', orange: 'Orange wine' };
+      return { category: 'bev', section: W[gl] || (gt ? gt + (/wine/.test(gl) ? '' : ' wine') : 'Wine'), unit: 'bottle' };
+    }
+    if (kind === 'beer') {
+      if (/draught|draft|tap/.test(gl)) return { category: 'bev', section: 'Draught beer', unit: 'keg' };
+      if (/juice|soda|soft|water|mixer|non/.test(gl)) return { category: 'food', section: 'Soft drinks & juice', unit: 'case' };
+      return { category: 'bev', section: 'Canned beer', unit: 'case' };
+    }
+    if (kind === 'spirits') return { category: 'bev', section: gt || 'Liquor', unit: 'bottle' };
+    return { category: 'food', section: 'Coffee & tea', unit: 'bag' };
+  }
+  function newMenuItem(t, x) {
+    return hasWine(t) ? { name: x.name, country: '', appellation: '', grape: '', bottle: '', desc: '', price: '' }
+      : { name: x.name, src: '', desc: x.pack || '', price: '' };
+  }
+  function addToInventory(kind, g, name) {
+    var tg = invTarget(kind, g);
+    var row = { id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      category: tg.category, section: tg.section, name: name, unit: tg.unit, pack: '', vendor: '', par: null, cost: null, sort: 0, active: true };
+    return sb.from('inventory_items').upsert(row, { onConflict: 'id' }).then(function (r) {
+      if (r.error) { status(isPermission(r.error) ? 'Your role can’t add to the inventory.' : INV.missing ? 'The inventory isn’t set up yet (run supabase/inventory.sql).' : 'Couldn’t add to the inventory. Try again.', 'err'); return false; }
+      (INV.items = INV.items || []).push(row);
+      status('Added “' + name + '” to the inventory (' + tg.section + ').', 'ok');
+      return true;
+    });
+  }
+
+  // The item-name field: suggestions from the inventory for this part of the menu, plus "add to inventory".
+  function invCombo(wrap, it, t, g, row, kind) {
+    var input = wrap.querySelector('input');
+    input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
+    if (!input.placeholder) input.placeholder = 'Type to search the ' + KIND_NAME[kind] + ' inventory';
+    wrap.classList.add('ed-ac');
+    var box = document.createElement('div'); box.className = 'ed-ac-list ed-inv-list'; box.setAttribute('role', 'listbox'); box.hidden = true;
+    wrap.appendChild(box);
+    var opts = [], active = -1;
+    function close() { box.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); }
+    function setField(cls, v) { var el = row.querySelector(cls); if (el) el.value = v; }
+    function choose(o) {
+      if (o.add) {
+        var name = input.value.trim(); close();
+        addToInventory(kind, g, name);
+        return;
+      }
+      var x = o.x;
+      it.name = x.name; input.value = x.name;
+      if (!hasWine(t) && !it.desc && x.pack) { it.desc = x.pack; setField('.ed-field.desc input', x.pack); }
+      close(); markDirty();
+      var next = row.querySelectorAll('input')[1]; if (next) next.focus();
+    }
+    function paint() {
+      box.querySelectorAll('.ed-ac-opt').forEach(function (o, i) { o.classList.toggle('on', i === active); o.setAttribute('aria-selected', i === active); });
+      var on = box.querySelector('.ed-ac-opt.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+    }
+    function open() {
+      if (!INV.items) { loadInv().then(function () { if (document.activeElement === input) open(); }); return; }
+      var q = fold(input.value).trim(), words = q.split(/\s+/).filter(Boolean), menuHas = onMenuSet(t), mine = fold(it.name).trim();
+      var all = invFor(kind);
+      var list = all.filter(function (x) { var hay = fold(x.name + ' ' + x.section + ' ' + x.pack); return words.every(function (w) { return hay.indexOf(w) !== -1; }); })
+        .map(function (x) { var k = fold(x.name).trim(); return { x: x, fit: groupFit(x, g), on: !!menuHas[k] && k !== mine, exact: k === q }; })
+        .sort(function (a, b) { return (a.on - b.on) || (b.fit - a.fit) || String(a.x.name).localeCompare(b.x.name); })
+        .slice(0, 60);
+      opts = list.filter(function (o) { return !o.on; });
+      var exact = all.some(function (x) { return fold(x.name).trim() === q; });
+      if (q && !exact) opts.push({ add: true });
+      box.innerHTML = '';
+      var head = document.createElement('div'); head.className = 'ed-ac-head';
+      head.textContent = INV.missing ? 'Inventory isn’t set up yet' : !all.length ? 'No ' + KIND_NAME[kind] + ' items in the inventory yet'
+        : 'From the inventory' + (words.length ? ' · ' + list.length + ' match' + (list.length === 1 ? '' : 'es') : ' · ' + g.title);
+      box.appendChild(head);
+      list.forEach(function (o) {
+        var el = document.createElement('div'); el.className = 'ed-ac-opt' + (o.on ? ' is-on' : ''); el.setAttribute('role', 'option');
+        var n = document.createElement('span'); n.className = 'ed-ac-name'; n.textContent = o.x.name;
+        var tag = document.createElement('span'); tag.className = 'ed-ac-tag'; tag.textContent = o.on ? 'On the menu' : o.fit ? g.title : '';
+        var m = document.createElement('span'); m.className = 'ed-ac-meta'; m.textContent = [o.x.section, o.x.pack].filter(Boolean).join(' · ');
+        el.appendChild(n); el.appendChild(tag); el.appendChild(m);
+        if (!o.on) {
+          var idx = opts.indexOf(o);
+          el.addEventListener('mousedown', function (e) { e.preventDefault(); choose(o); });
+          el.addEventListener('mousemove', function () { if (active !== idx) { active = idx; paint(); } });
+        } else el.setAttribute('aria-disabled', 'true');
+        box.appendChild(el);
+      });
+      if (q && !exact && !INV.missing) {
+        var tg = invTarget(kind, g);
+        var add = document.createElement('div'); add.className = 'ed-ac-opt ed-ac-add'; add.setAttribute('role', 'option');
+        var an = document.createElement('span'); an.className = 'ed-ac-name'; an.textContent = '+ Add “' + input.value.trim() + '” to the inventory';
+        var am = document.createElement('span'); am.className = 'ed-ac-meta'; am.textContent = (tg.category === 'bev' ? 'Beer, wine & liquor' : 'Food') + ' · ' + tg.section;
+        add.appendChild(an); add.appendChild(am);
+        var ai = opts.length - 1;
+        add.addEventListener('mousedown', function (e) { e.preventDefault(); choose({ add: true }); });
+        add.addEventListener('mousemove', function () { if (active !== ai) { active = ai; paint(); } });
+        box.appendChild(add);
+      }
+      if (!list.length && !(q && !exact && !INV.missing)) {
+        var none = document.createElement('div'); none.className = 'ed-ac-empty';
+        none.textContent = INV.missing ? 'Run supabase/inventory.sql in Supabase to link the menu to the inventory.' : 'Add ' + KIND_NAME[kind] + ' items on the Inventory page and they’ll show up here.';
+        box.appendChild(none);
+      }
+      active = words.length && opts.length ? 0 : -1;
+      box.hidden = false; input.setAttribute('aria-expanded', 'true'); paint();
+    }
+    input.addEventListener('focus', open);
+    input.addEventListener('input', open);
+    input.addEventListener('blur', function () { setTimeout(close, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (box.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { open(); e.preventDefault(); return; }
+      if (box.hidden) return;
+      if (e.key === 'ArrowDown') { active = Math.min(opts.length - 1, active + 1); paint(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); paint(); e.preventDefault(); }
+      else if (e.key === 'Enter') { if (active >= 0 && opts[active]) { choose(opts[active]); e.preventDefault(); } }
+      else if (e.key === 'Escape') { close(); e.preventDefault(); }
+    });
+  }
+
+  // "+ From inventory": pick items from the inventory to add to this menu section, several in a row.
+  function invPicker(t, g, kind) {
+    var panel = document.createElement('div'); panel.className = 'ed-inv';
+    var top = document.createElement('div'); top.className = 'ed-inv-top';
+    var q = document.createElement('input'); q.type = 'search'; q.placeholder = 'Search the ' + KIND_NAME[kind] + ' inventory'; q.value = ed.invQ || '';
+    var showAll = document.createElement('label'); showAll.className = 'ed-inv-all';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!ed.invAll;
+    showAll.appendChild(cb); showAll.appendChild(document.createTextNode(' All ' + KIND_NAME[kind] + ' sections'));
+    top.appendChild(q); top.appendChild(showAll); panel.appendChild(top);
+    var listEl = document.createElement('div'); listEl.className = 'ed-inv-list2'; panel.appendChild(listEl);
+    function paint() {
+      listEl.innerHTML = '';
+      if (!INV.items) { listEl.textContent = 'Loading the inventory…'; loadInv().then(paint); return; }
+      if (INV.missing) { listEl.innerHTML = '<p class="ed-inv-note">The inventory isn’t set up yet. Run <b>supabase/inventory.sql</b> in Supabase, then add items on the <a href="#inventory">Inventory</a> page.</p>'; return; }
+      var words = fold(q.value).split(/\s+/).filter(Boolean), menuHas = onMenuSet(t);
+      var all = invFor(kind), fits = all.filter(function (x) { return groupFit(x, g); });
+      var pool = (ed.invAll || !fits.length) ? all : fits;
+      var list = pool.filter(function (x) { var hay = fold(x.name + ' ' + x.section + ' ' + x.pack); return words.every(function (w) { return hay.indexOf(w) !== -1; }); })
+        .sort(function (a, b) { var A = !!menuHas[fold(a.name).trim()], B = !!menuHas[fold(b.name).trim()]; return (A - B) || String(a.section).localeCompare(b.section) || String(a.name).localeCompare(b.name); });
+      var avail = list.filter(function (x) { return !menuHas[fold(x.name).trim()]; }).length;
+      var note = document.createElement('p'); note.className = 'ed-inv-note';
+      note.textContent = !all.length ? 'No ' + KIND_NAME[kind] + ' items in the inventory yet. Add them on the Inventory page.'
+        : avail + ' not on the menu yet' + (pool === fits && !ed.invAll ? ' in sections like “' + g.title + '”' : '') + '. Click Add to put one at the end of “' + g.title + '”.';
+      listEl.appendChild(note);
+      list.slice(0, 200).forEach(function (x) {
+        var on = !!menuHas[fold(x.name).trim()];
+        var r = document.createElement('div'); r.className = 'ed-inv-row' + (on ? ' is-on' : '');
+        var n = document.createElement('div'); n.className = 'ed-inv-name';
+        var b = document.createElement('b'); b.textContent = x.name; n.appendChild(b);
+        var sm = document.createElement('small'); sm.textContent = [x.section, x.pack].filter(Boolean).join(' · '); n.appendChild(sm);
+        r.appendChild(n);
+        if (on) { var tg = document.createElement('span'); tg.className = 'ed-inv-tag'; tg.textContent = 'On the menu'; r.appendChild(tg); }
+        else r.appendChild(btn('Add', 'Add ' + x.name + ' to ' + g.title, function () {
+          var mainEl = $('edMain'), st = mainEl ? mainEl.scrollTop : 0;
+          g.items.push(newMenuItem(t, x)); markDirty(); ed.invQ = q.value; edRender();
+          if (mainEl) mainEl.scrollTop = st;
+          var again = document.querySelector('.ed-inv input[type=search]'); if (again && q.value) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+          status('Added ' + x.name + ' to ' + g.title + '. Publishing…', 'dirty');
+        }));
+        listEl.appendChild(r);
+      });
+    }
+    q.addEventListener('input', function () { ed.invQ = q.value; paint(); });
+    cb.addEventListener('change', function () { ed.invAll = cb.checked; paint(); });
+    paint();
+    return panel;
   }
 
   function field(label, val, onchange, deferSave) {

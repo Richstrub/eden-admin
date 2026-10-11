@@ -15,7 +15,7 @@
     { id: 'bev', label: 'Beer, wine & liquor', short: 'Beverage' }
   ];
   var SECTIONS = {
-    food: ['Produce', 'Protein', 'Seafood', 'Dairy & eggs', 'Dry goods', 'Spices', 'Oils & vinegars', 'Bread & bakery', 'Frozen', 'Menu ingredients'],
+    food: ['Produce', 'Protein', 'Seafood', 'Dairy & eggs', 'Dry goods', 'Spices', 'Oils & vinegars', 'Bread & bakery', 'Frozen', 'Coffee & tea', 'Soft drinks & juice', 'Menu ingredients'],
     paper: ['To-go', 'Front of house', 'Kitchen', 'Restroom', 'Cleaning'],
     bev: ['Draught beer', 'Canned beer', 'Sparkling wine', 'White wine', 'Rosé', 'Red wine', 'Dessert wine', 'Aperitif', 'Bourbon', 'Rye', 'Malt', 'Gin', 'Vodka', 'Agave', 'Rum', 'Specialty', 'Digestif', 'Liqueurs & mixers']
   };
@@ -269,7 +269,7 @@
     var box = h('div', { cls: 'iv-empty' }, [
       h('h2', { text: 'No ' + catOf(I.cat).label.toLowerCase() + ' items yet' }),
       h('p', { text: I.cat === 'bev' ? 'Start from the menu: every wine, beer and spirit on it becomes an item, grouped by type. Then add pars and costs.'
-        : I.cat === 'food' ? 'Add items one at a time, import a spreadsheet, or start with the ingredients named on the current Kitchen menu.'
+        : I.cat === 'food' ? 'Add items one at a time, import a spreadsheet, or start from the menu: the ingredients named on the Kitchen menu, plus the coffee, tea, juice and soda on the drinks menu.'
         : 'Start with a list of common paper goods (to-go, front of house, kitchen, restroom, cleaning) and edit it to match what you buy.' })
     ]);
     box.appendChild(h('div', { cls: 'iv-empty-a' }, moreTools(true)));
@@ -279,7 +279,7 @@
     var cls = big ? 'ed-btn' : 'ed-btn small';
     return [
       I.cat === 'bev' ? h('button', { type: 'button', cls: cls, text: 'Add wines, beers & spirits from the menu', on: { click: fromMenuBev } }) : null,
-      I.cat === 'food' ? h('button', { type: 'button', cls: cls, text: 'Add ingredients from the menu', on: { click: fromMenuFood } }) : null,
+      I.cat === 'food' ? h('button', { type: 'button', cls: cls, text: 'Add ingredients, coffee & soft drinks from the menu', on: { click: fromMenuFood } }) : null,
       I.cat === 'paper' ? h('button', { type: 'button', cls: cls, text: 'Add common paper goods', on: { click: paperStarter } }) : null,
       h('label', { cls: 'ed-btn small sc-file' }, ['Import spreadsheet', h('input', { type: 'file', accept: '.xlsx,.xls,.csv', on: { change: function (ev) { var f = ev.target.files[0]; ev.target.value = ''; if (f) importFile(f); } } })]),
       h('a', { cls: 'sc-link', href: TEMPLATE, download: 'eden-inventory.xlsx', text: 'Download the inventory spreadsheet' })
@@ -311,8 +311,8 @@
             var small = /375/.test(it.bottle || '') ? '375ml' : /1\.5|magnum/i.test(it.bottle || '') ? '1.5L' : '750ml';
             out.push({ section: WINE[gl] || (gt + ' wine'), name: it.name, unit: 'bottle', pack: small, vendor: '' });
           } else if (/beer/.test(lab) || t.id === 'm-beer') {
-            if (/draught|draft|tap/.test(gl)) out.push({ section: 'Draught beer', name: it.name, unit: 'keg', pack: [it.desc, it.src].filter(Boolean).join(' · '), vendor: '' });
-            else if (/can|bottle/.test(gl)) out.push({ section: 'Canned beer', name: it.name, unit: 'case', pack: [it.desc, it.src].filter(Boolean).join(' · '), vendor: '' });
+            if (/draught|draft|tap/.test(gl)) out.push({ section: 'Draught beer', name: it.name, unit: 'keg', pack: it.desc || '', vendor: '' });
+            else if (/can|bottle/.test(gl)) out.push({ section: 'Canned beer', name: it.name, unit: 'case', pack: it.desc || '', vendor: '' });
           } else if (/spirit|liquor/.test(lab) || t.id === 'm-spirits') {
             out.push({ section: gt, name: it.name, unit: 'bottle', pack: it.desc || '', vendor: '' });
           } else if ((/cocktail|bar/.test(lab) || t.id === 'm-bar') && /aperitif|amaro|liqueur/.test(gl)) {
@@ -333,7 +333,16 @@
         P.splitParts(it.desc).forEach(function (p) { out.push({ section: 'Menu ingredients', name: p, unit: '', pack: '', vendor: '' }); });
       });
     });
-    addMany(out, 'ingredients from the menu (in “Menu ingredients”, edit each to move it to its section)');
+    // coffee & tea and soft drinks / juice from the drinks menu
+    tabs.forEach(function (t) {
+      var lab = String(t.label || '').toLowerCase();
+      (t.groups || []).forEach(function (g) {
+        var gl = String(g.title || '').toLowerCase();
+        var sec = (t.id === 'm-coffee' || /coffee|tea/.test(lab)) ? 'Coffee & tea' : ((t.id === 'm-beer' || /beer|soft/.test(lab)) && /juice|soda|soft|water/.test(gl)) ? 'Soft drinks & juice' : null;
+        if (sec) (g.items || []).filter(shown).forEach(function (it) { out.push({ section: sec, name: it.name, unit: sec === 'Coffee & tea' ? 'bag' : 'case', pack: it.desc || '', vendor: '' }); });
+      });
+    });
+    addMany(out, 'items from the menu (kitchen ingredients go in “Menu ingredients”; edit each to move it to its section)');
   }
   function paperStarter() { addMany(PAPER_STARTER.map(function (r) { return { section: r[0], name: r[1], unit: r[2], pack: '', vendor: '' }; }), 'common paper goods'); }
 

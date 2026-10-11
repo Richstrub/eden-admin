@@ -50,6 +50,10 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   on hand, and an order list by vendor. Starters: add wines/beers/spirits or ingredients from the menu,
   a common paper-goods list, or import `templates/eden-inventory.xlsx`. One-time setup: run
   `supabase/inventory.sql` (after `access-and-timeoff.sql`).
+- **Menu ↔ inventory**: in the menu editor's Wine, Beer & Soft Drinks, Spirits and Coffee & Tea tabs
+  (not Kitchen or Cocktails), the item-name field suggests matching inventory items (best fit for the
+  section first; items already on the menu are greyed out) and can add a new name to the inventory.
+  "+ From inventory" under each section lists inventory items not yet on the menu to add with one click.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles
