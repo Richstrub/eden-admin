@@ -56,6 +56,12 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   (not Kitchen or Cocktails), the item-name field suggests matching inventory items (best fit for the
   section first; items already on the menu are greyed out) and can add a new name to the inventory.
   "+ From inventory" under each section lists inventory items not yet on the menu to add with one click.
+- **Notes** (top bar, far right; everyone): full-screen notes for iPad + Apple Pencil (pressure ink,
+  palm rejection, eraser, undo) or typed text (iPad Scribble turns Pencil writing into text in the Text
+  tab). "Convert to text" reads the handwriting with Tesseract (loaded on demand; neat print reads best).
+  Notes autosave and are private to their author. Email (mailto), Share (handwriting attached, iPad share
+  sheet), or "Add to to-do" (one per line or one item). **To-do** (`#todo`, top bar): shared list with due
+  dates, overdue flags, details and a link back to the source note. One-time setup: `supabase/notes.sql`.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

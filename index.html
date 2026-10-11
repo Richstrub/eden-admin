@@ -61,6 +61,10 @@
     </nav>
     <div class="ed-status" id="edStatus" role="status">Loading…</div>
     <div class="ed-who" id="who"></div>
+    <nav class="ed-nav ed-nav-r" aria-label="Notes and to-do">
+      <a href="#todo" data-view="todo">To-do</a>
+      <button type="button" class="ed-notesbtn" id="notesBtn" title="Write a note (Apple Pencil works here)">Notes</button>
+    </nav>
     <div class="ed-actions">
       <a class="ed-btn ghost" id="viewSite" href="#" target="_blank" rel="noopener">View website</a>
       <button class="ed-btn ghost" type="button" data-act="signout">Sign out</button>
@@ -94,6 +98,11 @@
           <span class="tile-t">Inventory</span>
           <span class="tile-d">Count food, paper goods, and beer, wine &amp; liquor. See what&rsquo;s below par, what to order, and the value on hand.</span>
         </a>
+        <a class="tile" href="#todo">
+          <span class="tile-k">Everyone</span>
+          <span class="tile-t">Notes &amp; To-do</span>
+          <span class="tile-d">Write notes by hand with Apple Pencil or type them, email them, or turn them into to-dos on the shared list.</span>
+        </a>
         <a class="tile" href="team/" target="_blank" rel="noopener">
           <span class="tile-k">Team</span>
           <span class="tile-t">Staff Page &amp; Message Board</span>
@@ -113,6 +122,7 @@
   <section class="view sched" id="viewSchedule" hidden></section>
   <section class="view prep" id="viewPrep" hidden></section>
   <section class="view inv" id="viewInventory" hidden></section>
+  <section class="view todo" id="viewTodo" hidden></section>
 </div>
 
 <script src="js/config.js"></script>
@@ -121,6 +131,7 @@
 <script src="js/schedule.js"></script>
 <script src="js/prep.js"></script>
 <script src="js/inventory.js"></script>
+<script src="js/notes.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>
