@@ -576,3 +576,16 @@ body.nt-open #app{visibility:hidden!important}
 .nt,.nt *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .nt input,.nt textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 .nt-paper{overscroll-behavior:contain}
+
+/* Notes: check the conversion */
+.nt-review .sc-card{width:min(900px,100%)}
+.nt-rv-list{display:grid;gap:10px;max-height:60vh;overflow:auto}
+.nt-rv-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px;align-items:center;padding:8px;border:1px solid var(--line);background:#fff}
+.nt-rv-row.unsure{border-color:#d9a25b;background:#fffaf2}
+.nt-rv-shot{overflow:hidden;background:#fff;border-right:1px solid var(--line);padding-right:8px}
+.nt-rv-img{display:block;max-width:100%;max-height:70px;height:auto;width:auto}
+.nt-rv-txt{display:grid;gap:4px}
+.nt-rv-txt input{font:inherit;font-size:1.05rem;padding:9px 11px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:2px;width:100%}
+.nt-rv-txt input:focus{outline:2px solid var(--ember-hot);outline-offset:-1px;border-color:transparent}
+.nt-rv-txt span{font-size:.72rem;color:#9a5a12}
+@media (max-width:700px){.nt-rv-row{grid-template-columns:1fr}.nt-rv-shot{border-right:0;padding-right:0}}

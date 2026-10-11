@@ -3,8 +3,8 @@
  * Notes open in a full-screen window from the top bar. Handwriting: draw with Apple Pencil (pressure
  * sensitive; your palm and fingers don't draw once the Pencil is used, fingers scroll instead). Text: on an
  * iPad, writing with Apple Pencil in the text box is turned into typed text by iPadOS (Scribble). "Convert
- * to text" also tries to read the handwriting page (Tesseract, loaded only when asked; neat printing reads
- * best). Notes save automatically and are private to the person who wrote them. A note can be emailed,
+ * to text" reads the handwriting page line by line (Tesseract, loaded only when asked; neat printing reads
+ * best) and shows each line beside what was read so it can be corrected. Notes save automatically and are private to the person who wrote them. A note can be emailed,
  * shared (with the handwriting attached, where the device supports it) or filed into the To-do list.
  *
  * Data: Supabase tables notes and todos (supabase/notes.sql).
@@ -291,25 +291,151 @@
     return cv;
   }
 
-  /* ---------- convert, email, share ---------- */
+  /* ---------- email, share ---------- */
+  /* ---------- convert handwriting to text ----------
+   * The reader (Tesseract) was made for print, so the page is cleaned up for it first:
+   *   1. strokes are grouped into lines of writing (by where they sit on the page, not by the ruled lines,
+   *      so big or slanted writing still groups correctly; dots and crossbars join their line),
+   *   2. each line is drawn on its own in solid black, scaled to a steady size with an even pen width,
+   *   3. each line is read as a single line of text,
+   * and then every line is shown next to what was read so mistakes are quick to fix before it's used. */
+  function strokeBox(s) {
+    var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    s.p.forEach(function (q) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; });
+    return { s: s, x0: x0, y0: y0, x1: x1, y1: y1, h: Math.max(1, y1 - y0), cy: (y0 + y1) / 2 };
+  }
+  function segmentLines(ink) {
+    var boxes = ink.filter(function (s) { return !s.e && s.p.length; }).map(strokeBox);
+    if (!boxes.length) return [];
+    var hs = boxes.map(function (b) { return b.h; }).sort(function (a, b) { return a - b; });
+    var med = hs[Math.floor(hs.length / 2)] || 20;
+    var big = boxes.filter(function (b) { return b.h >= med * 0.35 || b.h >= 12; }).sort(function (a, b) { return a.cy - b.cy; });
+    var small = boxes.filter(function (b) { return big.indexOf(b) === -1; });
+    var lines = [];
+    big.forEach(function (b) {
+      var best = null, bestOv = 0;
+      lines.forEach(function (L) {
+        var ov = Math.min(L.y1, b.y1) - Math.max(L.y0, b.y0);
+        var need = 0.45 * Math.min(b.h, L.core);
+        if (ov > need && ov > bestOv) { best = L; bestOv = ov; }
+      });
+      if (best) { best.items.push(b); best.y0 = Math.min(best.y0, b.y0); best.y1 = Math.max(best.y1, b.y1); best.core = Math.max(best.core, b.h); best.cys.push(b.cy); }
+      else lines.push({ items: [b], y0: b.y0, y1: b.y1, core: b.h, cys: [b.cy] });
+    });
+    lines.forEach(function (L) { L.mid = L.cys.reduce(function (a, c) { return a + c; }, 0) / L.cys.length; });
+    // dots, accents, crossbars: to the line whose middle is closest
+    small.forEach(function (b) {
+      var best = null, d = 1e9;
+      lines.forEach(function (L) { var dd = Math.abs(L.mid - b.cy) - (b.cy >= L.y0 - L.core * 0.6 && b.cy <= L.y1 ? 1e6 : 0); if (dd < d) { d = dd; best = L; } });
+      if (best) { best.items.push(b); best.y0 = Math.min(best.y0, b.y0); best.y1 = Math.max(best.y1, b.y1); }
+      else lines.push({ items: [b], y0: b.y0, y1: b.y1, core: b.h, mid: b.cy });
+    });
+    lines.sort(function (a, b) { return a.mid - b.mid; });
+    return lines.map(function (L) {
+      var x0 = 1e9, x1 = -1e9; L.items.forEach(function (b) { x0 = Math.min(x0, b.x0); x1 = Math.max(x1, b.x1); });
+      return { strokes: L.items.map(function (b) { return b.s; }), x0: x0, x1: x1, y0: L.y0, y1: L.y1, core: L.core };
+    });
+  }
+  function lineImage(line, erasers) {
+    var target = 64, h = Math.max(line.core, 14);             // letters about 64px tall for the reader
+    var sc = Math.max(0.4, Math.min(4, target / h)), pad = 24, penPx = 4.2;
+    var w = Math.ceil((line.x1 - line.x0) * sc + pad * 2), hh = Math.ceil((line.y1 - line.y0) * sc + pad * 2);
+    var cv = document.createElement('canvas'); cv.width = Math.max(40, w); cv.height = Math.max(40, hh);
+    var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    var layer = document.createElement('canvas'); layer.width = cv.width; layer.height = cv.height;
+    var lc = layer.getContext('2d'); lc.setTransform(sc, 0, 0, sc, pad - line.x0 * sc, pad - line.y0 * sc);
+    line.strokes.forEach(function (s) {
+      var t = { c: '#000', w: penPx / sc, p: s.p.map(function (q) { return [q[0], q[1], 50]; }) }; // even width: pressure off
+      drawStroke(lc, t);
+    });
+    (erasers || []).forEach(function (s) { drawStroke(lc, s); });
+    ctx.drawImage(layer, 0, 0);
+    return cv;
+  }
+  function cleanLine(t) {
+    return String(t || '').replace(/\s+/g, ' ')
+      .replace(/^[\s|_~`'".,:;\-—=]+|[\s|_~`'"=]+$/g, '')
+      .replace(/(^|\s)\|(\s|$)/g, '$1I$2').replace(/(^|\s)0(?=[a-z])/g, '$1o')
+      .trim();
+  }
+  var OCR = { worker: null };
+  function getWorker(onProg) {
+    if (OCR.worker) return Promise.resolve(OCR.worker);
+    return (window.Tesseract ? Promise.resolve() : loadScript(TESSERACT)).then(function () {
+      var T5 = window.Tesseract;
+      if (!T5.createWorker) return null;
+      return Promise.resolve(T5.createWorker('eng', 1, { logger: function (m) { if (onProg && m.status && /load|init/i.test(m.status)) onProg('Getting the reader ready…'); } })).then(function (w) {
+        return Promise.resolve(w.setParameters({ tessedit_pageseg_mode: (T5.PSM && T5.PSM.SINGLE_LINE) || '7', preserve_interword_spaces: '1' })).then(function () { OCR.worker = w; return w; });
+      });
+    });
+  }
   function convert() {
     var b = N.el.querySelector('.nt-convert');
-    var img = inkImage(2, true);
-    if (!img) { toast('Write something first.', 'err'); return; }
-    b.disabled = true; b.textContent = 'Reading handwriting…';
-    (window.Tesseract ? Promise.resolve() : loadScript(TESSERACT)).then(function () {
-      return window.Tesseract.recognize(img, 'eng', { logger: function (m) { if (m.status === 'recognizing text') b.textContent = 'Reading… ' + Math.round((m.progress || 0) * 100) + '%'; } });
-    }).then(function (res) {
-      var txt = String(res && res.data && res.data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-      b.disabled = false; b.textContent = 'Convert to text';
-      if (!txt) { toast('Couldn’t read that handwriting. Try printing more clearly, or use the Text tab with Scribble.', 'err'); return; }
-      N.note.body = (N.note.body ? N.note.body.replace(/\s+$/, '') + '\n\n' : '') + txt;
-      N.text.value = N.note.body; changed(); setMode('text');
-      toast('Converted. Check the text and fix anything it misread.', 'ok');
+    var ink = N.note.ink || [];
+    var lines = segmentLines(ink), erasers = ink.filter(function (s) { return s.e; });
+    if (!lines.length) { toast('Write something first.', 'err'); return; }
+    var imgs = lines.map(function (L) { return lineImage(L, erasers); });
+    var label = function (t) { b.textContent = t; };
+    b.disabled = true; label('Reading handwriting…');
+    var out = [];
+    getWorker(label).then(function (w) {
+      var i = 0;
+      function next() {
+        if (i >= imgs.length) return Promise.resolve();
+        label('Reading line ' + (i + 1) + ' of ' + imgs.length + '…');
+        var img = imgs[i];
+        var job = w ? w.recognize(img) : window.Tesseract.recognize(img, 'eng');
+        return Promise.resolve(job).then(function (r) {
+          var d = (r && r.data) || {};
+          out.push({ img: img, text: cleanLine(d.text), conf: typeof d.confidence === 'number' ? d.confidence : null });
+          i++; return next();
+        });
+      }
+      return next();
+    }).then(function () {
+      b.disabled = false; label('Convert to text');
+      review(out);
     }, function () {
-      b.disabled = false; b.textContent = 'Convert to text';
+      b.disabled = false; label('Convert to text');
       toast('Couldn’t load the handwriting reader. Check the connection and try again, or use the Text tab with Scribble.', 'err');
     });
+  }
+  // Each line of handwriting next to what was read, ready to fix, then "Use this text".
+  function review(rows) {
+    var back = h('div', { cls: 'sc-modal nt-modal nt-review', role: 'dialog', 'aria-modal': 'true' });
+    var inputs = [];
+    var list = h('div', { cls: 'nt-rv-list' });
+    rows.forEach(function (r, i) {
+      var inp = h('input', { type: 'text', value: r.text, 'aria-label': 'Line ' + (i + 1), autocomplete: 'off', autocapitalize: 'sentences', spellcheck: 'true' });
+      inputs.push(inp);
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (inputs[i + 1]) inputs[i + 1].focus(); else use(); } });
+      var unsure = r.conf != null && r.conf < 60;
+      var shot = r.img; shot.className = 'nt-rv-img';
+      list.appendChild(h('div', { cls: 'nt-rv-row' + (unsure ? ' unsure' : '') }, [
+        h('div', { cls: 'nt-rv-shot' }, shot),
+        h('div', { cls: 'nt-rv-txt' }, [inp, unsure ? h('span', { text: 'Not sure about this line, please check it' }) : null])
+      ]));
+    });
+    function close() { back.remove(); }
+    function use() {
+      var txt = inputs.map(function (x) { return x.value.trim(); }).filter(Boolean).join('\n');
+      close();
+      if (!txt) { toast('Nothing to add.', 'err'); return; }
+      N.note.body = (N.note.body ? N.note.body.replace(/\s+$/, '') + '\n\n' : '') + txt;
+      N.text.value = N.note.body; changed(); setMode('text');
+      toast('Added to the Text page.', 'ok');
+    }
+    back.appendChild(h('div', { cls: 'sc-card' }, [
+      h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Check the conversion' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: close } })]),
+      h('div', { cls: 'sc-card-b' }, [
+        h('p', { cls: 'sc-sub', text: rows.length + ' line' + (rows.length === 1 ? '' : 's') + ' found. Fix anything it misread (Enter goes to the next line), then use the text. Tip: printed letters with a little space between words read best; for cursive, the Text tab with Scribble is more accurate.' }),
+        list
+      ]),
+      h('div', { cls: 'sc-card-f' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: close } }),
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Use this text', on: { click: use } })])
+    ]));
+    N.el.appendChild(back);
+    setTimeout(function () { var first = inputs.filter(function (x, i) { return rows[i].conf != null && rows[i].conf < 60; })[0] || inputs[0]; if (first) first.focus(); }, 40);
   }
   function noteText() {
     var body = (N.note.body || '').trim();
@@ -461,6 +587,6 @@
     init: function (ctx) { C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; },
     open: open, close: close,
     showTodo: function (ctx) { if (ctx) window.EdenNotes.init(ctx); T.el = ctx.el; T.loaded = false; renderTodo(); loadTodos().then(renderTodo); },
-    _test: { N: N, T: T, inkImage: inkImage, mailUrl: mailUrl }
+    _test: { N: N, T: T, inkImage: inkImage, mailUrl: mailUrl, segmentLines: segmentLines }
   };
 })();
