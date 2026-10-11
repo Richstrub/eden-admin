@@ -23,6 +23,7 @@ create table if not exists public.events (
   updated_at  timestamptz not null default now()
 );
 create index if not exists events_date on public.events (date);
+alter table public.events add column if not exists note_id text;   -- the note an event was saved from
 
 grant select, insert, update, delete on public.events to authenticated;
 alter table public.events enable row level security;

@@ -220,7 +220,7 @@
 
   /* ---------- event details / editor ---------- */
   function modal(titleText, body, foot) {
-    var back = h('div', { cls: 'sc-modal', role: 'dialog', 'aria-modal': 'true' });
+    var back = h('div', { cls: 'sc-modal' + (document.body.classList.contains('nt-open') ? ' nt-modal' : ''), role: 'dialog', 'aria-modal': 'true' });
     function close() { back.remove(); document.removeEventListener('keydown', esc); }
     function esc(ev) { if (ev.key === 'Escape') close(); }
     back.appendChild(h('div', { cls: 'sc-card' }, [h('div', { cls: 'sc-card-h' }, [h('h2', { text: titleText }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: close } })]), h('div', { cls: 'sc-card-b' }, body), foot ? h('div', { cls: 'sc-card-f' }, foot(close)) : null]));
@@ -232,7 +232,7 @@
   function showEvent(e) {
     var t = typeOf(e.type), cl = clashes(e), d = parseDay(e.date);
     modal(e.title || 'Event', [
-      h('p', { cls: 'cl-dtype', style: '--c:' + t.color }, [h('i'), t.label + (e.source === 'beo' ? ' · from a BEO' : '')]),
+      h('p', { cls: 'cl-dtype', style: '--c:' + t.color }, [h('i'), t.label + (e.source === 'beo' ? ' · from a BEO' : e.source === 'note' ? ' · from a note' : '')]),
       h('dl', { cls: 'cl-dl' }, [
         h('dt', { text: 'When' }), h('dd', { text: d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + ' · ' + timeText(e) }),
         e.room ? h('dt', { text: 'Where' }) : null, e.room ? h('dd', { text: e.room }) : null,
@@ -241,12 +241,14 @@
       ]),
       cl.length ? h('p', { cls: 'cl-warn', text: 'Double-booked: ' + cl.map(function (o) { return o.title + ' (' + timeText(o) + ')'; }).join(', ') + ' in the ' + e.room + '.' }) : null
     ], function (close) {
-      return [h('button', { type: 'button', cls: 'ed-btn small', text: 'Day view', on: { click: function () { close(); openDay(d); } } }), h('span', { cls: 'sc-sp' }),
+      return [h('button', { type: 'button', cls: 'ed-btn small', text: 'Day view', on: { click: function () { close(); openDay(d); } } }),
+        e.note_id && window.EdenNotes && window.EdenNotes.openNote ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the note', on: { click: function () { close(); window.EdenNotes.openNote(e.note_id); } } }) : null,
+        h('span', { cls: 'sc-sp' }),
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn', text: 'Edit', on: { click: function () { close(); editEvent(e); } } }) : h('button', { type: 'button', cls: 'ed-btn', text: 'Close', on: { click: close } })];
     });
   }
   function editEvent(e, onDate) {
-    var isNew = !e;
+    var isNew = !e || !!e._new;
     e = e || { id: uid(), title: '', type: 'private', date: iso(onDate || (C.view === 'month' && !isCurrent() ? firstOfMonth(C.day) : today())), all_day: false, start: '18:00', end: '21:00', room: '', guests: null, notes: '', source: 'manual' };
     var f = {
       title: h('input', { type: 'text', value: e.title || '', placeholder: 'e.g. Smith rehearsal dinner' }),
@@ -293,18 +295,28 @@
         start: f.allDay.checked ? '' : f.start.value, end: f.allDay.checked ? '' : f.end.value, room: f.room.value.trim(),
         guests: f.guests.value === '' ? null : Math.max(0, parseInt(f.guests.value, 10) || 0), notes: f.notes.value.replace(/\s+$/, ''),
         source: e.source || 'manual', beo_id: e.beo_id || null, created_by: e.created_by || (C.ctx && C.ctx.name) || '' };
+      if (e.note_id) row.note_id = e.note_id;
       if (!row.title) { msg.textContent = 'Name the event.'; f.title.focus(); return; }
       if (!row.date) { msg.textContent = 'Pick a date.'; f.date.focus(); return; }
       if (!row.all_day && !row.start) { msg.textContent = 'Add a start time, or tick All day.'; f.start.focus(); return; }
-      var others = C.events.filter(function (x) { return x.id !== row.id; });
-      var cl = clashes(row, others);
-      if (cl.length && !confirm('The ' + row.room + ' is already booked then: ' + cl.map(function (o) { return o.title + ' (' + timeText(o) + ')'; }).join(', ') + '. Save anyway?')) return;
-      msg.textContent = 'Saving…';
+      msg.textContent = 'Checking the calendar…';
+      // check that day's bookings straight from the database (the calendar may be showing another month)
+      C.ctx.sb.from('events').select('*').eq('date', row.date).then(function (dr) {
+        var others = ((dr && dr.data) || C.events).filter(function (x) { return x.id !== row.id; });
+        var cl = clashes(row, others);
+        if (cl.length && !confirm('The ' + row.room + ' is already booked then: ' + cl.map(function (o) { return o.title + ' (' + timeText(o) + ')'; }).join(', ') + '. Save anyway?')) { msg.textContent = ''; return; }
+        msg.textContent = 'Saving…';
+        write(row);
+      });
+    }
+    function write(row) {
       C.ctx.sb.from('events').upsert(row, { onConflict: 'id' }).then(function (r) {
+        if (r.error && row.note_id && /note_id/.test(r.error.message || '')) { delete row.note_id; return write(row); } // older table without note_id
         if (r.error) { msg.textContent = isPerm(r.error) ? 'Only the Owner and Managers can change the calendar.' : 'Couldn’t save. Check your connection and try again.'; return; }
         var i = C.events.findIndex(function (x) { return x.id === row.id; });
         if (i === -1) C.events.push(row); else C.events[i] = row;
-        close(); status((isNew ? 'Added ' : 'Saved ') + row.title + '.', 'ok');
+        close(); status((isNew ? 'Added ' : 'Saved ') + row.title + (C.ctx.fromNotes ? ' to the calendar on ' + parseDay(row.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '') + '.', 'ok');
+        if (C.ctx.onSaved) C.ctx.onSaved(row);
         var d = parseDay(row.date), r2 = rangeFor();
         if (d < r2[0] || d > r2[1]) { C.day = d; if (C.view === 'month') C.day = firstOfMonth(d); go(); } else render();
       });
@@ -316,6 +328,11 @@
       var first = !C.ctx; C.ctx = ctx; C.el = ctx.el;
       if (first || ctx.fresh) { C.view = ctx.view || C.view; }
       go();
+    },
+    // open the Add event form pre-filled (used by Notes)
+    addEvent: function (ctx, prefill) {
+      C.ctx = Object.assign({}, C.ctx || {}, ctx);
+      editEvent(Object.assign({ id: uid(), title: '', type: 'other', date: iso(today()), all_day: false, start: '', end: '', room: '', guests: null, notes: '', source: 'manual' }, prefill, { _new: true }));
     },
     _test: { C: C, clashes: clashes }
   };

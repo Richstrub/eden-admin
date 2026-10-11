@@ -476,10 +476,10 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 @media (max-width:1100px){.ed-qa-row,.ed-qa-row.is-wine{grid-template-columns:1fr 1fr}.ed-qa-name,.ed-qa-row .desc{grid-column:1/-1}.ed-qa-go{grid-column:1/-1}}
 
 /* ---------- top bar: To-do and Notes on the far right ---------- */
-.ed-nav-r{order:6;align-items:center}
+.ed-nav-r{align-items:center}
 .ed-nav .ed-notesbtn{color:var(--ivory);border:1px solid rgba(243,238,229,.35);border-radius:2px;padding:6px 14px;margin-left:4px}
 .ed-nav .ed-notesbtn:hover{border-color:var(--ember-hot);color:var(--ember-hot)}
-.ed-actions{order:5;margin-left:auto}
+
 body.nt-open{overflow:hidden}
 
 /* ---------- Notes window ---------- */
@@ -779,3 +779,15 @@ body.nt-open #app{visibility:hidden!important}
 .sc-f select{font:inherit;font-size:.95rem;padding:10px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:2px;width:100%}
 .sc-f textarea{font:inherit;font-size:.95rem;padding:10px 12px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:2px;width:100%;resize:vertical}
 @media print{#viewCalendar .cl-tools,.tm-recipes .cl-tools{display:none!important}}
+
+/* ---------- header: account row on top (far right), sections below ---------- */
+.ed-bar{flex-direction:column;align-items:stretch;gap:10px;flex-wrap:nowrap}
+.ed-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ed-top .ed-brand{margin-right:auto}
+.ed-acct{display:flex;gap:8px;align-items:center}
+.ed-acct .ed-btn.small{color:var(--ivory);border-color:rgba(243,238,229,.35);background:none}
+.ed-acct .ed-btn.small:hover{border-color:var(--ember-hot);color:var(--ember-hot);background:none}
+.ed-row2{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.ed-row2 .ed-status{flex:1;min-width:140px}
+.ed-row2 .ed-actions{margin-left:auto}
+@media (max-width:640px){.ed-top{gap:8px}.ed-acct .ed-btn.small{padding:6px 9px}}

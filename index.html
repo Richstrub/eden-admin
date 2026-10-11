@@ -48,28 +48,34 @@
 
 <div class="ed" id="app" hidden>
   <div class="ed-bar">
-    <div class="ed-brand">EDEN <span>Staff</span></div>
-    <nav class="ed-nav" aria-label="Staff sections">
-      <a href="#home" data-view="home">Home</a>
-      <a href="#menu" data-view="menu" data-menu>Menu</a>
-      <a href="#schedule" data-view="schedule" data-mgr>Schedule</a>
-      <a href="#calendar" data-view="calendar">Calendar</a>
-      <a href="#prep" data-view="prep" data-prep>Prep List</a>
-      <a href="#inventory" data-view="inventory" data-prep>Inventory</a>
-      <a href="#recipes" data-view="recipes">Recipes</a>
-      <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
-      <button type="button" disabled title="Coming in a later phase">Reservations</button>
-    </nav>
-    <div class="ed-status" id="edStatus" role="status">Loading…</div>
-    <div class="ed-who" id="who"></div>
-    <nav class="ed-nav ed-nav-r" aria-label="Notes and to-do">
-      <a href="#todo" data-view="todo">To-do</a>
-      <button type="button" class="ed-notesbtn" id="notesBtn" title="Write a note (Apple Pencil works here)">Notes</button>
-    </nav>
-    <div class="ed-actions">
-      <a class="ed-btn ghost" id="viewSite" href="#" target="_blank" rel="noopener">View website</a>
-      <button class="ed-btn ghost" type="button" data-act="signout">Sign out</button>
-      <button class="ed-btn" id="edSave" type="button">Publish changes</button>
+    <div class="ed-top">
+      <div class="ed-brand">EDEN <span>Staff</span></div>
+      <div class="ed-who" id="who"></div>
+      <nav class="ed-nav ed-nav-r" aria-label="Notes and to-do">
+        <a href="#todo" data-view="todo">To-do</a>
+        <button type="button" class="ed-notesbtn" id="notesBtn" title="Write a note (Apple Pencil works here)">Notes</button>
+      </nav>
+      <div class="ed-acct">
+        <a class="ed-btn ghost small" id="viewSite" href="#" target="_blank" rel="noopener">View website</a>
+        <button class="ed-btn ghost small" type="button" data-act="signout">Sign out</button>
+      </div>
+    </div>
+    <div class="ed-row2">
+      <nav class="ed-nav" aria-label="Staff sections">
+        <a href="#home" data-view="home">Home</a>
+        <a href="#menu" data-view="menu" data-menu>Menu</a>
+        <a href="#schedule" data-view="schedule" data-mgr>Schedule</a>
+        <a href="#calendar" data-view="calendar">Calendar</a>
+        <a href="#prep" data-view="prep" data-prep>Prep List</a>
+        <a href="#inventory" data-view="inventory" data-prep>Inventory</a>
+        <a href="#recipes" data-view="recipes">Recipes</a>
+        <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
+        <button type="button" disabled title="Coming in a later phase">Reservations</button>
+      </nav>
+      <div class="ed-status" id="edStatus" role="status">Loading…</div>
+      <div class="ed-actions">
+        <button class="ed-btn" id="edSave" type="button">Publish changes</button>
+      </div>
     </div>
   </div>
   <section class="view home" id="viewHome" hidden>

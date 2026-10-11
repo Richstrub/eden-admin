@@ -111,7 +111,7 @@
         document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
         document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         show('app');
-        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name });
+        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr() });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
       });

@@ -118,6 +118,7 @@
         h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
         share,
         h('button', { type: 'button', cls: 'nt-b', text: 'Add to to-do', on: { click: toTodo } }),
+        C.canCal && window.EdenCal ? h('button', { type: 'button', cls: 'nt-b nt-calbtn', text: 'Add to calendar', title: 'Save this note as an event on the calendar', on: { click: toCalendar } }) : null,
         h('button', { type: 'button', cls: 'nt-b', text: 'New', title: 'Start a new note', on: { click: newNote } }),
         h('button', { type: 'button', cls: 'nt-b nt-close', 'aria-label': 'Close notes', text: 'Done', on: { click: close } })
       ])
@@ -575,6 +576,34 @@
     }
   }
 
+  /* ---------- save a note as a calendar event ----------
+   * Opens the calendar's Add event form filled in from the note: the title (or first line) becomes the
+   * event name, the note becomes the event notes, and a date or time written in the note (e.g. "Oct 24",
+   * "10/24", "7pm", "7:30 pm") is picked up. Only the Owner and Managers can add to the calendar. */
+  var MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  function findWhen(text) {
+    var t = String(text || ''), out = {}, now = new Date(), y = now.getFullYear(), m, d = null;
+    if ((m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i.exec(t))) d = new Date(+(m[3] || y), MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()), +m[2]);
+    else if ((m = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/.exec(t))) d = new Date(m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : y, +m[1] - 1, +m[2]);
+    else if (/\btomorrow\b/i.test(t)) d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    if (d && !isNaN(d)) { if (!m || !m[3]) { var td = new Date(now.getFullYear(), now.getMonth(), now.getDate()); if (d < td && (td - d) > 60 * 864e5) d.setFullYear(d.getFullYear() + 1); } out.date = iso(d); }
+    var tm = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i.exec(t) || /\b([01]?\d|2[0-3]):([0-5]\d)\b/.exec(t);
+    if (tm) { var H = +tm[1], M = +(tm[2] || 0); if (tm[3]) { var pm = /p/i.test(tm[3]); if (H === 12) H = pm ? 12 : 0; else if (pm) H += 12; } if (H < 24) out.start = String(H).padStart(2, '0') + ':' + String(M).padStart(2, '0'); }
+    var g = /\b(\d{1,3})\s*(guests|people|ppl|pax|covers)\b/i.exec(t); if (g) out.guests = +g[1];
+    return out;
+  }
+  function toCalendar() {
+    var body = (N.note.body || '').trim(), title = (N.note.title || '').trim() || body.split('\n')[0].slice(0, 120);
+    if (!title && !(N.note.ink && N.note.ink.length)) { toast('Write something first.', 'err'); return; }
+    var w = findWhen(title + '\n' + body);
+    saveNote().then(function () {
+      window.EdenCal.addEvent({ sb: C.sb, name: C.name, canEdit: true, fromNotes: true, status: function (t, k) { toast(t, k); } }, {
+        title: title || 'Note', type: 'other', date: w.date || iso(new Date()), all_day: !w.start, start: w.start || '', end: '', guests: w.guests || null,
+        notes: body || '(Handwritten note: open it from Notes.)', source: 'note', note_id: N.note.id
+      });
+    });
+  }
+
   /* ---------- To-do page ---------- */
   function loadTodos() {
     return C.sb.from('todos').select('*').order('created_at').then(function (r) {
@@ -662,7 +691,8 @@
   }
 
   window.EdenNotes = {
-    init: function (ctx) { C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; },
+    init: function (ctx) { C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal; },
+    openNote: function (id) { openNote(id); },
     open: open, close: close,
     showTodo: function (ctx) { if (ctx) window.EdenNotes.init(ctx); T.el = ctx.el; T.loaded = false; renderTodo(); loadTodos().then(renderTodo); },
     _test: { N: N, T: T, inkImage: inkImage, mailUrl: mailUrl, D: D, spoken: spoken, segmentLines: segmentLines }
