@@ -54,6 +54,7 @@
       <a href="#menu" data-view="menu" data-menu>Menu</a>
       <a href="#schedule" data-view="schedule" data-mgr>Schedule</a>
       <a href="#prep" data-view="prep" data-prep>Prep List</a>
+      <a href="#inventory" data-view="inventory" data-prep>Inventory</a>
       <button type="button" disabled title="Coming in a later phase">Catering &amp; BEOs</button>
       <button type="button" disabled title="Coming in a later phase">Calendar</button>
       <button type="button" disabled title="Coming in a later phase">Reservations</button>
@@ -88,6 +89,11 @@
           <span class="tile-t">Prep List</span>
           <span class="tile-d">A printable prep sheet built from the current Kitchen menu, with your pars, by dish or combined.</span>
         </a>
+        <a class="tile" href="#inventory" data-prep>
+          <span class="tile-k">Kitchen &amp; Bar</span>
+          <span class="tile-t">Inventory</span>
+          <span class="tile-d">Count food, paper goods, and beer, wine &amp; liquor. See what&rsquo;s below par, what to order, and the value on hand.</span>
+        </a>
         <a class="tile" href="team/" target="_blank" rel="noopener">
           <span class="tile-k">Team</span>
           <span class="tile-t">Staff Page &amp; Message Board</span>
@@ -106,6 +112,7 @@
   </div>
   <section class="view sched" id="viewSchedule" hidden></section>
   <section class="view prep" id="viewPrep" hidden></section>
+  <section class="view inv" id="viewInventory" hidden></section>
 </div>
 
 <script src="js/config.js"></script>
@@ -113,6 +120,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script src="js/schedule.js"></script>
 <script src="js/prep.js"></script>
+<script src="js/inventory.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>

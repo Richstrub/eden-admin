@@ -44,6 +44,12 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   Combined. "Bar prep" switches to a separate bar list built from the cocktail menu. Print opens a preview
   of the page; "Confirm print" prints exactly what's shown. Pars, added items and removed lines are kept in
   that computer's browser.
+- **Inventory** (`#inventory`, Owner, Managers, Kitchen): three inventories — Food, Paper goods, and
+  Beer, wine & liquor — each with items (section, unit, pack size, vendor, par, cost) and dated counts.
+  Type what's on hand; it saves as you go and shows the last count, what to order (par − on hand), value
+  on hand, and an order list by vendor. Starters: add wines/beers/spirits or ingredients from the menu,
+  a common paper-goods list, or import `templates/eden-inventory.xlsx`. One-time setup: run
+  `supabase/inventory.sql` (after `access-and-timeoff.sql`).
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
 
 ## Roles

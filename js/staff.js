@@ -119,21 +119,21 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory' };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
   function route() {
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, '');
-    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler') || (v === 'prep' && !canPrep())) v = 'home';
+    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep())) v = 'home';
     if (('#' + v) !== location.hash) history.replaceState(null, '', '#' + v);
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
     document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : 'Eden Staff';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : 'Eden Staff';
     if (v === 'menu') {
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
       else if (!store.loaded) status('Loading the menu…');
@@ -141,6 +141,11 @@
     } else if (v === 'schedule') {
       status('');
       if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
+    } else if (v === 'inventory') {
+      status('');
+      if (!store.loaded) loadAll().catch(function () {}); // menu, for "add from the menu" 
+      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName,
+        getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'prep') {
       status('');
       showPrep();
