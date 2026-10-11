@@ -18,7 +18,7 @@
   if (!window.supabase || !CFG.supabase || !CFG.supabase.url) { $('loadingMsg').textContent = 'Could not load. Check your internet connection and reload.'; return; }
   var sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.key);
   var me = null, session = null, started = false, week = monday(new Date());
-  var view = 'week', month = firstOfMonth(new Date()), myOff = [], monthData = null, pickedDay = null;
+  var view = 'week', dayDate = new Date(), month = firstOfMonth(new Date()), myOff = [], monthData = null, pickedDay = null;
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -132,19 +132,31 @@
   }
 
   /* ---------- schedule ---------- */
-  $('prevWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() - 1, 1); else week = addDays(week, -7); loadView(); };
-  $('nextWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() + 1, 1); else week = addDays(week, 7); loadView(); };
-  $('thisWeek').onclick = function () { if (view === 'month') month = firstOfMonth(new Date()); else week = monday(new Date()); loadView(); };
-  $('viewWeek').onclick = function () { if (view === 'week') return; view = 'week'; week = monday(pickedDay ? parseDay(pickedDay) : (iso(month) === iso(firstOfMonth(new Date())) ? new Date() : month)); loadView(); };
-  $('viewMonth').onclick = function () { if (view === 'month') return; view = 'month'; month = firstOfMonth(addDays(week, 3)); pickedDay = null; loadView(); };
+  $('prevWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() - 1, 1); else if (view === 'day') dayDate = addDays(dayDate, -1); else week = addDays(week, -7); loadView(); };
+  $('nextWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() + 1, 1); else if (view === 'day') dayDate = addDays(dayDate, 1); else week = addDays(week, 7); loadView(); };
+  $('thisWeek').onclick = function () { if (view === 'month') month = firstOfMonth(new Date()); else if (view === 'day') dayDate = new Date(); else week = monday(new Date()); loadView(); };
+  $('viewDay').onclick = function () { openDay(new Date()); };
+  $('viewWeek').onclick = function () {
+    if (view === 'week') return;
+    week = monday(view === 'day' ? dayDate : pickedDay ? parseDay(pickedDay) : (iso(month) === iso(firstOfMonth(new Date())) ? new Date() : month));
+    view = 'week'; loadView();
+  };
+  $('viewMonth').onclick = function () { if (view === 'month') return; month = firstOfMonth(view === 'day' ? dayDate : addDays(week, 3)); view = 'month'; pickedDay = null; loadView(); };
+  function openDay(date) {
+    view = 'day'; dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()); loadView();
+    var hero = document.querySelector('.tm-hero'); if (hero && hero.getBoundingClientRect().top < 0) hero.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   function loadView() {
+    $('viewDay').setAttribute('aria-pressed', view === 'day' ? 'true' : 'false');
     $('viewWeek').setAttribute('aria-pressed', view === 'week' ? 'true' : 'false');
     $('viewMonth').setAttribute('aria-pressed', view === 'month' ? 'true' : 'false');
-    $('thisWeek').textContent = view === 'month' ? 'This month' : 'This week';
-    $('prevWeek').setAttribute('aria-label', view === 'month' ? 'Previous month' : 'Previous week');
-    $('nextWeek').setAttribute('aria-label', view === 'month' ? 'Next month' : 'Next week');
-    $('teamH').textContent = view === 'month' ? 'Month at a glance' : 'Who\u2019s working';
-    if (view === 'month') loadMonth(); else loadWeek();
+    var unit = view === 'month' ? 'month' : view === 'day' ? 'day' : 'week';
+    $('thisWeek').textContent = view === 'month' ? 'This month' : view === 'day' ? 'Today' : 'This week';
+    $('prevWeek').setAttribute('aria-label', 'Previous ' + unit);
+    $('nextWeek').setAttribute('aria-label', 'Next ' + unit);
+    $('teamH').textContent = view === 'month' ? 'Month at a glance' : view === 'day' ? 'The day at a glance' : 'Who\u2019s working';
+    document.querySelector('.tm-main').setAttribute('data-view', view);
+    if (view === 'month') loadMonth(); else if (view === 'day') loadDay(); else loadWeek();
   }
   function myOffOn(date) {
     var d = iso(date), hit = null;
@@ -221,24 +233,99 @@
       (function (date) {
         var list = dayShifts(date), my = (list || []).filter(function (s) { return s.mine; }), off = myOffOn(date);
         var cell = h('button', { type: 'button', cls: 'tm-cal-d' + (date.getMonth() !== monthData.first.getMonth() ? ' out' : '') + (iso(date) === today ? ' today' : '') + (pickedDay === iso(date) ? ' picked' : '') + (list ? '' : ' unposted'),
-          on: { click: function () { pickedDay = iso(date); renderMonth(); var dt = $('dayDetail'); if (dt) dt.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } } }, [
+          'aria-label': date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) + (list ? ', ' + list.length + ' working' : '') + '. Open the day view',
+          on: { click: function () { pickedDay = iso(date); openDay(date); } } }, [
           h('span', { cls: 'tm-cal-n', text: String(date.getDate()) }),
           my.length ? h('span', { cls: 'tm-cal-me', text: fmtT(my[0].start) }) : null,
           off ? h('span', { cls: 'tm-cal-off' + (off.status === 'pending' ? ' pending' : ''), text: off.status === 'pending' ? 'Req. off' : 'Off' }) : null,
+          list && list.length ? h('span', { cls: 'tm-cal-names' }, uniqNames(list).slice(0, 5).map(function (n) { return h('span', { cls: 'tm-cal-nm' + (n.mine ? ' mine' : ''), text: n.name }); })
+            .concat(uniqNames(list).length > 5 ? [h('span', { cls: 'tm-cal-more', text: '+' + (uniqNames(list).length - 5) + ' more' })] : [])) : null,
           list && list.length ? h('span', { cls: 'tm-cal-c', text: list.length + ' on' }) : null
         ]);
         cal.appendChild(cell);
       })(new Date(c));
     }
     team.appendChild(cal);
-    team.appendChild(h('p', { cls: 'tm-total', text: 'Tap a day to see who\u2019s working. Your shifts are highlighted; grey days haven\u2019t been posted yet.' }));
-    if (pickedDay) {
-      var pd = parseDay(pickedDay), pl = dayShifts(pd), det = h('div', { cls: 'tm-dcol tm-detail', id: 'dayDetail' }, [h('div', { cls: 'tm-dhead' }, [h('span', { text: DAYS_LONG[(pd.getDay() + 6) % 7] }), h('b', { text: md(pd) })])]);
-      if (!pl) det.appendChild(h('p', { cls: 'tm-none', text: 'This week hasn\u2019t been posted yet.' }));
-      else if (!pl.length) det.appendChild(h('p', { cls: 'tm-none', text: 'Nobody scheduled' }));
-      else pl.forEach(function (s) { det.appendChild(h('div', { cls: 'tm-row' + (s.mine ? ' mine' : '') }, [h('span', { cls: 'tm-rt', text: fmtT(s.start) + '\u2013' + fmtT(s.end) }), h('span', { cls: 'tm-rn' }, [h('b', { text: s.name }), h('span', { text: s.role || s.position || '' })])])); });
-      team.appendChild(det);
+    team.appendChild(h('p', { cls: 'tm-total', text: 'Tap a day to open its timeline. Your shifts are highlighted; grey days haven\u2019t been posted yet.' }));
+  }
+
+  /* ---------- day: everyone's hours on a horizontal timeline ---------- */
+  function uniqNames(list) { var seen = {}, out = []; list.forEach(function (s) { if (!seen[s.name]) { seen[s.name] = 1; out.push({ name: s.name, mine: s.mine }); } else if (s.mine) out.forEach(function (o) { if (o.name === s.name) o.mine = true; }); }); return out; }
+  function endMin(s) { if (ENDS[s.end]) return mins(ENDS[s.end].at); var e = mins(s.end); if (s.end && e <= mins(s.start)) e += 1440; return e; }
+  function clock(m) { m = ((m % 1440) + 1440) % 1440; var H = Math.floor(m / 60), M = m % 60; return (H % 12 || 12) + (M ? ':' + String(M).padStart(2, '0') : '') + (H >= 12 ? 'p' : 'a'); }
+  function loadDay() {
+    var d = dayDate, asked = iso(d);
+    $('weekTitle').textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    $('thisWeek').disabled = asked === iso(new Date());
+    $('myShifts').innerHTML = ''; $('teamDays').innerHTML = '';
+    $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'Loading…' }));
+    sb.rpc('team_schedule', { p_week: iso(monday(d)) }).then(function (r) {
+      if (asked !== iso(dayDate) || view !== 'day') return;
+      $('myShifts').innerHTML = '';
+      if (r.error) { $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'Couldn’t load the schedule. Check your connection and reload.' })); return; }
+      var w = r.data || {};
+      if (!w.published) { $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'The schedule for this week hasn’t been posted yet.' })); return; }
+      var di = (d.getDay() + 6) % 7;
+      var list = (w.shifts || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || a.name.localeCompare(b.name); });
+      renderDayMine(list); renderTimeline(list);
+    });
+  }
+  function renderDayMine(list) {
+    var box = $('myShifts'), mine = list.filter(function (s) { return s.mine; }), off = myOffOn(dayDate);
+    if (!mine.length) box.appendChild(h('p', { cls: 'tm-empty', text: me && me.employee ? 'You’re not working this day.' : 'Managers without an employee profile don’t have shifts here.' }));
+    else {
+      var grid = h('div', { cls: 'tm-mine' });
+      mine.forEach(function (s) {
+        var hrs = hours(s);
+        grid.appendChild(h('div', { cls: 'tm-shift' + (iso(dayDate) === iso(new Date()) ? ' today' : '') }, [
+          h('div', { cls: 'tm-day' }, [h('span', { text: DAYS[(dayDate.getDay() + 6) % 7] }), h('b', { text: md(dayDate) })]),
+          h('div', { cls: 'tm-time' }, [h('b', { text: fmtT(s.start) + ' – ' + fmtT(s.end) }), s.role ? h('span', { text: s.role }) : null, s.note ? h('em', { text: s.note }) : null]),
+          hrs != null ? h('span', { cls: 'tm-today', text: (isApprox(s) ? 'about ' : '') + (Math.round(hrs * 4) / 4) + ' hrs' }) : null
+        ]));
+      });
+      box.appendChild(grid);
     }
+    if (off && off.status === 'approved') box.appendChild(h('p', { cls: 'tm-offnote', text: 'Approved time off: ' + offText(off) }));
+  }
+  function renderTimeline(list) {
+    var box = $('teamDays');
+    if (!list.length) { box.appendChild(h('p', { cls: 'tm-empty', text: 'Nobody is scheduled this day.' })); return; }
+    var lo = Infinity, hi = -Infinity;
+    list.forEach(function (s) { var a = mins(s.start), b = endMin(s); if (b <= a) b = a + 60; lo = Math.min(lo, a); hi = Math.max(hi, b); });
+    lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
+    if (hi - lo < 6 * 60) { hi = Math.min(lo + 6 * 60, 30 * 60); }
+    var span = hi - lo, hoursN = span / 60;
+    var pct = function (m) { return ((m - lo) / span * 100) + '%'; };
+    var tl = h('div', { cls: 'tm-tl', style: '--hours:' + hoursN });
+    // hour ruler
+    var ruler = h('div', { cls: 'tm-tl-ruler' }, [h('div', { cls: 'tm-tl-who' }, h('span', { text: list.length + ' shift' + (list.length === 1 ? '' : 's') }))]);
+    var scale = h('div', { cls: 'tm-tl-scale' });
+    for (var m = lo; m <= hi; m += 60) scale.appendChild(h('span', { cls: 'tm-tl-tick', style: 'left:' + pct(m), text: clock(m) }));
+    ruler.appendChild(scale); tl.appendChild(ruler);
+    var nowM = null, now = new Date();
+    if (iso(now) === iso(dayDate)) { nowM = now.getHours() * 60 + now.getMinutes(); if (nowM < lo || nowM > hi) nowM = null; }
+    var lastPos = null;
+    list.forEach(function (s) {
+      var a = mins(s.start), b = endMin(s), approx = isApprox(s), hrs = hours(s);
+      if (b <= a) b = a + 60;
+      var pos = s.role || s.position || '';
+      var row = h('div', { cls: 'tm-tl-row' + (s.mine ? ' mine' : '') }, [
+        h('div', { cls: 'tm-tl-who' }, [h('b', { text: s.name }), h('span', { text: [pos, hrs != null ? (approx ? '~' : '') + (Math.round(hrs * 4) / 4) + 'h' : ''].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'tm-tl-lane' }, [
+          h('div', { cls: 'tm-tl-bar' + (approx ? ' approx' : ''), style: 'left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: s.name + ': ' + fmtT(s.start) + '–' + fmtT(s.end) + (approx ? ' (about ' + clock(b) + ')' : '') + (s.note ? ' · ' + s.note : '') },
+            [h('span', { text: fmtT(s.start) + '–' + fmtT(s.end) + (s.note ? ' · ' + s.note : '') })])
+        ])
+      ]);
+      tl.appendChild(row); lastPos = pos;
+    });
+    var lanes = h('div', { cls: 'tm-tl-grid', 'aria-hidden': 'true' });
+    for (var g = lo; g <= hi; g += 60) lanes.appendChild(h('i', { style: 'left:' + pct(g) }));
+    if (nowM != null) lanes.appendChild(h('b', { cls: 'tm-tl-now', style: 'left:' + pct(nowM), title: 'Now' }));
+    tl.appendChild(lanes);
+    var first = list[0], lastOut = list.reduce(function (x, s) { return endMin(s) > endMin(x) ? s : x; }, list[0]);
+    box.appendChild(h('p', { cls: 'tm-tl-sum', text: uniqNames(list).length + ' working · first in ' + fmtT(first.start) + ' · last out ' + fmtT(lastOut.end) + (isApprox(lastOut) ? ' (about ' + clock(endMin(lastOut)) + ')' : '') }));
+    box.appendChild(h('div', { cls: 'tm-tl-scroll' }, tl));
+    box.appendChild(h('p', { cls: 'tm-total', text: 'Shifts ending at 1st cut, 2nd cut or close are drawn to about 8pm, 9pm and 10pm, with a faded end.' }));
   }
 
   /* ---------- time off ---------- */
@@ -307,7 +394,8 @@
     for (var d = 0; d < 7; d++) {
       var day = list.filter(function (s) { return s.day === d; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || a.name.localeCompare(b.name); });
       var date = addDays(week, d);
-      var col = h('div', { cls: 'tm-dcol' + (iso(date) === today ? ' today' : '') }, [h('div', { cls: 'tm-dhead' }, [h('span', { text: DAYS_LONG[d] }), h('b', { text: md(date) })])]);
+      var col = h('div', { cls: 'tm-dcol tm-dlink' + (iso(date) === today ? ' today' : ''), role: 'button', tabindex: '0', 'aria-label': DAYS_LONG[d] + ' ' + md(date) + ', ' + day.length + ' working. Open the day view' }, [h('div', { cls: 'tm-dhead' }, [h('span', { text: DAYS_LONG[d] }), h('b', { text: md(date) }), h('em', { cls: 'tm-dgo', text: day.length ? day.length + ' working · Day view →' : 'Day view →' })])]);
+      (function (dt) { col.addEventListener('click', function () { openDay(dt); }); col.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDay(dt); } }); })(date);
       if (!day.length) col.appendChild(h('p', { cls: 'tm-none', text: 'Nobody scheduled' }));
       day.forEach(function (s) {
         col.appendChild(h('div', { cls: 'tm-row' + (s.mine ? ' mine' : '') }, [
