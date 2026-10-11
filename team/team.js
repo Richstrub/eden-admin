@@ -18,6 +18,7 @@
   if (!window.supabase || !CFG.supabase || !CFG.supabase.url) { $('loadingMsg').textContent = 'Could not load. Check your internet connection and reload.'; return; }
   var sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.key);
   var me = null, session = null, started = false, week = monday(new Date());
+  var view = 'week', month = firstOfMonth(new Date()), myOff = [], monthData = null, pickedDay = null;
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -29,6 +30,9 @@
     [].concat(kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
     return e;
   }
+  function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function parseDay(t) { var p = String(t || '').split('-'); return new Date(+p[0], (+p[1] || 1) - 1, +p[2] || 1); }
+  function dayLabel(t) { return parseDay(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
   function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -108,19 +112,38 @@
       var name = (me.employee && me.employee.name) || (session.user && session.user.email) || '';
       $('whoName').textContent = name;
       $('whoRole').textContent = (me.employee && me.employee.position) || ROLE_NAMES[me.role] || '';
-      $('mgrLink').hidden = !(me.role === 'owner' || me.role === 'manager');
+      $('mgrLink').hidden = !(me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager');
+      if (me.access === 'manager' && !me.role) $('whoRole').textContent = ((me.employee && me.employee.position) || 'Manager');
+      $('timeoffSec').hidden = !me.employee;
       var first = String(name).split(/[\s@]/)[0], hr = new Date().getHours();
       $('hello').textContent = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '');
       show('app');
       if (!started) { started = true; startBoard(); }
-      loadWeek();
+      loadMyOff().then(loadView);
     });
   }
 
   /* ---------- schedule ---------- */
-  $('prevWeek').onclick = function () { week = addDays(week, -7); loadWeek(); };
-  $('nextWeek').onclick = function () { week = addDays(week, 7); loadWeek(); };
-  $('thisWeek').onclick = function () { week = monday(new Date()); loadWeek(); };
+  $('prevWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() - 1, 1); else week = addDays(week, -7); loadView(); };
+  $('nextWeek').onclick = function () { if (view === 'month') month = new Date(month.getFullYear(), month.getMonth() + 1, 1); else week = addDays(week, 7); loadView(); };
+  $('thisWeek').onclick = function () { if (view === 'month') month = firstOfMonth(new Date()); else week = monday(new Date()); loadView(); };
+  $('viewWeek').onclick = function () { if (view === 'week') return; view = 'week'; week = monday(pickedDay ? parseDay(pickedDay) : (iso(month) === iso(firstOfMonth(new Date())) ? new Date() : month)); loadView(); };
+  $('viewMonth').onclick = function () { if (view === 'month') return; view = 'month'; month = firstOfMonth(addDays(week, 3)); pickedDay = null; loadView(); };
+  function loadView() {
+    $('viewWeek').setAttribute('aria-pressed', view === 'week' ? 'true' : 'false');
+    $('viewMonth').setAttribute('aria-pressed', view === 'month' ? 'true' : 'false');
+    $('thisWeek').textContent = view === 'month' ? 'This month' : 'This week';
+    $('prevWeek').setAttribute('aria-label', view === 'month' ? 'Previous month' : 'Previous week');
+    $('nextWeek').setAttribute('aria-label', view === 'month' ? 'Next month' : 'Next week');
+    $('teamH').textContent = view === 'month' ? 'Month at a glance' : 'Who\u2019s working';
+    if (view === 'month') loadMonth(); else loadWeek();
+  }
+  function myOffOn(date) {
+    var d = iso(date), hit = null;
+    myOff.forEach(function (t) { if (t.start_date <= d && t.end_date >= d && t.status !== 'denied') { if (!hit || t.status === 'approved') hit = t; } });
+    return hit;
+  }
+  function offText(t) { return t.all_day === false && t.start_time ? fmtT(t.start_time) + '\u2013' + fmtT(t.end_time || 'close') : 'All day'; }
   function loadWeek() {
     $('weekTitle').textContent = 'Week of ' + weekLabel(week);
     $('thisWeek').disabled = iso(week) === iso(monday(new Date()));
@@ -136,9 +159,124 @@
         $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'This week’s schedule hasn’t been posted yet.' }));
         return;
       }
-      renderMine(w.shifts || []); renderTeam(w.shifts || []);
+      renderMine(w.shifts || []); renderTeam(w.shifts || []); renderMyWeekOff();
     });
   }
+  function renderMyWeekOff() {
+    var lines = [];
+    for (var d = 0; d < 7; d++) { var t = myOffOn(addDays(week, d)); if (t && t.status === 'approved') lines.push(DAYS[d] + ' ' + md(addDays(week, d)) + ' (' + offText(t) + ')'); }
+    if (lines.length) $('myShifts').appendChild(h('p', { cls: 'tm-offnote', text: 'Approved time off: ' + lines.join(', ') }));
+  }
+
+  /* ---------- month ---------- */
+  function loadMonth() {
+    var first = month, last = new Date(month.getFullYear(), month.getMonth() + 1, 0), asked = iso(month);
+    $('weekTitle').textContent = month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    $('thisWeek').disabled = iso(month) === iso(firstOfMonth(new Date()));
+    $('myShifts').innerHTML = ''; $('teamDays').innerHTML = '';
+    $('myShifts').appendChild(h('p', { cls: 'tm-empty', text: 'Loading\u2026' }));
+    var mondays = []; for (var m = monday(first); m <= last; m = addDays(m, 7)) mondays.push(new Date(m));
+    Promise.all(mondays.map(function (wk) { return sb.rpc('team_schedule', { p_week: iso(wk) }).then(function (r) { return { wk: wk, data: r.error ? null : r.data }; }); })).then(function (res) {
+      if (asked !== iso(month)) return;
+      monthData = { weeks: res, first: first, last: last }; renderMonth();
+    });
+  }
+  function dayShifts(date) {
+    if (!monthData) return null;
+    var mon = iso(monday(date)), di = (date.getDay() + 6) % 7, wk = null;
+    monthData.weeks.forEach(function (w) { if (iso(w.wk) === mon) wk = w.data; });
+    if (!wk || !wk.published) return null;
+    return (wk.shifts || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || a.name.localeCompare(b.name); });
+  }
+  function renderMonth() {
+    var box = $('myShifts'); box.innerHTML = '';
+    var mine = [], total = 0, close = 0, today = iso(new Date());
+    for (var d = new Date(monthData.first); d <= monthData.last; d = addDays(d, 1)) {
+      (dayShifts(d) || []).forEach(function (s) { if (s.mine) { var hrs = hours(s); if (hrs == null) close++; else total += hrs; mine.push({ date: new Date(d), s: s }); } });
+    }
+    if (!mine.length) box.appendChild(h('p', { cls: 'tm-empty', text: 'No posted shifts for you this month yet.' }));
+    else {
+      var ul = h('div', { cls: 'tm-mlist' });
+      mine.forEach(function (x) {
+        ul.appendChild(h('div', { cls: 'tm-mrow' + (iso(x.date) === today ? ' today' : '') }, [
+          h('span', { cls: 'tm-md', text: x.date.toLocaleDateString(undefined, { weekday: 'short', month: 'numeric', day: 'numeric' }) }),
+          h('b', { text: fmtT(x.s.start) + ' \u2013 ' + fmtT(x.s.end) }), h('span', { text: x.s.role || '' })
+        ]));
+      });
+      box.appendChild(ul);
+      box.appendChild(h('p', { cls: 'tm-total', text: mine.length + ' shift' + (mine.length === 1 ? '' : 's') + ' \u00b7 ' + (Math.round(total * 4) / 4) + ' hours' + (close ? ' + ' + close + ' until close' : '') }));
+    }
+    var cal = h('div', { cls: 'tm-cal' }), team = $('teamDays'); team.innerHTML = '';
+    DAYS.forEach(function (dn) { cal.appendChild(h('div', { cls: 'tm-cal-h', text: dn.slice(0, 2) })); });
+    var start = monday(monthData.first), end = addDays(monday(monthData.last), 6);
+    for (var c = new Date(start); c <= end; c = addDays(c, 1)) {
+      (function (date) {
+        var list = dayShifts(date), my = (list || []).filter(function (s) { return s.mine; }), off = myOffOn(date);
+        var cell = h('button', { type: 'button', cls: 'tm-cal-d' + (date.getMonth() !== monthData.first.getMonth() ? ' out' : '') + (iso(date) === today ? ' today' : '') + (pickedDay === iso(date) ? ' picked' : '') + (list ? '' : ' unposted'),
+          on: { click: function () { pickedDay = iso(date); renderMonth(); var dt = $('dayDetail'); if (dt) dt.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } } }, [
+          h('span', { cls: 'tm-cal-n', text: String(date.getDate()) }),
+          my.length ? h('span', { cls: 'tm-cal-me', text: fmtT(my[0].start) }) : null,
+          off ? h('span', { cls: 'tm-cal-off' + (off.status === 'pending' ? ' pending' : ''), text: off.status === 'pending' ? 'Req. off' : 'Off' }) : null,
+          list && list.length ? h('span', { cls: 'tm-cal-c', text: list.length + ' on' }) : null
+        ]);
+        cal.appendChild(cell);
+      })(new Date(c));
+    }
+    team.appendChild(cal);
+    team.appendChild(h('p', { cls: 'tm-total', text: 'Tap a day to see who\u2019s working. Your shifts are highlighted; grey days haven\u2019t been posted yet.' }));
+    if (pickedDay) {
+      var pd = parseDay(pickedDay), pl = dayShifts(pd), det = h('div', { cls: 'tm-dcol tm-detail', id: 'dayDetail' }, [h('div', { cls: 'tm-dhead' }, [h('span', { text: DAYS_LONG[(pd.getDay() + 6) % 7] }), h('b', { text: md(pd) })])]);
+      if (!pl) det.appendChild(h('p', { cls: 'tm-none', text: 'This week hasn\u2019t been posted yet.' }));
+      else if (!pl.length) det.appendChild(h('p', { cls: 'tm-none', text: 'Nobody scheduled' }));
+      else pl.forEach(function (s) { det.appendChild(h('div', { cls: 'tm-row' + (s.mine ? ' mine' : '') }, [h('span', { cls: 'tm-rt', text: fmtT(s.start) + '\u2013' + fmtT(s.end) }), h('span', { cls: 'tm-rn' }, [h('b', { text: s.name }), h('span', { text: s.role || s.position || '' })])])); });
+      team.appendChild(det);
+    }
+  }
+
+  /* ---------- time off ---------- */
+  var toForm = $('toForm');
+  toForm.from.value = iso(addDays(new Date(), 14)); toForm.to.value = toForm.from.value;
+  toForm.from.addEventListener('change', function () { if (!toForm.to.value || toForm.to.value < toForm.from.value) toForm.to.value = toForm.from.value; });
+  toForm.allday.addEventListener('change', function () { $('toTimes').hidden = toForm.allday.checked; });
+  function loadMyOff() {
+    if (!me || !me.employee) { myOff = []; return Promise.resolve(); }
+    return sb.from('time_off').select('*').eq('emp', me.employee.id).order('start_date', { ascending: false }).limit(60).then(function (r) {
+      if (r.error) { myOff = []; if (/time_off|does not exist|could not find/i.test(r.error.message || '')) $('timeoffSec').hidden = true; return; }
+      myOff = r.data || []; renderMyOff();
+    }, function () { myOff = []; });
+  }
+  function renderMyOff() {
+    var ul = $('toList'); ul.innerHTML = '';
+    if (!myOff.length) { ul.appendChild(h('li', { cls: 'tm-empty', text: 'No time-off requests yet.' })); return; }
+    myOff.forEach(function (t) {
+      var cancel = t.status === 'pending' ? h('button', { type: 'button', cls: 'tm-del', text: 'Cancel request' }) : null;
+      if (cancel) cancel.addEventListener('click', function () {
+        if (!cancel.dataset.armed) { cancel.dataset.armed = '1'; cancel.textContent = 'Tap again to cancel'; setTimeout(function () { if (cancel.isConnected) { delete cancel.dataset.armed; cancel.textContent = 'Cancel request'; } }, 3000); return; }
+        sb.from('time_off').delete().eq('id', t.id).then(function (r) { if (r.error) { $('toMsg').textContent = 'Couldn\u2019t cancel. Try again.'; return; } loadMyOff().then(loadView); });
+      });
+      ul.appendChild(h('li', { cls: 'tm-req ' + t.status }, [
+        h('div', { cls: 'tm-req-h' }, [h('b', { text: t.start_date === t.end_date ? dayLabel(t.start_date) : dayLabel(t.start_date) + ' \u2013 ' + dayLabel(t.end_date) }),
+          h('span', { cls: 'tm-pill ' + t.status, text: t.status === 'pending' ? 'Waiting for approval' : t.status === 'approved' ? 'Approved' : 'Not approved' }), cancel]),
+        h('p', { text: offText(t) + (t.reason ? ' \u00b7 ' + t.reason : '') }),
+        t.decision_note ? h('p', { cls: 'tm-req-note', text: 'Manager note: ' + t.decision_note }) : null
+      ]));
+    });
+  }
+  toForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = toForm, msgEl = $('toMsg');
+    if (!f.from.value || !f.to.value) { msgEl.textContent = 'Choose the dates.'; return; }
+    if (f.to.value < f.from.value) { msgEl.textContent = 'The \u201cThrough\u201d date is before the \u201cFrom\u201d date.'; return; }
+    if (f.to.value < iso(new Date())) { msgEl.textContent = 'Those dates have already passed.'; return; }
+    if (!f.allday.checked && !f.st.value) { msgEl.textContent = 'Choose a start time, or tick All day.'; return; }
+    var btn = f.querySelector('button[type=submit]'); btn.disabled = true; msgEl.textContent = 'Sending\u2026';
+    sb.from('time_off').insert({ emp: me.employee.id, start_date: f.from.value, end_date: f.to.value, all_day: f.allday.checked, start_time: f.allday.checked ? '' : f.st.value, end_time: f.allday.checked ? '' : (f.et.value || ''), reason: f.reason.value.trim() }).then(function (r) {
+      btn.disabled = false;
+      if (r.error) { msgEl.textContent = 'Couldn\u2019t send the request. Check your connection and try again.'; return; }
+      msgEl.textContent = 'Request sent. You\u2019ll see here when a manager approves it.'; f.reason.value = '';
+      loadMyOff().then(loadView);
+    });
+  });
   function renderMine(list) {
     var mine = list.filter(function (s) { return s.mine; }).sort(function (a, b) { return a.day - b.day || mins(a.start) - mins(b.start); }), box = $('myShifts');
     if (!mine.length) { box.appendChild(h('p', { cls: 'tm-empty', text: me && me.employee ? 'You’re not on the schedule this week.' : 'Managers without an employee profile don’t have shifts here.' })); return; }
@@ -209,7 +347,7 @@
       else if (ch.eventType === 'DELETE' && ch.old && ch.old.id) { posts = posts.filter(function (p) { return p.id !== ch.old.id; }); renderPosts(); }
     }).subscribe();
     setInterval(function () { renderPosts(); }, 60000); // keep "5 min ago" fresh
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !$('app').hidden) { loadPosts(); loadWeek(); } });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !$('app').hidden) { loadPosts(); loadMyOff().then(loadView); } });
   }
   body.addEventListener('input', function () { var n = body.value.length; $('postCount').textContent = n > 1800 ? (2000 - n) + ' characters left' : ''; });
   $('postForm').addEventListener('submit', function (e) {

@@ -55,6 +55,7 @@
       <p class="tm-eyebrow" id="hello"></p>
       <h1 id="weekTitle"></h1>
       <div class="tm-weeknav">
+        <div class="tm-viewtog" role="group" aria-label="View"><button type="button" id="viewWeek" aria-pressed="true">Week</button><button type="button" id="viewMonth" aria-pressed="false">Month</button></div>
         <button type="button" class="tm-btn" id="prevWeek" aria-label="Previous week">&larr;</button>
         <button type="button" class="tm-btn" id="thisWeek">This week</button>
         <button type="button" class="tm-btn" id="nextWeek" aria-label="Next week">&rarr;</button>
@@ -67,8 +68,22 @@
     </section>
 
     <section class="tm-sec">
-      <h2 class="tm-h">Who&rsquo;s working</h2>
+      <h2 class="tm-h" id="teamH">Who&rsquo;s working</h2>
       <div id="teamDays"></div>
+    </section>
+
+    <section class="tm-sec" id="timeoffSec" hidden>
+      <h2 class="tm-h">Time off</h2>
+      <form id="toForm" class="tm-toform" novalidate>
+        <div class="tm-row2"><label>From<input type="date" name="from" required></label><label>Through<input type="date" name="to" required></label></div>
+        <label class="tm-check"><input type="checkbox" name="allday" checked> All day</label>
+        <div class="tm-row2" id="toTimes" hidden><label>Off from<input type="time" name="st" step="900"></label><label>Until<input type="time" name="et" step="900"></label></div>
+        <label>Reason <span class="tm-hint">(optional, only managers see it)</span><input type="text" name="reason" maxlength="500"></label>
+        <p class="tm-msg" id="toMsg" role="status"></p>
+        <button class="tm-btn primary" type="submit">Request time off</button>
+      </form>
+      <p class="tm-small2">A manager has to approve a request before it goes on the schedule.</p>
+      <ul class="tm-reqs" id="toList"></ul>
     </section>
 
     <section class="tm-sec tm-board" id="board">

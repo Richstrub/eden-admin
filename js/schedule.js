@@ -18,7 +18,8 @@
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
   var S = { ctx: null, el: null, built: false, tab: 'grid', week: monday(new Date()), employees: [], row: null,
-    loading: false, dirty: false, saving: false, timer: null, missing: false, includeOff: false };
+    loading: false, dirty: false, saving: false, timer: null, missing: false, includeOff: false,
+    view: 'week', month: firstOfMonth(new Date()), timeoff: [], hasTimeOff: true, requests: [], monthData: null };
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -34,6 +35,11 @@
     return e;
   }
   function uid() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+  function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function parseDay(t) { var p = String(t || '').split('-'); return new Date(+p[0], (+p[1] || 1) - 1, +p[2] || 1); }
+  function dayLabel(t) { return parseDay(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
+  function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : (p[0] || ''); }
+  function isOwner() { return S.ctx && S.ctx.role === 'owner'; }
   function monday(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); var dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); return x; }
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -79,6 +85,7 @@
     return sb().from('employees').select('*').order('name').then(function (r) {
       if (r.error) throw r.error; S.employees = r.data || [];
       S.hasEmail = !S.employees.length || S.employees.some(function (e) { return 'email' in e; });
+      S.hasAccess = S.employees.some(function (e) { return 'access' in e; });
       return loadAccounts();
     });
   }
@@ -87,11 +94,29 @@
       if (r.error) throw r.error; return r.data || null;
     });
   }
+  function loadTimeOff(from, to) {
+    if (!S.hasTimeOff) return Promise.resolve([]);
+    return sb().from('time_off').select('*').lte('start_date', iso(to)).gte('end_date', iso(from)).order('start_date').then(function (r) {
+      if (r.error) { if (isMissing(r.error)) S.hasTimeOff = false; return []; }
+      return r.data || [];
+    }, function () { return []; });
+  }
+  function loadRequests() {
+    return loadTimeOff(addDays(new Date(), -60), addDays(new Date(), 730)).then(function (list) { S.requests = list; return list; });
+  }
+  function offOn(list, emp, date) { // approved or pending time off covering a date, approved first
+    var d = iso(date), hit = null;
+    (list || []).forEach(function (t) { if (t.emp === emp && t.start_date <= d && t.end_date >= d && t.status !== 'denied') { if (!hit || t.status === 'approved') hit = t; } });
+    return hit;
+  }
+  function offText(t) { return t.all_day === false && t.start_time ? fmtT(t.start_time) + '\u2013' + fmtT(t.end_time || 'close') : 'All day'; }
+  function pendingCount() { return (S.requests || []).filter(function (t) { return t.status === 'pending'; }).length; }
   function blankRow(d) { return { week_start: iso(d), shifts: [], status: 'draft', published: null, published_at: null, sent: {} }; }
   function load() {
     S.loading = true; render();
-    return Promise.all([loadEmployees(), loadWeek(S.week)]).then(function (r) {
-      S.row = r[1] || blankRow(S.week); S.row.sent = S.row.sent || {}; S.missing = false; S.loading = false; render();
+    return Promise.all([loadEmployees(), loadWeek(S.week), loadTimeOff(S.week, addDays(S.week, 6)), loadRequests()]).then(function (r) {
+      S.row = r[1] || blankRow(S.week); S.row.sent = S.row.sent || {}; S.timeoff = r[2] || []; S.missing = false; S.loading = false;
+      if (S.view === 'month') return loadMonth(); render();
     }, function (e) {
       S.loading = false; S.missing = isMissing(e); S.row = blankRow(S.week); render();
       if (!S.missing) status(isPerm(e) ? 'Only the Owner and Managers can open the schedule.' : 'Couldn’t load the schedule. Check your connection.', 'err');
@@ -120,6 +145,7 @@
   function empRow(e) {
     var r = { id: e.id, name: e.name || '', phone: e.phone || '', position: e.position || '', active: e.active !== false };
     if (S.hasEmail) r.email = String(e.email || '').trim().toLowerCase();
+    if (S.hasAccess && isOwner()) r.access = e.access === 'manager' ? 'manager' : 'employee';
     return r;
   }
   function noEmailCol(err) { return err && (err.code === 'PGRST204' || err.code === '42703') && /email/i.test(err.message || ''); }
@@ -131,6 +157,7 @@
       })
       .catch(function (err) {
         if (err && err.code === '23505') { status('That email is already used by another employee.', 'err'); return; }
+        if (err && /only the owner/i.test(err.message || '')) { status('Only the Owner can change permissions.', 'err'); return; }
         status(isPerm(err) ? 'Your account can\u2019t change employees.' : 'Couldn\u2019t save the employee. Check your connection.', 'err');
       });
   }
@@ -188,7 +215,10 @@
     S.body.innerHTML = '';
     if (S.missing) { renderSetup(); return; }
     if (S.loading) { S.body.appendChild(h('p', { cls: 'sc-empty', text: 'Loading the schedule…' })); return; }
-    if (S.tab === 'people') renderPeople(); else renderGrid();
+    if (S.tab === 'people') renderPeople();
+    else if (S.tab === 'timeoff') renderTimeOff();
+    else if (S.view === 'month') renderMonth();
+    else renderGrid();
   }
   function renderHead() {
     var st = pubState(), pubAt = S.row && S.row.published_at ? new Date(S.row.published_at) : null;
@@ -196,22 +226,35 @@
       : st === 'changed' ? h('span', { cls: 'sc-pill warn', text: 'Changed since publishing' })
       : h('span', { cls: 'sc-pill', text: 'Draft' });
     var thisWeek = iso(S.week) === iso(monday(new Date()));
+    var monthMode = S.view === 'month' && S.tab === 'grid';
+    var thisMonth = iso(S.month) === iso(firstOfMonth(new Date()));
     S.head.innerHTML = '';
     S.head.appendChild(h('div', { cls: 'sc-titlebar' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Staff Schedule' }), h('h1', { cls: 'sc-week', text: 'Week of ' + weekLabel(S.week) })]),
+      h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Staff Schedule' }), h('h1', { cls: 'sc-week', text: monthMode ? S.month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Week of ' + weekLabel(S.week) })]),
       h('div', { cls: 'sc-weeknav' }, [
-        h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': 'Previous week', text: '←', on: { click: function () { go(-7); } } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'This week', disabled: thisWeek, on: { click: function () { go(0); } } }),
-        h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': 'Next week', text: '→', on: { click: function () { go(7); } } })
+        S.tab === 'grid' ? h('div', { cls: 'sc-viewtog', role: 'group', 'aria-label': 'View' }, [
+          h('button', { type: 'button', 'aria-pressed': S.view === 'week' ? 'true' : 'false', text: 'Week', on: { click: function () { setView('week'); } } }),
+          h('button', { type: 'button', 'aria-pressed': S.view === 'month' ? 'true' : 'false', text: 'Month', on: { click: function () { setView('month'); } } })
+        ]) : null,
+        h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': monthMode ? 'Previous month' : 'Previous week', text: '←', on: { click: function () { monthMode ? goMonth(-1) : go(-7); } } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: monthMode ? 'This month' : 'This week', disabled: monthMode ? thisMonth : thisWeek, on: { click: function () { monthMode ? goMonth(0) : go(0); } } }),
+        h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': monthMode ? 'Next month' : 'Next week', text: '→', on: { click: function () { monthMode ? goMonth(1) : go(7); } } })
       ])
     ]));
     if (S.missing) return;
-    var nShifts = shifts().length;
+    var nShifts = shifts().length, pend = pendingCount();
+    var tabs = h('div', { cls: 'sc-tabs', role: 'tablist' }, [
+      h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'grid' ? 'true' : 'false', text: 'Schedule', on: { click: function () { S.tab = 'grid'; S.view === 'month' ? loadMonth() : render(); } } }),
+      S.hasTimeOff ? h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'timeoff' ? 'true' : 'false', on: { click: function () { S.tab = 'timeoff'; loadRequests().then(render); } } }, ['Time off', pend ? h('span', { cls: 'sc-count', text: String(pend) }) : null]) : null,
+      h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'people' ? 'true' : 'false', text: 'Employees (' + S.employees.filter(function (e) { return e.active !== false; }).length + ')', on: { click: function () { S.tab = 'people'; render(); } } })
+    ]);
+    if (S.tab !== 'grid' || monthMode) {
+      S.head.appendChild(h('div', { cls: 'sc-bar' }, [tabs, monthMode ? h('p', { cls: 'sc-barnote', text: 'Tap a day to open that week for editing and publishing.' }) : null,
+        monthMode ? h('div', { cls: 'sc-actions' }, [h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } })]) : null]));
+      return;
+    }
     S.head.appendChild(h('div', { cls: 'sc-bar' }, [
-      h('div', { cls: 'sc-tabs', role: 'tablist' }, [
-        h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'grid' ? 'true' : 'false', text: 'Schedule', on: { click: function () { S.tab = 'grid'; render(); } } }),
-        h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'people' ? 'true' : 'false', text: 'Employees (' + S.employees.filter(function (e) { return e.active !== false; }).length + ')', on: { click: function () { S.tab = 'people'; render(); } } })
-      ]),
+      tabs,
       pill,
       h('div', { cls: 'sc-actions' }, [
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Copy last week', on: { click: copyLastWeek } }),
@@ -223,7 +266,57 @@
   }
   function go(n) {
     var next = n === 0 ? monday(new Date()) : addDays(S.week, n);
-    (S.dirty ? saveWeek() : Promise.resolve()).then(function () { S.week = next; load(); });
+    (S.dirty ? saveWeek() : Promise.resolve()).then(function () { S.week = next; S.month = firstOfMonth(addDays(next, 3)); load(); });
+  }
+  function setView(v) {
+    if (S.view === v) return;
+    (S.dirty ? saveWeek() : Promise.resolve()).then(function () {
+      S.view = v;
+      if (v === 'month') { S.month = firstOfMonth(addDays(S.week, 3)); loadMonth(); } else load();
+    });
+  }
+  function goMonth(n) {
+    S.month = n === 0 ? firstOfMonth(new Date()) : new Date(S.month.getFullYear(), S.month.getMonth() + n, 1);
+    loadMonth();
+  }
+  function monthRange() {
+    var start = monday(S.month), last = new Date(S.month.getFullYear(), S.month.getMonth() + 1, 0);
+    return { start: start, end: addDays(monday(last), 6) };
+  }
+  function loadMonth() {
+    var rg = monthRange(), asked = iso(S.month);
+    S.monthData = null; render();
+    return Promise.all([
+      sb().from('schedule_weeks').select('week_start,shifts,status,published').gte('week_start', iso(rg.start)).lte('week_start', iso(rg.end)).then(function (r) { if (r.error) throw r.error; return r.data || []; }),
+      loadTimeOff(rg.start, rg.end)
+    ]).then(function (r) {
+      if (asked !== iso(S.month)) return;
+      var weeks = {}; r[0].forEach(function (w) { weeks[w.week_start] = w; });
+      S.monthData = { weeks: weeks, off: r[1] }; render();
+    }, function () { status('Couldn\u2019t load the month. Check your connection.', 'err'); S.monthData = { weeks: {}, off: [] }; render(); });
+  }
+  function renderMonth() {
+    if (!S.monthData) { S.body.appendChild(h('p', { cls: 'sc-empty', text: 'Loading the month\u2026' })); return; }
+    var rg = monthRange(), today = iso(new Date()), mo = S.month.getMonth();
+    var cal = h('div', { cls: 'sc-cal' });
+    DAYS.forEach(function (d) { cal.appendChild(h('div', { cls: 'sc-cal-h', text: d })); });
+    for (var d = new Date(rg.start); d <= rg.end; d = addDays(d, 1)) {
+      (function (date) {
+        var wk = S.monthData.weeks[iso(monday(date))], di = (date.getDay() + 6) % 7;
+        var list = ((wk && wk.shifts) || []).filter(function (s) { return s.day === di; }).sort(function (a, b) { return mins(a.start) - mins(b.start); });
+        var offs = (S.monthData.off || []).filter(function (t) { return t.status !== 'denied' && t.start_date <= iso(date) && t.end_date >= iso(date); });
+        var cell = h('button', { type: 'button', cls: 'sc-cal-d' + (date.getMonth() !== mo ? ' out' : '') + (iso(date) === today ? ' today' : '') + (wk && wk.status !== 'published' && list.length ? ' draft' : ''),
+          'aria-label': 'Open the week of ' + weekLabel(monday(date)), on: { click: function () { S.week = monday(date); S.view = 'week'; load(); } } }, [
+          h('span', { cls: 'sc-cal-n', text: String(date.getDate()) }),
+          di === 0 && wk ? h('span', { cls: 'sc-cal-st ' + (wk.status === 'published' ? 'ok' : ''), text: wk.status === 'published' ? 'Published' : 'Draft' }) : null
+        ]);
+        list.slice(0, 5).forEach(function (s) { var e = empById(s.emp); cell.appendChild(h('span', { cls: 'sc-cal-s' }, [h('b', { text: fmtT(s.start) }), ' ' + shortName(e ? e.name : '')])); });
+        if (list.length > 5) cell.appendChild(h('span', { cls: 'sc-cal-more', text: '+' + (list.length - 5) + ' more' }));
+        offs.forEach(function (t) { var e = empById(t.emp); cell.appendChild(h('span', { cls: 'sc-cal-off' + (t.status === 'pending' ? ' pending' : ''), text: (t.status === 'pending' ? 'Requested off: ' : 'Off: ') + shortName(e ? e.name : '') })); });
+        cal.appendChild(cell);
+      })(new Date(d));
+    }
+    S.body.appendChild(h('div', { cls: 'sc-calwrap' }, cal));
   }
   function renderSetup() {
     S.body.appendChild(h('div', { cls: 'ed-banner' }, [
@@ -256,7 +349,9 @@
       for (var d = 0; d < 7; d++) {
         (function (day) {
           var list = shiftsFor(e.id, day); if (list.length) perDay[day]++;
-          var td = h('td', { cls: 'sc-cell' + (list.length ? '' : ' empty') });
+          var off = offOn(S.timeoff, e.id, addDays(S.week, day));
+          var td = h('td', { cls: 'sc-cell' + (list.length ? '' : ' empty') + (off && off.status === 'approved' ? ' is-off' : '') });
+          if (off) td.appendChild(h('div', { cls: 'sc-off' + (off.status === 'pending' ? ' pending' : ''), title: off.reason || '' }, [h('b', { text: off.status === 'pending' ? 'Requested off' : 'Time off' }), h('span', { text: offText(off) })]));
           list.forEach(function (s) {
             var hrs = shiftHours(s); if (hrs == null) close++; else total += hrs;
             td.appendChild(h('button', { type: 'button', cls: 'sc-shift', title: 'Edit shift', on: { click: function () { editShift(e, day, s); } } }, [
@@ -332,6 +427,8 @@
     function save() {
       if (!start.value) { msg.textContent = 'Choose a start time.'; start.focus(); return; }
       if (!cl.checked && !end.value) { msg.textContent = 'Choose an end time, or tick Until close.'; end.focus(); return; }
+      var off = offOn(S.timeoff, emp.id, addDays(S.week, day));
+      if (isNew && off && off.status === 'approved' && !confirm((emp.name || 'This person') + ' has approved time off on ' + DAYS_LONG[day] + ' (' + offText(off) + '). Schedule them anyway?')) return;
       s.start = start.value; s.end = cl.checked ? 'close' : end.value; s.role = role.value.trim(); s.note = note.value.trim();
       if (isNew) { S.row.shifts = shifts().concat([s]); }
       m.close(); changed(); render();
@@ -393,6 +490,100 @@
     m.el.classList.add('wide');
   }
 
+  /* ---------- time off ---------- */
+  function rangeText(t) { return t.start_date === t.end_date ? dayLabel(t.start_date) : dayLabel(t.start_date) + ' \u2013 ' + dayLabel(t.end_date); }
+  function decide(t, st, note) {
+    var go2 = Promise.resolve(true);
+    if (st === 'approved') {
+      go2 = sb().from('schedule_weeks').select('week_start,shifts').gte('week_start', iso(monday(parseDay(t.start_date)))).lte('week_start', t.end_date).then(function (r) {
+        var hits = [];
+        (r.data || []).forEach(function (w) { (w.shifts || []).forEach(function (s) {
+          if (s.emp !== t.emp) return; var d = iso(addDays(parseDay(w.week_start), s.day));
+          if (d >= t.start_date && d <= t.end_date) hits.push(dayLabel(d) + ' ' + fmtT(s.start) + '\u2013' + fmtT(s.end));
+        }); });
+        if (!hits.length) return true;
+        var e = empById(t.emp);
+        return confirm((e ? e.name : 'This person') + ' is already scheduled during this time off:\n' + hits.join('\n') + '\n\nApprove anyway? You\u2019ll need to adjust those shifts.');
+      }, function () { return true; });
+    }
+    return go2.then(function (ok) {
+      if (!ok) return;
+      status('Saving\u2026', 'dirty');
+      return sb().from('time_off').update({ status: st, decision_note: note || '' }).eq('id', t.id).then(function (r) {
+        if (r.error) { status(isPerm(r.error) ? 'Your account can\u2019t approve time off.' : 'Couldn\u2019t save. Check your connection.', 'err'); return; }
+        status(st === 'approved' ? 'Approved. It now shows on the schedule.' : st === 'denied' ? 'Request denied.' : 'Saved.', 'ok');
+        return Promise.all([loadRequests(), loadTimeOff(S.week, addDays(S.week, 6)).then(function (l) { S.timeoff = l; })]).then(render);
+      });
+    });
+  }
+  function renderTimeOff() {
+    var reqs = S.requests || [], today = iso(new Date());
+    var tools = h('div', { cls: 'sc-ptools' }, [h('button', { type: 'button', cls: 'ed-btn', text: '+ Add time off', on: { click: addTimeOff } }),
+      h('p', { cls: 'sc-help', style: 'margin:0', text: 'Employees request time off on the staff page. Approved time off shows on the schedule; you\u2019ll be warned before scheduling someone who is off.' })]);
+    S.body.appendChild(tools);
+    function section(title, list, actions) {
+      var box = h('section', { cls: 'sc-tsec' }, [h('h3', { cls: 'sc-th', text: title + ' (' + list.length + ')' })]);
+      if (!list.length) box.appendChild(h('p', { cls: 'sc-empty', text: 'None.' }));
+      list.forEach(function (t) {
+        var e = empById(t.emp), note = h('input', { type: 'text', cls: 'sc-tnote', placeholder: 'Note to employee (optional)', maxlength: '500' });
+        var btns = [];
+        if (actions === 'pending') {
+          btns.push(note);
+          btns.push(h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Deny', on: { click: function () { decide(t, 'denied', note.value.trim()); } } }));
+          btns.push(h('button', { type: 'button', cls: 'ed-btn', text: 'Approve', on: { click: function () { decide(t, 'approved', note.value.trim()); } } }));
+        } else {
+          var rm = h('button', { type: 'button', cls: 'ed-btn small', text: 'Remove' });
+          rm.addEventListener('click', function () {
+            if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { if (rm.isConnected) { delete rm.dataset.armed; rm.textContent = 'Remove'; } }, 3000); return; }
+            sb().from('time_off').delete().eq('id', t.id).then(function (r) { if (r.error) { status('Couldn\u2019t remove it.', 'err'); return; } Promise.all([loadRequests(), loadTimeOff(S.week, addDays(S.week, 6)).then(function (l) { S.timeoff = l; })]).then(render); status('Removed.', 'ok'); });
+          });
+          if (t.status === 'approved') btns.push(h('button', { type: 'button', cls: 'ed-btn small', text: 'Change to denied', on: { click: function () { decide(t, 'denied', t.decision_note); } } }));
+          btns.push(rm);
+        }
+        box.appendChild(h('div', { cls: 'sc-treq ' + t.status }, [
+          h('div', { cls: 'sc-treq-m' }, [
+            h('b', { text: e ? e.name : 'Former employee' }), h('span', { cls: 'sc-pill ' + (t.status === 'approved' ? 'ok' : t.status === 'pending' ? 'warn' : ''), text: t.status === 'pending' ? 'Pending' : t.status === 'approved' ? 'Approved' : 'Denied' }),
+            h('p', { cls: 'sc-treq-d', text: rangeText(t) + ' \u00b7 ' + offText(t) }),
+            t.reason ? h('p', { cls: 'sc-treq-r', text: '\u201c' + t.reason + '\u201d' }) : null,
+            t.decision_note && actions !== 'pending' ? h('p', { cls: 'sc-treq-r', text: 'Note: ' + t.decision_note }) : null
+          ]),
+          h('div', { cls: 'sc-treq-a' }, btns)
+        ]));
+      });
+      S.body.appendChild(box);
+    }
+    section('Waiting for approval', reqs.filter(function (t) { return t.status === 'pending'; }), 'pending');
+    section('Approved, upcoming', reqs.filter(function (t) { return t.status === 'approved' && t.end_date >= today; }), 'done');
+    section('Denied and past', reqs.filter(function (t) { return t.status === 'denied' || (t.status === 'approved' && t.end_date < today); }).reverse(), 'done');
+  }
+  function addTimeOff() {
+    var emps = S.employees.filter(function (e) { return e.active !== false && String(e.name || '').trim(); }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var who = h('select', null, emps.map(function (e) { return h('option', { value: e.id, text: e.name }); }));
+    var from = h('input', { type: 'date', value: iso(new Date()) }), to = h('input', { type: 'date', value: iso(new Date()) });
+    var allDay = h('input', { type: 'checkbox' }); allDay.checked = true;
+    var st = h('input', { type: 'time', step: '900', disabled: true }), et = h('input', { type: 'time', step: '900', disabled: true });
+    allDay.addEventListener('change', function () { st.disabled = et.disabled = allDay.checked; });
+    var reason = h('input', { type: 'text', maxlength: '500', placeholder: 'Optional' });
+    var msg = h('p', { cls: 'sc-msg', role: 'status' }), m;
+    from.addEventListener('change', function () { if (to.value < from.value) to.value = from.value; });
+    m = modal('Add time off', [
+      h('p', { cls: 'sc-sub', text: 'Time off you add here is approved right away.' }),
+      lbl('Employee', who), h('div', { cls: 'sc-row2' }, [lbl('From', from), lbl('Through', to)]),
+      h('label', { cls: 'sc-check' }, [allDay, ' All day']), h('div', { cls: 'sc-row2' }, [lbl('Off from', st), lbl('Until', et)]),
+      lbl('Reason', reason), msg
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: function () {
+        if (!who.value) { msg.textContent = 'Choose an employee.'; return; }
+        if (!from.value || !to.value || to.value < from.value) { msg.textContent = 'Check the dates.'; return; }
+        if (!allDay.checked && !st.value) { msg.textContent = 'Choose a start time, or tick All day.'; return; }
+        sb().from('time_off').insert({ emp: who.value, start_date: from.value, end_date: to.value, all_day: allDay.checked, start_time: allDay.checked ? '' : st.value, end_time: allDay.checked ? '' : (et.value || ''), reason: reason.value.trim(), status: 'approved' }).then(function (r) {
+          if (r.error) { msg.textContent = isPerm(r.error) ? 'Your account can\u2019t add time off.' : 'Couldn\u2019t save. Check your connection.'; return; }
+          m.close(); status('Time off added.', 'ok');
+          Promise.all([loadRequests(), loadTimeOff(S.week, addDays(S.week, 6)).then(function (l) { S.timeoff = l; })]).then(render);
+        });
+      } } })]);
+  }
+
   /* ---------- employees ---------- */
   function renderPeople() {
     var wrap = h('div', { cls: 'sc-people' });
@@ -414,7 +605,7 @@
     ]));
     if (!S.hasEmail) wrap.appendChild(h('div', { cls: 'ed-banner' }, [h('p', { text: 'To add login emails, run the one-time team setup in Supabase (supabase/team.sql), then reload this page.' })]));
     var list = S.employees.slice().sort(function (a, b) { return (!a.name) - (!b.name) || (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''); });
-    var heads = ['Name', 'Mobile number'].concat(S.hasEmail ? ['Email (login)'] : []).concat(['Position']).concat(S.hasEmail ? ['Login'] : []).concat(['On schedule', '']);
+    var heads = ['Name', 'Mobile number'].concat(S.hasEmail ? ['Email (login)'] : []).concat(['Position']).concat(S.hasAccess ? ['Permissions'] : []).concat(S.hasEmail ? ['Login'] : []).concat(['On schedule', '']);
     var table = h('table', { cls: 'sc-ptable' }, [h('thead', null, h('tr', null, heads.map(function (t) { return h('th', { text: t }); })))]);
     var tb = h('tbody');
     var dl = h('datalist', { id: 'scPosList' }, positions().map(function (p) { return h('option', { value: p }); }));
@@ -455,6 +646,14 @@
       var cells = [h('td', null, inp('name', { placeholder: 'Full name' })), h('td', null, [ph, bad])];
       if (S.hasEmail) cells.push(h('td', null, em));
       cells.push(h('td', null, inp('position', { list: 'scPosList', placeholder: 'e.g. Server' })));
+      if (S.hasAccess) {
+        if (isOwner()) {
+          var sel = h('select', { cls: 'sc-access', 'aria-label': 'Permissions for ' + (e.name || 'employee') }, [h('option', { value: 'employee', text: 'Employee' }), h('option', { value: 'manager', text: 'Manager' })]);
+          sel.value = e.access === 'manager' ? 'manager' : 'employee';
+          sel.addEventListener('change', function () { e.access = sel.value; empChanged(e); });
+          cells.push(h('td', null, sel));
+        } else cells.push(h('td', null, h('span', { cls: 'sc-login' + (e.access === 'manager' ? ' ok' : ''), text: e.access === 'manager' ? 'Manager' : 'Employee' })));
+      }
       if (S.hasEmail) cells.push(h('td', null, login));
       cells.push(h('td', { cls: 'c' }, act), h('td', { cls: 'r' }, del));
       tb.appendChild(h('tr', { cls: 'sc-prow' + (e.active === false ? ' inactive' : '') }, cells));
@@ -463,6 +662,11 @@
     wrap.appendChild(dl);
     if (list.length) wrap.appendChild(h('div', { cls: 'sc-scroll' }, table));
     else wrap.appendChild(h('p', { cls: 'sc-empty', text: 'No employees yet. Add them here, or fill in the spreadsheet and import it.' }));
+    if (S.hasAccess) wrap.appendChild(h('div', { cls: 'sc-perm-help' }, [
+      h('p', null, [h('b', { text: 'Employee: ' }), 'sees the posted schedule, requests time off, uses the message board.']),
+      h('p', null, [h('b', { text: 'Manager: ' }), 'also edits and publishes the schedule, approves time off, texts the team and sees this list. Managers sign in on this site and see only the Schedule.']),
+      isOwner() ? null : h('p', { text: 'Only the Owner can change permissions.' })
+    ]));
     wrap.appendChild(h('p', { cls: 'sc-help', text: 'Mobile numbers and emails are visible only to the Owner and Managers; the staff page never shows them. Turn off \u201cOn schedule\u201d for people on leave or seasonal: they drop off the schedule and can no longer sign in to the staff page. Remove deletes them.' }));
     S.body.appendChild(wrap);
   }
@@ -504,7 +708,7 @@
       }).then(function (r) {
         if (r.error && r.error.code === '23505') throw new Error('two employees have the same email address');
         if (r.error) throw r.error;
-        loadAccounts().then(render);
+        loadEmployees().then(render, render); // re-read: picks up columns such as access added by the database
         render(); status('Imported: ' + added + ' added, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' rows without a name skipped' : '') + '.', 'ok');
       });
     }).catch(function (e) { status(isPerm(e) ? 'Your account can’t change employees.' : 'Couldn’t import that file: ' + (e && e.message || e), 'err'); });
@@ -535,6 +739,11 @@
         var w = r.data; if (!w || !(w.shifts || []).length) return 'This week: not started';
         var n = w.shifts.length, st = w.status !== 'published' ? 'draft' : shiftsKey(w.shifts) === shiftsKey(w.published) ? 'published' : 'changed';
         return 'This week: ' + n + ' shift' + (n === 1 ? '' : 's') + ' · ' + (st === 'published' ? 'published' : st === 'changed' ? 'changed since publishing' : 'draft');
+      }).then(function (txt) {
+        return client.from('time_off').select('id').eq('status', 'pending').then(function (r) {
+          var n = (!r.error && r.data) ? r.data.length : 0;
+          return txt + (n ? ' \u00b7 ' + n + ' time-off request' + (n === 1 ? '' : 's') + ' waiting' : '');
+        }, function () { return txt; });
       });
     },
     _test: { phoneE164: phoneE164, messageFor: messageFor, S: S }

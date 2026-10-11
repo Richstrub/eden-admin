@@ -16,7 +16,7 @@
   'use strict';
   var CFG = window.EDEN_STAFF_CONFIG || {};
   var EDIT_ROLES = ['owner', 'manager', 'kitchen'];
-  var ROLE_NAMES = { owner: 'Owner', manager: 'Manager', kitchen: 'Kitchen', foh: 'Front of House' };
+  var ROLE_NAMES = { owner: 'Owner', manager: 'Manager', kitchen: 'Kitchen', foh: 'Front of House', scheduler: 'Manager' };
   var $ = function (id) { return document.getElementById(id); };
   var screens = ['loading', 'signin', 'newpw', 'noaccess', 'app'];
   function show(id) { screens.forEach(function (s) { $(s).hidden = s !== id; }); }
@@ -90,11 +90,17 @@
       if (r.error) { $('loadingMsg').textContent = 'Could not reach the database. Check your connection and reload.'; return; }
       role = r.data || null;
       var email = session.user && session.user.email;
+      // no staff role: an employee whose access level is Manager can still use the Schedule
+      var tier = role ? Promise.resolve(null) : sb.rpc('team_me').then(function (t) { return t && !t.error ? t.data : null; }, function () { return null; });
+      return tier.then(function (me) {
+      if (!role && me && me.access === 'manager') role = 'scheduler';
       if (!role) {
         $('noaccessMsg').textContent = 'You are signed in as ' + email + '. This is the managers\u2019 site. Your schedule and the team message board are on the staff schedule page.';
         show('noaccess'); return;
       }
-      return sb.from('staff').select('name').eq('user_id', session.user.id).maybeSingle().then(function (n) {
+      var nameP = role === 'scheduler' ? Promise.resolve({ data: { name: me.employee && me.employee.name } })
+        : sb.from('staff').select('name').eq('user_id', session.user.id).maybeSingle();
+      return nameP.then(function (n) {
         var name = (n && n.data && n.data.name) || email;
         $('who').innerHTML = '';
         var b = document.createElement('b'); b.textContent = name; $('who').appendChild(b);
@@ -102,9 +108,11 @@
         ed.canWrite = EDIT_ROLES.indexOf(role) !== -1;
         staffName = name;
         document.querySelectorAll('[data-mgr]').forEach(function (el) { el.hidden = !isMgr(); });
+        document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
         show('app');
-        if (!started) { started = true; startData(); }
+        if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
+      });
       });
     });
   }
@@ -112,11 +120,11 @@
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
   var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule' };
   var view = null, menuOpened = false, staffName = '';
-  function isMgr() { return role === 'owner' || role === 'manager'; }
+  function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function route() {
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, '');
-    if (!VIEWS[v] || (v === 'schedule' && !isMgr())) v = 'home';
+    if (!VIEWS[v] || (v === 'schedule' && !isMgr()) || (v === 'menu' && role === 'scheduler')) v = 'home';
     if (('#' + v) !== location.hash) history.replaceState(null, '', '#' + v);
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;

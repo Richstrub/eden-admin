@@ -31,6 +31,13 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   account with the same email. (Email-based resets need a custom email sender, e.g. Google Workspace SMTP.)
   New manager logins must be on the employee list first (the sign-up rule applies to every new account).
 
+- **Permissions and time off**: run `supabase/access-and-timeoff.sql` (after `team.sql`). Each employee has
+  an access level, set by the Owner on Schedule → Employees: **Employee** (sees the posted schedule,
+  requests time off, message board) or **Manager** (also edits/publishes the schedule, approves time off,
+  texts the team; signs in on this site and sees Home + Schedule only). Time-off requests wait for a
+  Manager or the Owner on Schedule → Time off; approved time off shows on the grid and the month view.
+- **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.
+
 ## Roles
 
 | Role | Menu and Supper Club |
