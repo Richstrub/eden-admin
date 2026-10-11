@@ -570,3 +570,9 @@ body.nt-open{overflow:hidden}
 .td-det textarea{font:inherit;font-size:.95rem;padding:10px 12px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:2px;width:100%;resize:vertical}
 @media (max-width:760px){.td-in{padding:20px 16px 60px}}
 .td-add .td-due{width:auto;flex:0 0 auto}.td-add .ed-btn{flex:0 0 auto}
+
+/* Notes on iPad: nothing behind or around the page can be selected or copied */
+body.nt-open #app{visibility:hidden!important}
+.nt,.nt *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.nt input,.nt textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.nt-paper{overscroll-behavior:contain}

@@ -146,7 +146,10 @@
     text.addEventListener('input', function () { N.note.body = text.value; changed(); paintList(); });
     var hint = h('p', { cls: 'nt-hint', text: 'Tip: on iPad, Scribble must be on (Settings → Apple Pencil → Scribble).' });
     el.appendChild(h('div', { cls: 'nt-body' }, [list, h('div', { cls: 'nt-page' }, [paper, h('div', { cls: 'nt-textwrap' }, [text, hint])])]));
+    el.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input, textarea')) e.preventDefault(); });
+    el.addEventListener('contextmenu', function (e) { if (!e.target.closest('input, textarea')) e.preventDefault(); });
     document.body.appendChild(el);
+    try { var sel = window.getSelection(); if (sel) sel.removeAllRanges(); } catch (x) {}
     N.canvas = canvas; N.paper = paper; N.text = text; N.titleEl = title; N.list = list;
     setupCanvas();
     setMode(N.note.ink && N.note.ink.length || !(N.note.body || '').trim() ? 'ink' : 'text');
@@ -264,7 +267,9 @@
       if (inkHeight() > c.clientHeight - 200) sizeCanvas();
     }
     c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
-    c.addEventListener('touchstart', function (e) { if (!N.penSeen || e.touches.length > 1) return; }, { passive: true });
+    // iPad Safari: stop a Pencil or finger press on the page from starting a text selection / Copy menu or a magnifier.
+    ['touchstart', 'touchmove', 'touchend'].forEach(function (t) { c.addEventListener(t, function (e) { if (e.cancelable) e.preventDefault(); }, { passive: false }); });
+    c.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
   function undo() { var s = N.note.ink.pop(); if (s) { N.redo.push(s); redraw(); changed(); } }
   function redo() { var s = N.redo.pop(); if (s) { N.note.ink.push(s); redraw(); changed(); } }
