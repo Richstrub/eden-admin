@@ -1,6 +1,6 @@
 /* Eden staff site: printable prep list built from the live menu.
  *
- * Every visible dish on the Kitchen menu becomes a block: the dish (with its farm or producer), the main
+ * A fixed Basics section comes first. Every visible dish on the Kitchen menu becomes a block: the dish (with its farm or producer), the main
  * ingredient(s) named in its title, and each component from its description ("Israeli couscous, charred tomatillo, …"). Add-ons written in a section
  * note ("Add to any large plate: Chickpea & Red Miso Butter 6 · …") become their own items. The bar menu
  * can be included too. "Combined" view merges components shared by several dishes into one line.
@@ -66,8 +66,9 @@
     if (!m) return [];
     return m[1].split(/\s*[·•|]\s*/).map(function (x) { return cap(x.replace(/\s*\$?\d+(\.\d+)?\s*$/, '')); }).filter(Boolean);
   }
+  var BASICS = ['Garlic', 'Shallots', 'Thyme', 'Orange vinaigrette', 'Tallow'];
   function sections(menu) {
-    var out = [];
+    var out = [{ id: 'basics', title: 'Basics', station: '', basic: true, dishes: [{ name: '', src: '', parts: BASICS.slice(), mainN: 0, notes: {}, basic: true }] }];
     var tabs = (menu && menu.tabs) || [];
     var kitchen = tabs.filter(function (t) { return t.id === 'm-food' || /kitchen|food/i.test(t.label || ''); })[0];
     if (kitchen) (kitchen.groups || []).forEach(function (g) {
@@ -114,8 +115,7 @@
   function table(rows) {
     return h('table', { cls: 'pp-table' }, [
       h('thead', null, h('tr', null, [h('th', { cls: 'pp-chk', text: '✓' }), h('th', { text: 'Item' }), h('th', { cls: 'pp-num', text: 'Par' }), h('th', { cls: 'pp-num', text: 'On hand' }), h('th', { cls: 'pp-num', text: 'Prep' }), h('th', { cls: 'pp-ini', text: 'Init.' }), h('th', { cls: 'pp-tool' })])),
-      h('tbody', null, rows)
-    ]);
+    ].concat(rows.length && rows.every(function (r) { return r.tagName === 'TBODY'; }) ? rows : [h('tbody', null, rows)]));
   }
   function extraRows(secId) {
     return (P.saved.extra[secId] || []).map(function (name, i) {
@@ -160,7 +160,7 @@
         h('button', { type: 'button', cls: 'ed-btn', text: 'Print', on: { click: function () { window.print(); } } })
       ])
     ]));
-    wrap.appendChild(h('p', { cls: 'pp-help', text: 'Built from the live menu: change a dish in the Menu editor and this list follows. Type pars in the Par column; they, any items you add, and lines you remove are remembered on this computer. “Combined” merges components used in more than one dish.' }));
+    wrap.appendChild(h('p', { cls: 'pp-help', text: 'Built from the live menu: change a dish in the Menu editor and this list follows. Type pars in the Par column; they, any items you add, and lines you remove are remembered on this computer. “Combined” merges components used in more than one dish. Prints on one 8½ × 11 page.' }));
 
     // the printable sheet
     var d = P.date ? new Date(P.date + 'T12:00:00') : new Date();
@@ -173,7 +173,8 @@
         h('div', null, [h('span', { text: 'Prepped by' }), h('i')])
       ])
     ]));
-    if (!secs.length) sheet.appendChild(h('p', { cls: 'sc-empty', text: 'No dishes on the Kitchen menu yet.' }));
+    if (secs.length < 2) sheet.appendChild(h('p', { cls: 'sc-empty', text: 'No dishes on the Kitchen menu yet.' }));
+    var body = h('div', { cls: 'pp-body' }); sheet.appendChild(body);
 
     secs.forEach(function (sec) {
       var box = h('section', { cls: 'pp-sec' }, [h('h2', { cls: 'pp-sec-h' }, [sec.title, sec.station === 'Bar' ? h('span', { text: 'Bar' }) : null])]);
@@ -202,19 +203,35 @@
             dishRows.push(row(p, main && dish.notes[keyOf(p)] ? cap(dish.notes[keyOf(p)]) : '', key, main ? 'pp-main' : null));
           });
           if (!dishRows.length) return;
-          rows.push(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])]));
-          rows = rows.concat(dishRows);
+          if (!dish.basic) dishRows.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])]));
+          rows.push(h('tbody', { cls: 'pp-group' }, dishRows)); // a dish and its lines stay together when printed
         });
       }
       var extras = extraRows(sec.id);
-      if (extras.length) { if (P.mode === 'dish') rows.push(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, h('b', { text: 'Also' }))])); rows = rows.concat(extras); }
+      if (extras.length) { if (P.mode === 'dish') { if (!sec.basic) extras.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, h('b', { text: 'Also' }))])); rows.push(h('tbody', { cls: 'pp-group' }, extras)); } else rows = rows.concat(extras); }
       box.appendChild(table(rows));
       addLine(sec.id, box);
-      sheet.appendChild(box);
+      body.appendChild(box);
     });
-    sheet.appendChild(h('div', { cls: 'pp-notes' }, [h('span', { text: 'Notes / 86’d' }), h('i'), h('i'), h('i')]));
+    sheet.appendChild(h('div', { cls: 'pp-notes' }, [h('span', { text: 'Notes / 86’d' }), h('i'), h('i')]));
     wrap.appendChild(sheet);
   }
+
+  /* ---------- printing: always one 8.5 x 11 page ----------
+   * The paper layout (two columns, compact rows) is the .pp-paper class. Just before printing it is put
+   * on the sheet, the sheet is measured at the page's printable size, and scaled down if it is too tall. */
+  var PAGE_W = 7.8 * 96, PAGE_H = 10.3 * 96; // letter minus 0.35in margins, in CSS px
+  function fit() {
+    var sheet = P.el && !P.el.hidden && P.el.querySelector('.pp-sheet'); if (!sheet) return;
+    sheet.classList.add('pp-paper'); sheet.style.zoom = ''; sheet.style.width = PAGE_W + 'px';
+    var hgt = sheet.scrollHeight, z = Math.min(1, (PAGE_H - 4) / hgt);
+    sheet.style.width = '';
+    sheet.style.setProperty('--pp-zoom', String(Math.floor(z * 1000) / 1000));
+    P.zoom = z;
+  }
+  function unfit() { var s = P.el && P.el.querySelector('.pp-sheet'); if (s) s.classList.remove('pp-paper'); }
+  window.addEventListener('beforeprint', fit);
+  window.addEventListener('afterprint', unfit);
 
   window.EdenPrep = {
     show: function (ctx) { P.ctx = ctx; P.el = ctx.el; render(); },
@@ -223,6 +240,6 @@
       var a = document.activeElement; if (a && P.el.contains(a) && a.tagName === 'INPUT') return; // don't wipe a par mid-typing
       render();
     },
-    _test: { sections: sections, titleParts: titleParts, splitParts: splitParts, addOns: addOns, P: P }
+    _test: { fit: fit, unfit: unfit, sections: sections, titleParts: titleParts, splitParts: splitParts, addOns: addOns, P: P }
   };
 })();

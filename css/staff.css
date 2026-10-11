@@ -260,7 +260,7 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 .pp-table{width:100%;border-collapse:collapse;font-size:.9rem}
 .pp-table th{font-size:.55rem;letter-spacing:.22em;text-transform:uppercase;font-weight:500;color:#555;text-align:left;padding:4px 6px;border-bottom:1px solid #111}
 .pp-table td{padding:5px 6px;border-bottom:1px solid #d6d2ca;vertical-align:middle}
-.pp-table tr{break-inside:avoid}
+.pp-table tr,.pp-group{break-inside:avoid}
 .pp-chk{width:26px;text-align:center!important}
 .pp-box{display:inline-block;width:13px;height:13px;border:1.5px solid #111;vertical-align:middle}
 .pp-item span{display:block}
@@ -295,15 +295,43 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
   .pp-num{width:52px}.pp-ini{width:38px}
 }
 @media print{
-  @page{margin:12mm}
-  .pp-controls,.pp-help,.pp-add,.pp-tool{display:none!important}
+  @page prep{size:letter portrait;margin:.35in}
+  #viewPrep{page:prep}
+  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pp-controls,.pp-help,.pp-add{display:none!important}
+  .pp-tool *{display:none!important}
   .pp-in{padding:0;max-width:none}
-  .pp-sheet{border:0;padding:0}
-  .pp-table{font-size:10pt}
-  .pp-table td{padding:3px 6px}
-  .pp-dish td{padding:7px 6px 2px}
-  .pp-sec{margin-top:14px}
-  .pp-box{width:11px;height:11px}
-  .pp-par{border:0!important;background:none!important}
-  .pp-par:placeholder-shown{color:transparent}
+  .pp-sheet{border:0;padding:0;zoom:var(--pp-zoom,1)}
+  .pp-table .pp-par{border:0!important;background:none!important}
 }
+/* paper layout: two columns of compact rows, sized for one letter page */
+.pp-paper{font-size:8pt;line-height:1.15}
+.pp-paper .pp-head{padding-bottom:5px;margin-bottom:2px;border-bottom-width:1.5px}
+.pp-paper .pp-brand{font-size:16pt}
+.pp-paper .pp-title{font-size:6pt;margin-top:3px}
+.pp-paper .pp-meta b{font-size:8.5pt}
+.pp-paper .pp-meta span{font-size:5.5pt}
+.pp-paper .pp-meta i{width:1.1in}
+.pp-paper .pp-body{column-count:2;column-gap:.28in;column-fill:balance}
+.pp-paper .pp-sec{margin-top:7px;break-inside:auto}
+.pp-paper .pp-sec:first-child{margin-top:4px}
+.pp-paper .pp-sec-h{font-size:11.5pt;margin-bottom:1px}
+.pp-paper .pp-table{font-size:8pt;table-layout:fixed}
+.pp-paper .pp-table th{font-size:5pt;letter-spacing:.14em;padding:1px 3px}
+.pp-paper .pp-table td{padding:2.5px 3px;height:15px}
+.pp-paper .pp-dish td{padding:4px 3px 1px;height:auto}
+.pp-paper .pp-dish b{font-size:8pt}
+.pp-paper .pp-dish span{font-size:6.5pt;margin-left:6px}
+.pp-paper .pp-item small{font-size:6.5pt;display:inline;margin-left:5px}
+.pp-paper .pp-item span{display:inline}
+.pp-paper .pp-chk{width:14px}
+.pp-paper .pp-box{width:8px;height:8px;border-width:1px}
+.pp-paper .pp-num{width:.42in}
+.pp-paper .pp-ini{width:.32in}
+.pp-paper .pp-tool{width:0;padding:0!important;border:0}
+.pp-paper .pp-tool *{display:none}
+.pp-paper .pp-table .pp-par{font-size:8pt;padding:0}
+.pp-paper .pp-add{display:none}
+.pp-paper .pp-notes{margin-top:8px;gap:9px}
+.pp-paper .pp-notes span{font-size:5.5pt}
+
