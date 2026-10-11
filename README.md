@@ -37,7 +37,7 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
   texts the team; signs in on this site and sees Home, Schedule and Prep List). Time-off requests wait for a
   Manager or the Owner on Schedule → Time off; approved time off shows on the grid and the month view.
 - **Prep List** (`#prep`, Owner, Manager, Kitchen and Manager-tier employees): a printable prep sheet built
-  from the live Kitchen menu (each dish's components from its description, plus the large-plate add-ons),
+  from the live Kitchen menu (the main ingredients named in each dish title, each component from its description, and the large-plate add-ons),
   by dish or combined, optionally with the bar. Pars, added items and removed lines are kept in that
   computer's browser. Print with the Print button or Cmd/Ctrl+P. No setup needed.
 - **Week / Month**: both the Schedule page and the staff page switch between a week and a month view.

@@ -277,6 +277,8 @@ tr.inactive .sc-ename,tr.inactive input{opacity:.55}
 .pp-dish b{font-weight:500;font-size:.95rem}
 .pp-dish span{margin-left:10px;font-size:.72rem;color:#666}
 .pp-shared .pp-item span{font-weight:500}
+.pp-main .pp-item span{font-weight:500}
+.pp-main .pp-item small{font-style:italic}
 .pp-extra .pp-item small{font-style:italic}
 .pp-add{display:flex;gap:8px;margin-top:8px}
 .pp-addin{flex:1;min-width:0;font:inherit;font-size:.85rem;padding:6px 10px;border:1px dashed var(--line);background:transparent;color:var(--ink)}

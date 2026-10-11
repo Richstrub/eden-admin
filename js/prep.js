@@ -1,7 +1,7 @@
 /* Eden staff site: printable prep list built from the live menu.
  *
- * Every visible dish on the Kitchen menu becomes a block: the dish (with its farm or producer) and each
- * component from its description ("Israeli couscous, charred tomatillo, …"). Add-ons written in a section
+ * Every visible dish on the Kitchen menu becomes a block: the dish (with its farm or producer), the main
+ * ingredient(s) named in its title, and each component from its description ("Israeli couscous, charred tomatillo, …"). Add-ons written in a section
  * note ("Add to any large plate: Chickpea & Red Miso Butter 6 · …") become their own items. The bar menu
  * can be included too. "Combined" view merges components shared by several dishes into one line.
  *
@@ -36,6 +36,31 @@
   function splitParts(desc) {
     return String(desc || '').split(/\s*[,;]\s*|\s+and\s+(?=[a-z])/i).map(function (x) { return cap(x.replace(/\.$/, '')); }).filter(Boolean);
   }
+  // The dish title names the main ingredient(s): "Braised Short Rib" -> Short rib (braised),
+  // "Beet and Carrot Salad" -> Beets, Carrots, "Mushroom Toast" -> Mushrooms.
+  var METHOD = /^(?:(?:pan[\s-]+seared|seared|ember[\s-]+roasted|wood[\s-]+fired|roasted|braised|grilled|fried|crispy|smoked|charred|poached|confit|cured|house[\s-]+made)\s+)+/i;
+  var DISHWORD = /\s+(?:salad|bowl|plate|board)$/i;
+  var BREAD = /\s+(toast|flatbread|crostini|naan)$/i;  // the bread is its own prep item
+  function plural(w) {
+    if (/(s|ch|sh|x|z)$/i.test(w)) return w;
+    if (/[^aeiou]y$/i.test(w)) return w.slice(0, -1) + 'ies';
+    if (/o$/i.test(w)) return w + 'es';
+    return w + 's';
+  }
+  function titleParts(name) {
+    var n = String(name || '').trim(); if (!n) return [];
+    var m = METHOD.exec(n), method = m ? m[0].trim().toLowerCase().replace(/\s+/g, ' ') : '';
+    n = n.slice(m ? m[0].length : 0);
+    var b = BREAD.exec(n), bread = b ? cap(b[1].toLowerCase()) : '';
+    if (b) n = n.slice(0, b.index);
+    var dishWord = !!b || DISHWORD.test(n); n = n.replace(DISHWORD, '');
+    return n.split(/\s*(?:,|&|\band\b)\s*/i).filter(Boolean).map(function (x) {
+      x = x.trim();
+      if (dishWord && /^[a-z]+(?:\s[a-z]+)?$/i.test(x)) x = x.replace(/(\w+)$/, function (w) { return plural(w); });
+      x = x.replace(/\b(NY|BBQ|[A-Z]{2,})\b|\b(\w)(\w*)/g, function (all, ab, f, r) { return ab || f.toLowerCase() + r.toLowerCase(); });
+      return { label: cap(x), note: method };
+    }).concat(bread ? [{ label: bread, note: '' }] : []);
+  }
   function addOns(note) { // "Add to any large plate: Chickpea & Red Miso Butter 6 · Roasted Mushrooms 10"
     var m = /add\s+to[^:]*:\s*(.+)$/i.exec(String(note || ''));
     if (!m) return [];
@@ -47,9 +72,13 @@
     var kitchen = tabs.filter(function (t) { return t.id === 'm-food' || /kitchen|food/i.test(t.label || ''); })[0];
     if (kitchen) (kitchen.groups || []).forEach(function (g) {
       var dishes = (g.items || []).filter(shown).filter(function (it) { return !isWine(it); }).map(function (it) {
-        var parts = splitParts(it.desc);
+        var main = titleParts(it.name), notes = {}, seen = {};
+        var parts = [];
+        main.forEach(function (t) { var k = keyOf(t.label); if (seen[k]) return; seen[k] = 1; parts.push(t.label); if (t.note) notes[k] = t.note; });
+        var mainN = parts.length;
+        splitParts(it.desc).forEach(function (p) { var k = keyOf(p); if (!seen[k]) { seen[k] = 1; parts.push(p); } });
         if (!parts.length) parts = [cap(it.src || 'See board')];
-        return { name: it.name, src: it.desc ? it.src : '', parts: parts };
+        return { name: it.name, src: it.desc || mainN ? it.src : '', parts: parts, mainN: mainN, notes: notes };
       });
       var adds = addOns(g.noteAfter).concat(addOns(g.note));
       if (adds.length) dishes.push({ name: 'Add-ons', src: '', parts: adds, addon: true });
@@ -154,21 +183,23 @@
         sec.dishes.forEach(function (dish) {
           dish.parts.forEach(function (p) {
             var k = keyOf(p);
-            if (!map[k]) { map[k] = { label: p, used: [] }; order.push(k); }
+            if (!map[k]) { map[k] = { label: p, used: [], main: false }; order.push(k); }
+            if (dish.parts.indexOf(p) < (dish.mainN || 0)) map[k].main = true;
             if (!dish.addon && map[k].used.indexOf(dish.name) === -1) map[k].used.push(dish.name);
           });
         });
         order.forEach(function (k) {
           var key = 'c:' + sec.id + ':' + k; if (P.saved.removed[key]) return;
           var it = map[k];
-          rows.push(row(it.label, it.used.length ? it.used.join(', ') : (sec.dishes.some(function (x) { return x.addon && x.parts.some(function (p) { return keyOf(p) === k; }); }) ? 'Add-on' : ''), key, it.used.length > 1 ? 'pp-shared' : null));
+          rows.push(row(it.label, it.used.length ? it.used.join(', ') : (sec.dishes.some(function (x) { return x.addon && x.parts.some(function (p) { return keyOf(p) === k; }); }) ? 'Add-on' : ''), key, [it.used.length > 1 ? 'pp-shared' : '', it.main ? 'pp-main' : ''].join(' ').trim() || null));
         });
       } else {
         sec.dishes.forEach(function (dish) {
           var dishRows = [];
-          dish.parts.forEach(function (p) {
+          dish.parts.forEach(function (p, i) {
             var key = 'd:' + sec.id + ':' + keyOf(dish.name) + ':' + keyOf(p); if (P.saved.removed[key]) return;
-            dishRows.push(row(p, '', key));
+            var main = i < (dish.mainN || 0);
+            dishRows.push(row(p, main && dish.notes[keyOf(p)] ? cap(dish.notes[keyOf(p)]) : '', key, main ? 'pp-main' : null));
           });
           if (!dishRows.length) return;
           rows.push(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])]));
@@ -192,6 +223,6 @@
       var a = document.activeElement; if (a && P.el.contains(a) && a.tagName === 'INPUT') return; // don't wipe a par mid-typing
       render();
     },
-    _test: { sections: sections, splitParts: splitParts, addOns: addOns, P: P }
+    _test: { sections: sections, titleParts: titleParts, splitParts: splitParts, addOns: addOns, P: P }
   };
 })();
