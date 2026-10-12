@@ -1026,3 +1026,26 @@ body.nt-open #app{visibility:hidden!important}
 .cq-compose .cq-acts{margin:0;padding:0;border:0}
 .cq-more{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);border-bottom:0}
 @media (max-width:900px){.cq-crow{grid-template-columns:1fr}.cq-m{max-width:100%}}
+
+/* ---------- Passwords (js/account.js): change password, temporary passwords ---------- */
+.sc-acct{display:inline-flex;flex-direction:column;gap:2px;align-items:flex-start}
+.sc-resetpw{background:none;border:0;padding:0;font:inherit;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ember);cursor:pointer}
+.sc-resetpw:hover{text-decoration:underline;text-underline-offset:3px}
+.acct-back{position:fixed;inset:0;z-index:3000;background:rgba(15,18,21,.55);display:grid;place-items:center;padding:16px}
+.acct-card{width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#fff;color:#0f1215;border-radius:4px;padding:24px 24px 20px;box-shadow:0 24px 60px rgba(15,18,21,.35);font-family:var(--sans);text-align:left}
+.acct-card h2{font-family:var(--serif);font-weight:400;font-size:1.6rem;margin:0 0 10px;color:#0f1215}
+.acct-card p{font-size:.92rem;line-height:1.5;margin:0 0 12px;color:#24282c}
+.acct-sub{font-size:.8rem!important;color:#7f7a71!important}
+.acct-f{display:grid;gap:5px;margin:0 0 12px;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:#7f7a71}
+.acct-f input{font:inherit;font-size:1rem;letter-spacing:0;text-transform:none;padding:10px 12px;border:1px solid rgba(15,18,21,.2);border-radius:2px;color:#0f1215;background:#fff}
+.acct-f input:focus{outline:2px solid #b0703f;outline-offset:-1px}
+.acct-temp{font-family:ui-monospace,Menlo,monospace!important;letter-spacing:.04em!important}
+.acct-big{font-family:ui-monospace,Menlo,monospace;font-size:1.25rem!important;letter-spacing:.04em;padding:10px 12px;background:#faf6ef;border:1px solid #ecdcc8;color:#0f1215!important;user-select:all}
+.acct-check{display:flex;gap:9px;align-items:flex-start;font-size:.86rem;line-height:1.4;margin:2px 0 12px;color:#24282c;cursor:pointer}
+.acct-check input{margin-top:3px;accent-color:#b0703f;flex:none}
+.acct-msg{min-height:1.2em;color:#a33!important;font-size:.86rem!important}
+.acct-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.acct-primary,.acct-ghost{font-family:var(--sans);font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;padding:11px 18px;border:1px solid #b0703f;cursor:pointer;border-radius:2px}
+.acct-primary{background:#b0703f;color:#fff}
+.acct-primary:disabled{opacity:.6;cursor:default}
+.acct-ghost{background:#fff;color:#b0703f}

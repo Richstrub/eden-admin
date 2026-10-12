@@ -55,19 +55,12 @@
     });
   });
 
-  var pwForm = $('newpw').querySelector('form'), pwMsg = pwForm.querySelector('.msg');
-  pwForm.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var a = pwForm.password.value, b = pwForm.password2.value;
-    if (a.length < 10) { pwMsg.textContent = 'Use at least 10 characters.'; return; }
-    if (a !== b) { pwMsg.textContent = 'The two passwords don’t match.'; return; }
-    pwMsg.textContent = 'Saving…';
-    sb.auth.updateUser({ password: a }).then(function (r) {
-      if (r.error) { pwMsg.textContent = 'Could not save: ' + (r.error.message || 'try again.'); return; }
-      recovering = false; history.replaceState(null, '', location.pathname); pwForm.reset(); pwMsg.textContent = '';
-      enter();
-    });
+  // choosing a new password: after a "Forgot password?" email link, or a temporary password a manager set
+  var pwForm = $('newpw').querySelector('form'), mustChange = false;
+  window.EdenAccount.choose(sb, pwForm, function () {
+    recovering = false; mustChange = false; history.replaceState(null, '', location.pathname); enter();
   });
+  document.querySelectorAll('[data-act="chpw"]').forEach(function (b) { b.addEventListener('click', function () { window.EdenAccount.change(sb); }); });
 
   document.querySelectorAll('[data-act="signout"]').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -78,14 +71,25 @@
 
   sb.auth.onAuthStateChange(function (event, s) {
     session = s;
-    if (event === 'PASSWORD_RECOVERY') { recovering = true; show('newpw'); return; }
-    if (event === 'SIGNED_OUT' || !s) { role = null; show('signin'); return; }
-    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') { if (!recovering) enter(); else show('newpw'); }
+    if (event === 'PASSWORD_RECOVERY') { recovering = true; $('newpwMsg').textContent = 'Choose a new password (at least 10 characters).'; show('newpw'); return; }
+    if (event === 'SIGNED_OUT' || !s) { role = null; entered = null; show('signin'); return; }
+    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      if (recovering) { show('newpw'); return; }
+      if (entered && s.user && entered === s.user.id && !$('app').hidden) return;   // same person (e.g. checking their password): stay put
+      enter();
+    }
   });
 
+  var entered = null;
   function enter() {
     if (!session) { show('signin'); return; }
     show('loading'); $('loadingMsg').textContent = 'Checking your access…';
+    window.EdenAccount.mustChange(sb).then(function (must) {
+      if (must) { mustChange = true; $('newpwMsg').textContent = 'A manager set a temporary password for you. Choose your own password to continue (at least 10 characters).'; show('newpw'); return; }
+      enterApp();
+    });
+  }
+  function enterApp() {
     sb.rpc('staff_role').then(function (r) {
       if (r.error) { $('loadingMsg').textContent = 'Could not reach the database. Check your connection and reload.'; return; }
       role = r.data || null;
@@ -111,7 +115,7 @@
         document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
         document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         document.querySelectorAll('[data-owner]').forEach(function (el) { el.hidden = role !== 'owner'; });
-        show('app');
+        show('app'); entered = session.user.id;
         if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr() });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();

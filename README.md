@@ -100,6 +100,12 @@ Setup (each step works on its own; anything not set up is skipped):
 
 The Catering & BEOs page shows a status line saying which of these are working. When edencny.com points to the new website, change `SITE_URL` in `wrangler.jsonc` and `guestSite` in `js/config.js` to `https://edencny.com/`.
 
+## Passwords
+
+- **Change password** (everyone): the **Password** button at the top of the staff site and the staff page. It asks for the current password, and can sign out every other phone, tablet and computer (use that if someone else may know the password).
+- **Temporary password** (Owner and managers): Schedule → Employees → **Reset password** next to anyone with an account. It signs them out everywhere and sets a temporary password to give them in person or by text; the next time they sign in, they must choose their own. Managers can reset employees; only the Owner can reset a manager; the Owner's own password can't be reset this way. Resets are recorded in History (the password itself never is). Setup: run `supabase/passwords.sql` once.
+- **Forgot password?** (by email, on both sign-in pages): Supabase sends the reset link. Its built-in email only reaches members of your Supabase team (and only a couple of emails an hour), so for employees it works once Supabase sends through Resend: Supabase → Authentication → Emails → SMTP Settings, using Resend's SMTP details (host `smtp.resend.com`, port 465, user `resend`, password: a Resend API key, sender e.g. `events@edencny.com`). Also in Supabase → Authentication → URL Configuration, add `https://eden-admin.richard-a-strub.workers.dev/**` to Redirect URLs so the link comes back to the right page.
+
 ## Roles
 
 | Role | Menu and Supper Club |

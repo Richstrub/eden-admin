@@ -29,7 +29,7 @@
 <div class="gate" id="newpw" hidden>
   <form novalidate>
     <div class="mark">EDEN<span>Staff</span></div>
-    <p>Choose a new password (at least 10 characters).</p>
+    <p id="newpwMsg">Choose a new password (at least 10 characters).</p>
     <label>New password<input type="password" name="password" autocomplete="new-password" minlength="10" required></label>
     <label>Repeat it<input type="password" name="password2" autocomplete="new-password" minlength="10" required></label>
     <p class="msg" role="status"></p>
@@ -57,6 +57,7 @@
       </nav>
       <div class="ed-acct">
         <a class="ed-btn ghost small" id="viewSite" href="#" target="_blank" rel="noopener">View website</a>
+        <button class="ed-btn ghost small" type="button" data-act="chpw">Password</button>
         <button class="ed-btn ghost small" type="button" data-act="signout">Sign out</button>
       </div>
     </div>
@@ -160,6 +161,7 @@
 <script src="js/inquiries.js"></script>
 <script src="js/countries.js"></script>
 <script src="js/analytics.js"></script>
+<script src="js/account.js"></script>
 <script src="js/staff.js"></script>
 </body>
 </html>

@@ -676,8 +676,11 @@
         emIn.addEventListener('blur', emChk); emChk();
         em = [emIn, emBad];
         var acct = e.email ? S.accounts && S.accounts[String(e.email).trim().toLowerCase()] : null;
+        // forgot or compromised password: a manager sets a temporary one (only the Owner can for managers)
+        var canReset = acct && window.EdenAccount && (isOwner() || e.access !== 'manager');
         login = !e.email ? h('span', { cls: 'sc-login none', text: '\u2013' })
-          : acct ? h('span', { cls: 'sc-login ok', text: 'Active' + (acct.last_sign_in_at ? ' \u00b7 ' + new Date(acct.last_sign_in_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '') })
+          : acct ? h('span', { cls: 'sc-acct' }, [h('span', { cls: 'sc-login ok', text: 'Active' + (acct.last_sign_in_at ? ' \u00b7 ' + new Date(acct.last_sign_in_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '') }),
+              canReset ? h('button', { type: 'button', cls: 'sc-resetpw', text: 'Reset password', on: { click: function () { window.EdenAccount.resetFor(sb(), { name: e.name, email: String(e.email).trim().toLowerCase() }); } } }) : null])
           : S.accountsOk ? h('span', { cls: 'sc-login', text: 'Not created yet' }) : h('span', { cls: 'sc-login none', text: '\u2013' });
       }
       var cells = [h('td', null, inp('name', { placeholder: 'Full name' })), h('td', null, [ph, bad])];

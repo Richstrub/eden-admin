@@ -12,12 +12,12 @@
   var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var ROLE_NAMES = { owner: 'Owner', manager: 'Manager', kitchen: 'Kitchen', foh: 'Front of House' };
   var $ = function (id) { return document.getElementById(id); };
-  var screens = ['loading', 'signin', 'notlisted', 'app'];
+  var screens = ['loading', 'signin', 'notlisted', 'newpw', 'app'];
   function show(id) { screens.forEach(function (s) { $(s).hidden = s !== id; }); }
 
   if (!window.supabase || !CFG.supabase || !CFG.supabase.url) { $('loadingMsg').textContent = 'Could not load. Check your internet connection and reload.'; return; }
   var sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.key);
-  var me = null, session = null, started = false, week = monday(new Date());
+  var me = null, session = null, started = false, week = monday(new Date()), recovering = /type=recovery/.test(location.hash), entered = null;
   var view = 'week', dayDate = new Date(), month = firstOfMonth(new Date()), myOff = [], monthData = null, pickedDay = null;
 
   /* ---------- helpers ---------- */
@@ -102,14 +102,38 @@
   });
   document.querySelectorAll('[data-act="signout"]').forEach(function (b) { b.addEventListener('click', function () { sb.auth.signOut().then(function () { location.replace(location.pathname); }); }); });
 
+  /* ---------- passwords: forgot (email link), change, and temporary passwords set by a manager ---------- */
+  form.querySelector('[data-act="forgot"]').addEventListener('click', function () {
+    var email = form.email.value.trim();
+    if (!email) { msg.textContent = 'Enter your email above first, then tap Forgot password? again.'; return; }
+    msg.textContent = 'Sending…';
+    sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }).then(function (r) {
+      msg.textContent = r.error ? (/rate|too many|authorized/i.test(r.error.message || '') ? 'We couldn’t send a reset email right now. Ask a manager to set a temporary password for you.' : 'Couldn’t send the email. Try again in a minute, or ask a manager to set a temporary password.')
+        : 'If that email has an account, a reset link is on its way. No email after a few minutes? Check your spam folder, or ask a manager to set a temporary password for you.';
+    });
+  });
+  window.EdenAccount.choose(sb, $('newpw').querySelector('form'), function () { recovering = false; history.replaceState(null, '', location.pathname); enter(); });
+  document.querySelectorAll('[data-act="chpw"]').forEach(function (b) { b.addEventListener('click', function () { window.EdenAccount.change(sb); }); });
+
   sb.auth.onAuthStateChange(function (event, s) {
     session = s;
-    if (!s) { show('signin'); return; }
-    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') enter();
+    if (event === 'PASSWORD_RECOVERY') { recovering = true; $('newpwMsg').textContent = 'Choose a new password (at least 10 characters).'; show('newpw'); return; }
+    if (!s) { entered = null; show('signin'); return; }
+    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      if (recovering) { show('newpw'); return; }
+      if (entered && s.user && entered === s.user.id && !$('app').hidden) return;   // same person (e.g. checking their password): stay put
+      enter();
+    }
   });
 
   function enter() {
     show('loading'); $('loadingMsg').textContent = 'Loading your schedule…';
+    window.EdenAccount.mustChange(sb).then(function (must) {
+      if (must) { $('newpwMsg').textContent = 'A manager set a temporary password for you. Choose your own password to continue (at least 10 characters).'; show('newpw'); return; }
+      enterApp();
+    });
+  }
+  function enterApp() {
     sb.rpc('team_me').then(function (r) {
       if (r.error) { $('loadingMsg').textContent = /team_me|function/i.test(r.error.message || '') ? 'The staff page isn’t set up yet. Ask a manager.' : 'Couldn’t reach the schedule. Check your connection and reload.'; return; }
       me = r.data || {};
@@ -125,7 +149,7 @@
       $('timeoffSec').hidden = !me.employee;
       var first = String(name).split(/[\s@]/)[0], hr = new Date().getHours();
       $('hello').textContent = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '');
-      show('app');
+      show('app'); entered = session.user && session.user.id;
       if (!started) { started = true; startBoard(); }
       loadMyOff().then(loadView);
       page();
