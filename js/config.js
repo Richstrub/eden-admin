@@ -14,6 +14,8 @@ window.EDEN_STAFF_CONFIG = {
   staffHome: 'https://edencny-staff.com/',
   // The public website, for the "View website" button.
   publicSite: 'https://edencny.com/',
+  // Business email: the order mailboxes are listed in (any others follow, A to Z).
+  mailOrder: ['rich@edencny.com', 'info@edencny.com', 'events@edencny.com'],
   // Where guests' catering questionnaire links point (keep it the same as SITE_URL in wrangler.jsonc).
   guestSite: 'https://edencny.com/'
 };

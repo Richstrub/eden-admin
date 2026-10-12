@@ -53,6 +53,12 @@
   }
   function acct(id) { id = id || M.acct; return M.accounts.filter(function (a) { return a.id === id; })[0] || null; }
   function mine() { return M.accounts.filter(function (a) { return a.mine; }); }
+  // mailboxes in the order set in js/config.js (mailOrder), then A to Z
+  function sortAccounts(list) {
+    var order = ((window.EDEN_STAFF_CONFIG || {}).mailOrder || []).map(function (x) { return String(x).toLowerCase(); });
+    var rank = function (a) { var i = order.indexOf(String(a.address || '').toLowerCase()); return i === -1 ? order.length : i; };
+    return (list || []).slice().sort(function (a, b) { return rank(a) - rank(b) || String(a.address).localeCompare(String(b.address)); });
+  }
   function isOwner() { return M.ctx && M.ctx.role === 'owner'; }
   function rememberAcct(id) { try { localStorage.setItem('eden-mail-acct', id); } catch (e) {} }
   function savedAcct() { try { return localStorage.getItem('eden-mail-acct') || ''; } catch (e) { return ''; } }
@@ -204,7 +210,7 @@
     });
     var ppl = isOwner() ? M.ctx.sb.from('staff').select('user_id,name,role').in('role', ['owner', 'manager']).then(function (r) { return (r && r.data) || []; }, function () { return []; }) : Promise.resolve([]);
     return Promise.all([st, acc, ppl]).then(function (x) {
-      M.cfg = x[0]; M.accounts = x[1]; M.people = x[2]; M.loaded = true;
+      M.cfg = x[0]; M.accounts = sortAccounts(x[1]); M.people = x[2]; M.loaded = true;
       var m = mine();
       if (!acct(M.acct) || !acct(M.acct).mine) M.acct = (m.filter(function (a) { return a.id === savedAcct(); })[0] || m[0] || {}).id || '';
     });
@@ -822,7 +828,7 @@
     // the unread count beside "Business email" in the menu
     counts: function (ctx) {
       if (!M.ctx) M.ctx = ctx; else { M.ctx.sb = ctx.sb; M.ctx.role = ctx.role; M.ctx.uid = ctx.uid; }
-      var p = M.loaded ? Promise.resolve() : ctx.sb.rpc('mail_my_accounts').then(function (r) { if (!r.error) M.accounts = r.data || []; });
+      var p = M.loaded ? Promise.resolve() : ctx.sb.rpc('mail_my_accounts').then(function (r) { if (!r.error) M.accounts = sortAccounts(r.data || []); });
       return p.then(function () { if (mine().length) return counts(); }).catch(function () {});
     }
   };
