@@ -116,7 +116,7 @@
         document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         document.querySelectorAll('[data-owner]').forEach(function (el) { el.hidden = role !== 'owner'; });
         show('app'); entered = session.user.id;
-        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr() });
+        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), isOwner: role === 'owner' });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
       });

@@ -4,7 +4,9 @@
  * sensitive; your palm and fingers don't draw once the Pencil is used, fingers scroll instead). Text: on an
  * iPad, writing with Apple Pencil in the text box is turned into typed text by iPadOS (Scribble). "Convert
  * to text" reads the handwriting page line by line (Tesseract, loaded only when asked; neat printing reads
- * best) and shows each line beside what was read so it can be corrected. Notes save automatically and are private to the person who wrote them. A note can be emailed,
+ * best) and shows each line beside what was read so it can be corrected. Notes save automatically and are private to the person who wrote them,
+ * unless they're moved into the shared folder ("Shared · Owner & managers", supabase/shared-notes.sql), where the Owner and
+ * every manager can read and edit them. A note can be emailed,
  * shared (with the handwriting attached, where the device supports it) or filed into the To-do list.
  *
  * Data: Supabase tables notes and todos (supabase/notes.sql).
@@ -41,14 +43,19 @@
     return same ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function dayLabel(t) { var p = String(t).split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
-  function blankNote() { return { id: uid(), title: '', body: '', ink: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString(), _new: true }; }
+  function blankNote(shared) { return { id: uid(), title: '', body: '', ink: [], shared: !!shared, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), _new: true }; }
+  function mine(n) { return !n.user_id || n.user_id === C.uid; }
+  function canShare() { return C.canShare && !C.noShare; }
+  var SHARED_NAME = 'Shared · Owner & managers';
   function hasContent(n) { return !!(n && ((n.title || '').trim() || (n.body || '').trim() || (n.ink && n.ink.length))); }
   function noteTitle(n) { return (n.title || '').trim() || (n.body || '').trim().split('\n')[0].slice(0, 60) || (n.ink && n.ink.length ? 'Handwritten note' : 'Untitled note'); }
   function toast(t, k) { var el = N.el && N.el.querySelector('.nt-state'); if (el) { el.textContent = t; el.className = 'nt-state' + (k ? ' ' + k : ''); } }
 
   /* ---------- notes: data ---------- */
   function loadNotes() {
-    return C.sb.from('notes').select('id,title,body,ink,created_at,updated_at').order('updated_at', { ascending: false }).then(function (r) {
+    var cols = 'id,title,body,ink,created_at,updated_at';
+    return C.sb.from('notes').select(cols + (C.noShare ? '' : ',user_id,shared,author,edited_by')).order('updated_at', { ascending: false }).then(function (r) {
+      if (r.error && !C.noShare && (r.error.code === '42703' || /column .* does not exist|shared/i.test(r.error.message || ''))) { C.noShare = true; return loadNotes(); }   // shared-notes.sql not run yet
       N.loaded = true;
       if (r.error) { if (isMissing(r.error)) N.missing = true; N.notes = []; return; }
       N.missing = false;
@@ -68,7 +75,9 @@
     if (N.saving) { clearTimeout(N.saveT); N.saveT = setTimeout(saveNote, 400); return Promise.resolve(); }
     N.saving = true; N.dirty = false;
     var n = N.note;
-    return C.sb.from('notes').upsert({ id: n.id, title: n.title || '', body: n.body || '', ink: n.ink || [] }, { onConflict: 'id' }).then(function (r) {
+    var row = { id: n.id, title: n.title || '', body: n.body || '', ink: n.ink || [] };
+    if (!C.noShare) row.shared = !!n.shared;
+    return C.sb.from('notes').upsert(row, { onConflict: 'id' }).then(function (r) {
       N.saving = false;
       if (r.error) {
         N.dirty = true;
@@ -77,7 +86,10 @@
         clearTimeout(N.saveT); N.saveT = setTimeout(saveNote, 5000); return;
       }
       delete n._new;
-      if (!N.notes.some(function (x) { return x.id === n.id; })) N.notes.unshift(n);
+      if (!n.user_id) n.user_id = C.uid;
+      if (n.shared) { n.edited_by = C.name; if (!n.author) n.author = C.name; }
+      var at = -1; N.notes.forEach(function (x, i) { if (x.id === n.id) at = i; });
+      if (at === -1) N.notes.unshift(n); else N.notes[at] = n;
       if (!N.dirty) { toast('Saved', 'ok'); dropDraft(); }
       paintList();
     });
@@ -92,10 +104,11 @@
     N.redo = [];
     build();
     document.body.classList.add('nt-open');
-    loadNotes().then(function () { paintList(); if (N.dirty) saveNote(); });
+    loadNotes().then(function () { if (C.noShare && N.folderEl) { N.folderEl.remove(); N.folderEl = null; } paintList(); if (N.dirty) saveNote(); });
   }
   function close() {
     stopDictation();
+    clearInterval(N.poll); N.folderEl = null;
     var done = function () { if (N.el) { N.el.remove(); N.el = null; } document.body.classList.remove('nt-open'); window.removeEventListener('resize', onResize); };
     clearTimeout(N.saveT);
     if (N.dirty && hasContent(N.note)) saveNote().then(done); else done();
@@ -114,6 +127,7 @@
       ]),
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
+        canShare() ? folderPicker() : null,
         h('button', { type: 'button', cls: 'nt-b nt-mic', 'aria-pressed': 'false', title: 'Speak your note; it’s typed on the Write page', on: { click: toggleDictation } }, [h('span', { cls: 'nt-mic-dot', 'aria-hidden': 'true' }), h('span', { cls: 'nt-mic-l', text: 'Dictate' })]),
         h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
         share,
@@ -159,9 +173,28 @@
     N.canvas = canvas; N.paper = paper; N.text = text; N.titleEl = title; N.list = list;
     setupCanvas();
     setMode(N.note.ink && N.note.ink.length && !(N.note.body || '').trim() ? 'ink' : 'text');
-    paintTools(); paintList();
+    paintTools(); paintList(); paintFolder();
     window.addEventListener('resize', onResize);
+    clearInterval(N.poll);
+    N.poll = setInterval(function () { if (N.el && !N.el.hidden && canShare()) loadNotes().then(paintList); }, 60000);   // see colleagues' new shared notes
     el.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.querySelector('.sc-modal')) close(); if ((e.metaKey || e.ctrlKey) && e.key === 'z' && N.mode === 'ink' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { e.preventDefault(); e.shiftKey ? redo() : undo(); } });
+  }
+  function folderPicker() {
+    var sel = h('select', { cls: 'nt-folder', 'aria-label': 'Folder', title: 'Move this note to a folder' }, [
+      h('option', { value: 'mine', text: 'My notes (private)' }), h('option', { value: 'shared', text: SHARED_NAME })]);
+    sel.addEventListener('change', function () {
+      if (sel.value === 'mine' && !mine(N.note)) { sel.value = 'shared'; alert('Only ' + (N.note.author || 'the person who wrote it') + ' can move this note back to private.'); return; }
+      N.note.shared = sel.value === 'shared';
+      changed(); paintList(); paintFolder();
+      toast(N.note.shared ? 'Moved to the shared folder' : 'Moved to My notes', 'ok');
+    });
+    N.folderEl = sel;
+    return sel;
+  }
+  function paintFolder() {
+    if (!N.folderEl) return;
+    N.folderEl.value = N.note.shared ? 'shared' : 'mine';
+    N.folderEl.classList.toggle('on', !!N.note.shared);
   }
   function setMode(m) {
     N.mode = m;
@@ -179,18 +212,29 @@
   function paintList() {
     var list = N.list; if (!list) return;
     list.innerHTML = '';
-    list.appendChild(h('div', { cls: 'nt-list-h' }, [h('b', { text: 'My notes' }), h('button', { type: 'button', cls: 'nt-b small', text: '+ New', on: { click: newNote } })]));
-    if (N.missing) list.appendChild(h('p', { cls: 'nt-list-note', text: 'Notes are kept on this device until supabase/notes.sql is run in Supabase.' }));
     var all = N.notes.slice();
     if (hasContent(N.note) && !all.some(function (x) { return x.id === N.note.id; })) all.unshift(N.note);
-    if (!all.length) list.appendChild(h('p', { cls: 'nt-list-note', text: N.loaded ? 'No saved notes yet.' : 'Loading…' }));
-    all.forEach(function (n) {
+    var item = function (n) {
       var cur = n.id === N.note.id, src = cur ? N.note : n;
-      list.appendChild(h('div', { cls: 'nt-item' + (cur ? ' on' : '') }, [
-        h('button', { type: 'button', cls: 'nt-item-open', on: { click: function () { pick(n); } } }, [h('b', { text: noteTitle(src) }), h('span', { text: when(src.updated_at) + (src.ink && src.ink.length ? ' · handwriting' : '') })]),
-        h('button', { type: 'button', cls: 'nt-item-del', 'aria-label': 'Delete note', title: 'Delete note', text: '✕', on: { click: function () { delNote(n); } } })
-      ]));
-    });
+      var meta = when(src.updated_at) + (src.ink && src.ink.length ? ' · handwriting' : '');
+      if (src.shared && (src.author || src.edited_by)) meta = (src.edited_by && src.edited_by !== src.author ? src.author + ' · edited by ' + src.edited_by : (src.author ? 'by ' + src.author : '')) + ' · ' + meta;
+      var canDel = mine(src) || (src.shared && C.isOwner);
+      return h('div', { cls: 'nt-item' + (cur ? ' on' : '') }, [
+        h('button', { type: 'button', cls: 'nt-item-open', on: { click: function () { pick(n); } } }, [h('b', { text: noteTitle(src) }), h('span', { text: meta })]),
+        canDel ? h('button', { type: 'button', cls: 'nt-item-del', 'aria-label': 'Delete note', title: 'Delete note', text: '✕', on: { click: function () { delNote(n); } } }) : null
+      ]);
+    };
+    var section = function (title, notes, shared, empty) {
+      list.appendChild(h('div', { cls: 'nt-list-h' + (shared ? ' nt-list-shared' : '') }, [h('b', { text: title }), h('button', { type: 'button', cls: 'nt-b small', text: '+ New', 'aria-label': 'New note in ' + title, on: { click: function () { newNote(shared); } } })]));
+      if (shared) list.appendChild(h('p', { cls: 'nt-list-note', text: 'The Owner and managers can read and edit these.' }));
+      if (!notes.length) list.appendChild(h('p', { cls: 'nt-list-note', text: N.loaded ? empty : 'Loading…' }));
+      notes.forEach(function (n) { list.appendChild(item(n)); });
+    };
+    if (N.missing) list.appendChild(h('p', { cls: 'nt-list-note', text: 'Notes are kept on this device until supabase/notes.sql is run in Supabase.' }));
+    var isShared = function (n) { return !!(n.id === N.note.id ? N.note : n).shared; };
+    section('My notes', all.filter(function (n) { return !isShared(n); }), false, 'No private notes yet.');
+    if (canShare()) section('Shared folder', all.filter(isShared), true, 'Nothing shared yet. Choose “' + SHARED_NAME + '” at the top of a note to share it with the Owner and managers.');
+    else if (C.canShare && C.noShare) list.appendChild(h('p', { cls: 'nt-list-note', text: 'The shared folder switches on once supabase/shared-notes.sql is run in Supabase.' }));
   }
   function load(n) {
     stopDictation();
@@ -198,13 +242,26 @@
     N.titleEl.value = n.title || ''; N.text.value = n.body || '';
     N.paper.scrollTop = 0; N.extra = 0;
     setMode(n.ink && n.ink.length && !(n.body || '').trim() ? 'ink' : 'text');
-    redraw(); paintList(); toast('');
+    redraw(); paintList(); paintFolder(); toast(n.shared && !mine(n) ? 'Shared by ' + (n.author || 'a colleague') + '. Your changes save for everyone.' : '');
     N.el.classList.remove('show-list');
   }
-  function pick(n) { if (n.id === N.note.id) { N.el.classList.remove('show-list'); return; } var go = function () { load(JSON.parse(JSON.stringify(n))); }; if (N.dirty) saveNote().then(go); else go(); }
-  function newNote() { var go = function () { load(blankNote()); dropDraft(); }; if (N.dirty) saveNote().then(go); else go(); }
+  function pick(n) {
+    if (n.id === N.note.id) { N.el.classList.remove('show-list'); return; }
+    var go = function () {
+      if (!n.shared || n._new) { load(JSON.parse(JSON.stringify(n))); return; }
+      // a shared note may have been changed by someone else since the list loaded: open the latest
+      C.sb.from('notes').select('id,title,body,ink,created_at,updated_at,user_id,shared,author,edited_by').eq('id', n.id).then(function (r) {
+        var fresh = r && !r.error && r.data && r.data[0];
+        if (fresh) N.notes = N.notes.map(function (x) { return x.id === fresh.id ? fresh : x; });
+        load(JSON.parse(JSON.stringify(fresh || n)));
+      }, function () { load(JSON.parse(JSON.stringify(n))); });
+    };
+    if (N.dirty) saveNote().then(go); else go();
+  }
+  function newNote(shared) { var go = function () { load(blankNote(shared === true && canShare())); dropDraft(); }; if (N.dirty) saveNote().then(go); else go(); }
   function delNote(n) {
     if (!confirm('Delete “' + noteTitle(n.id === N.note.id ? N.note : n) + '”? This can’t be undone.')) return;
+    if ((n.id === N.note.id ? N.note : n).shared && !confirm('This note is in the shared folder. Deleting it removes it for everyone. Delete it?')) return;
     var after = function () { N.notes = N.notes.filter(function (x) { return x.id !== n.id; }); if (n.id === N.note.id) { load(blankNote()); dropDraft(); } else paintList(); };
     if (N.missing || n._new) { after(); return; }
     C.sb.from('notes').delete().eq('id', n.id).then(function (r) { if (r.error) { toast('Couldn’t delete. Try again.', 'err'); return; } after(); });
@@ -691,7 +748,11 @@
   }
 
   window.EdenNotes = {
-    init: function (ctx) { C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal; },
+    init: function (ctx) {
+      C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal;
+      C.canShare = !!ctx.canShare; C.isOwner = !!ctx.isOwner;
+      ctx.sb.auth.getSession().then(function (r) { C.uid = r && r.data && r.data.session && r.data.session.user && r.data.session.user.id; }, function () {});
+    },
     openNote: function (id) { openNote(id); },
     open: open, close: close,
     showTodo: function (ctx) { if (ctx) window.EdenNotes.init(ctx); T.el = ctx.el; T.loaded = false; renderTodo(); loadTodos().then(renderTodo); },

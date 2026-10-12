@@ -1122,3 +1122,10 @@ body.nt-open #app{visibility:hidden!important}
   #prPrint .pp-fine{font-size:8pt;color:#555}
   @page{size:landscape;margin:.5in}
 }
+
+/* ---------- Notes: shared folder ---------- */
+.nt-folder{background:var(--ink);border:1px solid rgba(243,238,229,.32);color:var(--ivory);padding:8px 10px;font-family:var(--sans);font-size:.7rem;letter-spacing:.06em;border-radius:2px;max-width:220px;cursor:pointer}
+.nt-folder.on{border-color:var(--ember-hot);color:var(--ember-hot)}
+.nt-folder:focus-visible{outline:2px solid var(--ember-hot);outline-offset:1px}
+.nt-list-shared{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.nt-list-shared b{color:#8a5226}
