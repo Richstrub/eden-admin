@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/editor-base.css">
-<link rel="stylesheet" href="css/staff.css?v=20261012f">
+<link rel="stylesheet" href="css/staff.css?v=20261012h">
 </head>
 <body>
 
@@ -61,7 +61,6 @@
       <div class="sb-group">
         <p class="sb-g">Service</p>
         <a href="#preshift" data-view="preshift">Pre-shift meeting</a>
-        <a href="#eod" data-view="eod" data-mgr>End of day report</a>
         <span class="sb-soon" title="Coming in a later phase">Reservations <small>Soon</small></span>
       </div>
       <div class="sb-group">
@@ -85,6 +84,9 @@
       <div class="sb-group">
         <p class="sb-g">Office</p>
         <a href="#email" data-view="email" data-mailer hidden>Business email <span class="sb-badge" data-badge="email" hidden></span></a>
+        <a href="#eod" data-view="eod" data-mgr>End of day report</a>
+        <a href="#eod/past" data-view="eod/past" data-mgr class="sb-sub">Past reports</a>
+        <a href="#eod/download" data-view="eod/download" data-owner hidden class="sb-sub">Download reports</a>
       </div>
       <div class="sb-group" data-owner hidden>
         <p class="sb-g">Owner</p>
@@ -156,6 +158,7 @@
 <script src="js/payroll.js"></script>
 <script src="js/today.js"></script>
 <script src="js/email.js?v=20261012f"></script>
+<script src="js/eod.js?v=20261012h"></script>
 <script src="js/account.js"></script>
 <script src="js/staff.js"></script>
 </body>

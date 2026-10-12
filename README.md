@@ -106,6 +106,15 @@ Setup (each step works on its own; anything not set up is skipped):
 
 The Catering & BEOs page shows a status line saying which of these are working. When edencny.com points to the new website, change `SITE_URL` in `wrangler.jsonc` and `guestSite` in `js/config.js` to `https://edencny.com/`.
 
+## End of day reports
+
+Office > End of day report: the closing manager's report (service, sales, guests, food and beverage, team, operations,
+inventory and closing, handover, action items, final comments). It saves as a draft while you type; Submit stamps who
+prepared it and when. The database works out average spend per cover. Past reports: open any report and reopen a
+submitted one to correct it (noted on the report). Download reports (Owner only): Excel for the last 1, 3, 6 or 12
+months, with a ready-made analysis prompt for Claude on the first tab. Setup: run `supabase/eod-reports.sql`.
+Code: `js/eod.js`.
+
 ## Business email (Google Workspace)
 
 The Business email page (menu: Office) shows your edencny.com Gmail mailboxes. Nothing is copied to the staff site:

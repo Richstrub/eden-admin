@@ -133,7 +133,7 @@
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
   var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', eod: 'viewEod', email: 'viewEmail' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
-  var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], eod: ['Service', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
+  var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
     recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
@@ -149,6 +149,7 @@
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
     if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
+    if (v.indexOf('eod/') === 0) { sub = v.slice(4); v = 'eod'; if (!/^(past|download|r\/[0-9a-f-]{36})$/.test(sub) || (sub === 'download' && role !== 'owner')) sub = sub === 'download' ? 'past' : ''; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
     if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr())) { v = 'home'; sub = ''; }
@@ -157,12 +158,14 @@
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
     if (view === 'payroll' && v !== 'payroll' && window.EdenPayroll) window.EdenPayroll.hide();
     if (view === 'email' && v !== 'email' && window.EdenMail) window.EdenMail.hide();
+    if (view === 'eod' && window.EdenEOD) window.EdenEOD.hide();
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
-    document.querySelectorAll('#app [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
+    var full = v + (sub ? '/' + sub : ''), exact = !!document.querySelector('#app [data-view="' + full + '"]');
+    document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : '';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
     if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }
@@ -207,7 +210,10 @@
     } else if (v === 'email') {
       status('');
       if (window.EdenMail) window.EdenMail.show(Object.assign(mailCtx(), { sub: mailArg }));
-    } else if (v === 'preshift' || v === 'eod') {
+    } else if (v === 'eod') {
+      status('');
+      if (window.EdenEOD) window.EdenEOD.show({ sb: sb, el: $('viewEod'), status: status, role: role, name: staffName, uid: session && session.user && session.user.id, sub: sub });
+    } else if (v === 'preshift') {
       status(''); comingSoon(v);
     } else {
       status(''); renderHome();
