@@ -31,8 +31,10 @@
     'too-fast': 'Sent within seconds of opening the form',
     'links': 'Several web links in the message',
     'script': 'Name or message in an unexpected alphabet',
-    'email-not-sent': 'An earlier confirmation email couldn’t be sent'
+    'email-not-sent': 'An earlier confirmation email couldn’t be sent',
+    'unverified': 'Didn’t finish Cloudflare’s quick “are you a person” check (or it couldn’t run on their device). If it looks real, choose Not spam.'
   };
+  function flagText(f) { var m = /^check-error-(.+)$/.exec(f); return m ? (m[1] === 'load' ? 'The check was blocked from loading on their device (often a browser extension or work network)' : 'The check reported error ' + m[1] + ' on their device') + (/^1102/.test(m[1]) ? ' (edencny.com isn’t on the Turnstile widget’s list of hostnames)' : '') : FLAGS[f] || f; }
   var CFG = window.EDEN_STAFF_CONFIG || {};
   var GUEST = String(CFG.guestSite || CFG.publicSite || 'https://edencny.com/').replace(/\/?$/, '/');
   var I = { ctx: null, el: null, rows: [], loaded: false, missing: false, view: 'inquiries', sel: null, q: '', msgs: {}, compose: null };
@@ -198,7 +200,7 @@
       stepper(r),
       h('label', { cls: 'cq-st' }, ['Stage', st])
     ]));
-    if (r.flags && r.flags.length && r.status === 'spam') d.appendChild(h('div', { cls: 'cq-flags' }, [h('b', { text: 'Filed as spam because:' }), h('ul', null, r.flags.map(function (f) { return h('li', { text: FLAGS[f] || f }); }))]));
+    if (r.flags && r.flags.length && r.status === 'spam') d.appendChild(h('div', { cls: 'cq-flags' }, [h('b', { text: 'Filed as spam because:' }), h('ul', null, r.flags.map(function (f) { return h('li', { text: flagText(f) }); }))]));
     d.appendChild(nextStep(r));
     // details
     d.appendChild(section('Contact', [kv([

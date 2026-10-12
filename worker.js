@@ -176,7 +176,9 @@ async function notifyStaff(env, req, q, kind, extra) {
   const admin = new URL(req.url).origin + '/#catering';
   const who = q.name || 'A guest';
   const T = {
-    inquiry: ['New catering inquiry: ' + who, 'New catering inquiry', esc(who) + ' sent an inquiry from the website.'],
+    inquiry: q.held
+      ? ['Check this inquiry: ' + who, 'Inquiry filed under Spam', esc(who) + ' sent an inquiry from the website, but Cloudflare’s quick “are you a person” check couldn’t confirm it, so it’s under the <b>Spam</b> tab. If it looks real, open it and choose Not spam.']
+      : ['New catering inquiry: ' + who, 'New catering inquiry', esc(who) + ' sent an inquiry from the website.'],
     plan: [(q.again ? 'Updated questionnaire: ' : 'Questionnaire completed: ') + who, q.again ? 'Questionnaire updated' : 'Questionnaire completed', esc(who) + (q.again ? ' updated' : ' finished') + ' the full catering questionnaire.'],
     reply: ['Reply from ' + who + (extra && extra.subject ? ': ' + extra.subject : ''), 'Reply from ' + who, (extra && extra.body ? textToHtml(extra.body.slice(0, 3000)) : '')]
   }[kind];
@@ -251,11 +253,19 @@ async function inquiry(req, env) {
   let b;
   try { const t = await req.text(); if (t.length > 100000) return json({ error: 'too_big' }, 413, c.headers); b = JSON.parse(t); } catch (e) { return json({ error: 'bad' }, 400, c.headers); }
   const a = (b && typeof b.answers === 'object' && b.answers) || {};
-  if (!(await verifyTurnstile(env, req, b.token))) return json({ error: 'verify', message: 'We couldn’t confirm you’re a person. Please try again.' }, 400, c.headers);
   const row = eventRow(a), fix = checkBasics(row);
   if (fix.length) return json({ error: 'fix', message: 'Please add ' + fix.join(', ') + '.' }, 400, c.headers);
   // likely-bot signs: kept, but filed under Spam so a person can still rescue one
   const flags = [];
+  // A guest is never turned away because the "are you a person" check couldn't run on their device
+  // (blocked by a browser extension, a work network, or the site's address missing from the Turnstile widget):
+  // the inquiry is kept under Spam and the team is still emailed about it.
+  const verified = await verifyTurnstile(env, req, b.token);
+  if (!verified) {
+    flags.push('unverified');
+    const code = String(b.tsErr || '').replace(/[^\w-]/g, '').slice(0, 20);
+    if (code && code !== 'none') flags.push('check-error-' + code);
+  }
   if (String(b.hp || '').trim()) flags.push('trap-field');
   if (!(Number(b.elapsed) >= MIN_MS)) flags.push('too-fast');
   const words = [row.name, a.notes, a['ev.name'], a['ev.client']].join(' ');
@@ -268,7 +278,8 @@ async function inquiry(req, env) {
   catch (e) { return json({ error: 'server', message: 'Something went wrong on our side.' }, 502, c.headers); }
   if (res && res.error === 'rate') return json({ error: 'rate', message: 'We’ve already received a few inquiries from you recently. Please email events@edencny.com if you need to add something.' }, 429, c.headers);
   if (!res || res.error || !res.id) return json({ error: 'server', message: 'Something went wrong on our side.' }, 502, c.headers);
-  if (!spam) await notifyStaff(env, req, Object.assign({}, row, { guests: parseInt(row.guests, 10) }), 'inquiry');
+  const onlyCheck = flags.every(f => f === 'unverified' || f.indexOf('check-error-') === 0);
+  if (!spam || onlyCheck) await notifyStaff(env, req, Object.assign({}, row, { guests: parseInt(row.guests, 10), held: spam }), 'inquiry');
   return json({ ok: true }, 200, c.headers);
 }
 
