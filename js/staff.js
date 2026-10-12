@@ -125,7 +125,7 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll' };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
@@ -134,16 +134,18 @@
     var v = (location.hash || '').replace(/^#/, ''), sub = '';
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || (v === 'analytics' && role !== 'owner')) { v = 'home'; sub = ''; }
+    if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner')) { v = 'home'; sub = ''; }
     var want = '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
+    if (view === 'payroll' && v !== 'payroll' && window.EdenPayroll) window.EdenPayroll.hide();
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
     document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : v === 'catering' ? 'Catering & BEOs · Eden Staff' : v === 'analytics' ? (sub === 'history' ? 'History · Analytics · Eden Staff' : 'Analytics · Eden Staff') : 'Eden Staff';
+    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : v === 'catering' ? 'Catering & BEOs · Eden Staff' : v === 'payroll' ? (sub === 'rates' ? 'Pay rates · Payroll · Eden Staff' : 'Payroll · Eden Staff') : v === 'analytics' ? (sub === 'history' ? 'History · Analytics · Eden Staff' : 'Analytics · Eden Staff') : 'Eden Staff';
     if (v === 'menu') {
       INV.items = null; // pick up inventory changes made since
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
@@ -158,6 +160,9 @@
     } else if (v === 'analytics') {
       status('');
       if (window.EdenAnalytics) window.EdenAnalytics.show({ sb: sb, el: $('viewAnalytics'), status: status, sub: sub });
+    } else if (v === 'payroll') {
+      status('');
+      if (window.EdenPayroll) window.EdenPayroll.show({ sb: sb, el: $('viewPayroll'), status: status, sub: sub });
     } else if (v === 'calendar') {
       status('');
       if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr() });

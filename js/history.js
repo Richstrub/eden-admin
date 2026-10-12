@@ -6,12 +6,13 @@
   var SECTIONS = {
     site_docs: 'Menu & website', employees: 'Employees', staff: 'Staff logins', schedule_weeks: 'Schedule', time_off: 'Time off',
     board_posts: 'Message board', inventory_items: 'Inventory items', inventory_counts: 'Inventory counts', recipes: 'Recipes',
-    events: 'Calendar', todos: 'To-do', catering_inquiries: 'Catering inquiries'
+    events: 'Calendar', todos: 'To-do', catering_inquiries: 'Catering inquiries', pay_rates: 'Pay rates', payroll_weeks: 'Payroll'
   };
   var ACTS = { insert: 'Added', update: 'Changed', delete: 'Deleted' };
   var FIELD = { yield_qty: 'yield', yield_unit: 'yield unit', all_day: 'all day', count_date: 'date', start_date: 'from', end_date: 'to',
     start_time: 'from time', end_time: 'until time', decision_note: 'manager note', published_at: 'published', week_start: 'week',
-    noteAfter: 'note below items', desc: 'description', qty: 'amount', src: 'producer', emp: 'employee', pairPrice: 'pairing price', pair: 'pairing', active: 'active', access: 'permissions' };
+    noteAfter: 'note below items', desc: 'description', qty: 'amount', src: 'producer', emp: 'employee', pairPrice: 'pairing price', pair: 'pairing', active: 'active', access: 'permissions',
+    tip_pool: 'tip pool', pay_type: 'paid', weekly_salary: 'weekly salary', tip_eligible: 'shares tip pool', finalized_at: 'finalized' };
   var PAGE = 200;
   var H = { ctx: null, el: null, rows: [], loaded: false, missing: false, more: false, sec: '', who: '', q: '', from: '', to: '', open: {} };
 
@@ -167,6 +168,14 @@
     });
     return out;
   }
+  function payHours(r) {   // one employee's week on the payroll, in words
+    if (!r) return '';
+    var d = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], parts = [];
+    (r.hours || []).forEach(function (x, i) { if (+x) parts.push(d[i] + ' ' + x); });
+    var s = parts.length ? parts.join(' · ') + ' h' : 'no hours';
+    if (+r.adj) s += '; adjustment $' + (+r.adj).toFixed(2) + (r.adj_note ? ' (' + r.adj_note + ')' : '');
+    return s;
+  }
   function record(x, keys, fmt) { // the whole record, for adds and deletes
     return (keys || Object.keys(x || {})).filter(function (k) { return !SKIP[k] && x[k] != null && x[k] !== '' && typeof x[k] !== 'object'; })
       .map(function (k) { return line(label(k), [h('em', { text: str(fmt ? fmt(k, x[k]) : x[k]) })]); });
@@ -207,7 +216,8 @@
       if (t === 'site_docs' && x.data && x.data.items) { out = out.concat(record({ title: x.data.title, note: x.data.note })); x.data.items.forEach(function (it) { out.push(line('Dish', [h('em', { text: dish(it) })])); }); }
       else if (t === 'schedule_weeks') (x.shifts || []).forEach(function (sft) { out.push(line('Shift', [h('em', { text: shift(sft) })])); });
       else if (t === 'recipes') { out = out.concat(record(x, ['name', 'category', 'yield_qty', 'yield_unit', 'time', 'allergens'])); (x.ingredients || []).forEach(function (i) { out.push(line('Ingredient', [h('em', { text: ingr(i) })])); }); if (x.method) out.push(line('Method', [h('p', { cls: 'hi-pre', text: x.method })])); }
-      else if (t === 'time_off') out = out.concat(record(Object.assign({}, x, { emp: empName(x.emp) })));
+      else if (t === 'time_off' || t === 'pay_rates') out = out.concat(record(Object.assign({}, x, { emp: empName(x.emp) })));
+      else if (t === 'payroll_weeks') { out = out.concat(record(x, ['status', 'tip_pool', 'notes'])); Object.keys(x.rows || {}).forEach(function (id) { out.push(line(empName(id), [h('em', { text: payHours(x.rows[id]) })])); }); }
       else if (t === 'inventory_counts') Object.keys(x.counts || {}).forEach(function (id) { var it = H.names && H.names.inv[id]; out.push(line(it ? it.name : 'Item', [h('em', { text: x.counts[id] + (it && it.unit ? ' ' + it.unit : '') })])); });
       else out = out.concat(record(x));
     } else if (t === 'site_docs') {
@@ -240,6 +250,15 @@
       out = out.concat(fieldDiff(o, n, null, function (k, v) { return k === 'emp' ? empName(v) : k === 'start_time' || k === 'end_time' ? t12(v) : v; }));
     } else if (t === 'events') {
       out = out.concat(fieldDiff(o, n, null, function (k, v) { return k === 'start' || k === 'end' ? t12(v) : v; }));
+    } else if (t === 'pay_rates') {
+      out = out.concat(fieldDiff(o, n, ['pay_type', 'rate', 'weekly_salary', 'tip_eligible', 'notes']));
+    } else if (t === 'payroll_weeks') {
+      out = out.concat(fieldDiff(o, n, ['status', 'tip_pool', 'notes', 'finalized_at']));
+      var orw = o.rows || {}, nrw = n.rows || {};
+      Object.keys(Object.assign({}, orw, nrw)).forEach(function (id) {
+        var a = payHours(orw[id]), b = payHours(nrw[id]);
+        if (a !== b) out.push(change(empName(id), a, b));
+      });
     } else {
       out = out.concat(fieldDiff(o, n));
     }
