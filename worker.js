@@ -108,7 +108,10 @@ function siteCors(req) {
 }
 function json(obj, status, headers) { return new Response(JSON.stringify(obj), { status: status || 200, headers: Object.assign({ 'content-type': 'application/json', 'cache-control': 'no-store' }, headers || {}) }); }
 function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function inqKey(env) { return String(env.INQUIRY_KEY || '').replace(/[^a-f0-9]/gi, '').toLowerCase(); }   // ignores stray spaces/quotes from copy and paste
+// The private inquiry key. Forgiving about how it was entered in Cloudflare: the name in any case or with
+// spaces (e.g. "inquiry key"), and stray spaces, quotes or line breaks around the value.
+function keyName(env) { return Object.keys(env || {}).filter(k => k.replace(/[^a-z]/gi, '').toUpperCase() === 'INQUIRYKEY')[0] || ''; }
+function inqKey(env) { const n = keyName(env); return n ? String(env[n] || '').replace(/[^a-f0-9]/gi, '').toLowerCase() : ''; }
 function turnstileOn(env) { return !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET); }
 function mailOn(env) { return !!(env.RESEND_API_KEY && env.MAIL_FROM); }
 function inboundOn(env) { return !!(mailOn(env) && env.INBOUND_DOMAIN && env.RESEND_WEBHOOK_SECRET); }
@@ -189,7 +192,10 @@ async function notifyStaff(env, req, q, kind, extra) {
 async function inquiryConfig(req, env) {
   const c = siteCors(req), out = { ready: !!(inqKey(env) && env.SUPABASE_URL), turnstile: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : '' };
   if (new URL(req.url).searchParams.get('check')) {
-    out.keySet = !!env.INQUIRY_KEY; out.keyLooksRight = inqKey(env).length === 64; out.turnstileHalf = !!env.TURNSTILE_SITE_KEY !== !!env.TURNSTILE_SECRET;
+    out.keySet = !!keyName(env) && !!env[keyName(env)]; out.keyLooksRight = inqKey(env).length === 64;
+    out.keyName = keyName(env);
+    // names only (never values) of the settings this worker can see, to spot one added in the wrong place
+    out.settings = Object.keys(env).filter(k => k !== 'ASSETS').sort(); out.turnstileHalf = !!env.TURNSTILE_SITE_KEY !== !!env.TURNSTILE_SECRET;
     out.mail = mailOn(env); out.inbound = inboundOn(env); out.site = siteUrl(env);
     if (out.ready) {
       try {

@@ -423,7 +423,7 @@
     if (!c || typeof c.ready !== 'boolean') { el.hidden = true; return; }
     el.hidden = false;
     var bad = '';
-    if (!c.keySet) bad = 'Cloudflare doesn’t have the INQUIRY_KEY secret yet (Workers & Pages → eden-admin → Settings → Variables and Secrets).';
+    if (!c.keySet) bad = 'Cloudflare doesn’t have the INQUIRY_KEY secret on eden-admin yet (Workers & Pages → eden-admin → Settings → Variables and Secrets → Add → Secret, then Deploy).' + (c.settings ? ' Settings eden-admin can see right now: ' + c.settings.join(', ') + '.' : '');
     else if (!c.keyLooksRight) bad = 'The INQUIRY_KEY secret in Cloudflare doesn’t look like the 64-character code from Supabase. Paste the code again.';
     else if (c.db === 'missing_sql') bad = 'The database setup hasn’t been run yet, or needs running again: run supabase/inquiries.sql in Supabase.';
     else if (c.db === 'key_mismatch') bad = 'The INQUIRY_KEY in Cloudflare doesn’t match the database. In Supabase run  select public.new_inquiry_key();  again and paste the new code into the INQUIRY_KEY secret.';
