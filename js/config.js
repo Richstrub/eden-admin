@@ -11,7 +11,6 @@ window.EDEN_STAFF_CONFIG = {
   },
   // The public website, for the "View website" button.
   publicSite: 'https://edencny.com/',
-  // Where guests' catering questionnaire links point. Change to https://edencny.com/ once edencny.com
-  // points to the new website (and SITE_URL in wrangler.jsonc too).
-  guestSite: 'https://eden-website.richard-a-strub.workers.dev/'
+  // Where guests' catering questionnaire links point (keep it the same as SITE_URL in wrangler.jsonc).
+  guestSite: 'https://edencny.com/'
 };
