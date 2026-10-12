@@ -109,23 +109,31 @@
         $('who').innerHTML = '';
         var b = document.createElement('b'); b.textContent = name; $('who').appendChild(b);
         $('who').appendChild(document.createTextNode(ROLE_NAMES[role] || role));
+        $('whoAv').textContent = String(name).split(/[\s@]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase();
         ed.canWrite = EDIT_ROLES.indexOf(role) !== -1;
         staffName = name;
         document.querySelectorAll('[data-mgr]').forEach(function (el) { el.hidden = !isMgr(); });
         document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
         document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         document.querySelectorAll('[data-owner]').forEach(function (el) { el.hidden = role !== 'owner'; });
+        // a menu group with nothing this person can open is left out
+        document.querySelectorAll('.sb-group').forEach(function (g) { if (!g.hasAttribute('data-owner')) g.hidden = ![].some.call(g.querySelectorAll('a'), function (a) { return !a.hidden; }); });
         show('app'); entered = session.user.id;
         if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), isOwner: role === 'owner' });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
+        refreshToday();
       });
       });
     });
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', eod: 'viewEod', email: 'viewEmail' };
+  // where each page sits in the menu (shown at the top of the page) and its browser-tab title
+  var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], eod: ['Service', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
+    calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Owner', 'Business email'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
@@ -135,7 +143,7 @@
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
     if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner')) { v = 'home'; sub = ''; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'email') && role !== 'owner') || (v === 'eod' && !isMgr())) { v = 'home'; sub = ''; }
     var want = '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
@@ -143,9 +151,15 @@
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
-    document.querySelectorAll('.ed-nav [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
+    document.querySelectorAll('#app [data-view]').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-view') === v ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    document.title = v === 'menu' ? 'Menu · Eden Staff' : v === 'schedule' ? 'Schedule · Eden Staff' : v === 'prep' ? 'Prep List · Eden Staff' : v === 'inventory' ? 'Inventory · Eden Staff' : v === 'todo' ? 'To-do · Eden Staff' : v === 'recipes' ? 'Recipes · Eden Staff' : v === 'calendar' ? 'Calendar · Eden Staff' : v === 'catering' ? 'Catering & BEOs · Eden Staff' : v === 'payroll' ? (sub === 'rates' ? 'Pay rates · Payroll · Eden Staff' : 'Payroll · Eden Staff') : v === 'analytics' ? (sub === 'history' ? 'History · Analytics · Eden Staff' : 'Analytics · Eden Staff') : 'Eden Staff';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : '';
+    document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
+    var crumb = $('sbCrumb'); crumb.innerHTML = '';
+    if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }
+    crumb.appendChild(document.createTextNode(pg[1] + (subName ? ' · ' + subName : '')));
+    closeDrawer();
+    paintBack();
     if (v === 'menu') {
       INV.items = null; // pick up inventory changes made since
       if (!menuOpened && store.loaded) { menuOpened = true; openEditor(); }
@@ -181,9 +195,63 @@
       status('');
       showPrep();
       if (!store.loaded) loadAll().then(showPrep, function () { status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
+    } else if (v === 'preshift' || v === 'eod' || v === 'email') {
+      status(''); comingSoon(v);
     } else {
       status(''); renderHome();
     }
+  }
+  /* ---------------- side menu (a drawer on phones and small tablets) ---------------- */
+  function openDrawer() { $('app').classList.add('sb-open'); $('sbScrim').hidden = false; $('sbOpen').setAttribute('aria-expanded', 'true'); var f = $('sideNav').querySelector('[aria-current="true"]') || $('sbClose'); setTimeout(function () { f.focus(); }, 50); }
+  function closeDrawer() { if (!$('app').classList.contains('sb-open')) return; $('app').classList.remove('sb-open'); $('sbScrim').hidden = true; $('sbOpen').setAttribute('aria-expanded', 'false'); }
+  $('sbOpen').addEventListener('click', openDrawer);
+  $('sbClose').addEventListener('click', function () { closeDrawer(); $('sbOpen').focus(); });
+  $('sbScrim').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('app').classList.contains('sb-open')) { closeDrawer(); $('sbOpen').focus(); } });
+  $('sideNav').addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
+    try { sessionStorage.removeItem('eden-from-today'); } catch (x) {}   // chose a page from the menu, not from Today
+    var acct = $('sideNav').querySelector('.sb-acct'); if (acct) acct.open = false;
+    if (a.getAttribute('href') === location.hash) closeDrawer();
+  });
+  // "← Today · 3 left" when a page was opened from the Today list
+  var todayLeft = 0;
+  function paintBack() {
+    var from = false; try { from = sessionStorage.getItem('eden-from-today') === '1'; } catch (x) {}
+    var b = $('sbBack');
+    b.hidden = !(from && view !== 'home');
+    b.textContent = '\u2190 Today' + (todayLeft ? ' \u00b7 ' + todayLeft + ' left' : '');
+  }
+  function todayCtx() { return { sb: sb, el: $('viewHome'), status: status, role: role, name: staffName, isMgr: isMgr(), isOwner: role === 'owner', canPrep: canPrep(), site: CFG.publicSite || '', onCounts: paintCounts }; }
+  function paintCounts(c) {
+    todayLeft = c.total || 0;
+    var set = function (k, v, on) { document.querySelectorAll('[data-badge="' + k + '"]').forEach(function (el) { el.textContent = v || ''; el.hidden = !v; el.classList.toggle('on', !!on); }); };
+    set('today', c.total ? String(c.total) : '', true);
+    set('catering', c.catering ? String(c.catering) : '');
+    set('inventory', c.inventory ? c.inventory + ' low' : '');
+    set('schedule', c.schedule ? String(c.schedule) : '');
+    set('payroll', c.payroll || '');
+    paintBack();
+  }
+  function refreshToday() { if (window.EdenToday && role) window.EdenToday.counts(todayCtx()); }
+  setInterval(function () { if (!$('app').hidden && view !== 'home') refreshToday(); }, 120000);
+  /* ---------------- pages that are coming next ---------------- */
+  var SOON = {
+    preshift: ['Service', 'Pre-shift meeting', 'Tonight’s line-up for the whole team: specials, 86’d items, VIPs and allergies, the private events, wine pours and who’s working. The Owner and managers write it; every employee can read it here and on the staff page.', 'Everyone can see this page. The Owner and managers will be able to edit it.'],
+    eod: ['Service', 'End of day report', 'A short report at close: covers and sales, comps and voids, staffing notes, incidents, maintenance, guest feedback and anything the next shift should know. Filled in by the Owner or the closing manager, with past reports kept and searchable.', 'Only the Owner and managers can see this page.'],
+    email: ['Owner', 'Business email', 'Your edencny.com mailbox inside the staff site: read and answer email, and turn a message into a catering inquiry, a to-do or a calendar event.', 'Only you (the Owner) can see this page.']
+  };
+  function comingSoon(v) {
+    var el = $(VIEWS[v]), t = SOON[v];
+    if (el.firstChild) return;
+    var wrap = document.createElement('div'); wrap.className = 'soon-in';
+    var k = document.createElement('p'); k.className = 'home-eyebrow'; k.textContent = t[0] + ' \u00b7 Coming next';
+    var h1 = document.createElement('h1'); h1.className = 'soon-title'; h1.textContent = t[1];
+    var card = document.createElement('div'); card.className = 'soon-card';
+    var d = document.createElement('p'); d.textContent = t[2];
+    var who = document.createElement('p'); who.className = 'soon-who'; who.textContent = t[3];
+    card.appendChild(d); card.appendChild(who);
+    wrap.appendChild(k); wrap.appendChild(h1); wrap.appendChild(card); el.appendChild(wrap);
   }
   function showPrep() {
     if (!window.EdenPrep) return;
@@ -194,29 +262,7 @@
   }
   window.addEventListener('hashchange', route);
   $('notesBtn').addEventListener('click', function () { if (window.EdenNotes) window.EdenNotes.open(); });
-  function renderHome() {
-    var first = String(staffName || '').split(/[\s@]/)[0];
-    var h = new Date().getHours();
-    $('homeHello').textContent = (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '');
-    var site = CFG.publicSite || '';
-    $('homeSite').href = site || '#'; $('homeSite').hidden = !site;
-    $('homePad').href = site ? site.replace(/#.*$/, '') + '#ipad' : '#'; $('homePad').hidden = !site;
-    homeMeta();
-  }
-  function fmtWhen(t) {
-    var d = new Date(t); if (isNaN(d)) return '';
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-  function homeMeta() {
-    var m = store.rows['site/menu'];
-    $('homeMenuMeta').textContent = !store.loaded ? '' : m && m.updatedAt ? 'Last published ' + fmtWhen(m.updatedAt) : 'Not set up yet';
-    if (isMgr() && window.EdenSchedule) window.EdenSchedule.summary(sb).then(function (t) { $('homeSchedMeta').textContent = t || ''; }, function () {});
-    if (isMgr()) sb.from('catering_inquiries').select('status').then(function (r) {
-      if (r.error) return;
-      var all = r.data || [], n = all.filter(function (x) { return x.status === 'new'; }).length, b = all.filter(function (x) { return x.status === 'received'; }).length;
-      $('homeCaterMeta').textContent = [n ? n + ' new ' + (n === 1 ? 'inquiry' : 'inquiries') : '', b ? b + ' questionnaire' + (b === 1 ? '' : 's') + ' back' : ''].filter(Boolean).join(' · ') || 'Nothing waiting';
-    }, function () {});
-  }
+  function renderHome() { if (window.EdenToday) window.EdenToday.show(todayCtx()); }
 
   /* ---------------- data: read all website rows, keep them live ---------------- */
   var store = { rows: {}, loaded: false, saved: {} };
@@ -235,7 +281,6 @@
   function startData() {
     loadAll().then(function () {
       if (view === 'menu') { menuOpened = true; openEditor(); }
-      homeMeta();
     }, function () { if (view === 'menu') status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
     var first = true;
     sb.channel('staff-site-docs')

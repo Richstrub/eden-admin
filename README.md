@@ -16,7 +16,10 @@ Later phases add catering inquiries and BEOs, an events calendar and supplementa
 
 ## Pages
 
-- **Home** (`#home`): tiles for each part of the back office.
+Navigation: a side menu grouped as **Today**, **Service** (Pre-shift meeting, End of day report, Reservations soon), **Front of house** (Menu & Supper Club, Calendar, Catering & BEOs), **Kitchen & bar** (Prep List, Inventory, Recipes), **Team** (Schedule, Staff page, Payroll) and **Owner** (Business email, Analytics & History). Each person only sees what their role can open; small counts show what's waiting. Notes, To-do and the account menu (website, password, sign out) are at the bottom. On phones and iPads held upright the menu opens from the ☰ button. The top strip shows where you are; pages opened from Today get a "← Today · N left" button.
+
+- **Today** (`#home`, `js/today.js`): "Needs you" — new catering inquiries and questionnaires back, time-off requests, next week's schedule not published (from Wednesday), stock below par (latest counts), last week's payroll not finalized (Owner), to-dos due — each with one button that goes straight there, filtered to what the person's role can act on. Beside it: tonight's events and who's working, the week ahead, recent shared notes, and links to the website and iPad menu.
+- **Pre-shift meeting** (`#preshift`, everyone), **End of day report** (`#eod`, Owner and managers), **Business email** (`#email`, Owner): placeholder pages, coming next.
 - **Menu** (`#menu`): menu, wine list, pairings and Supper Club editor.
 - **Schedule** (`#schedule`, Owner and Manager only): employees, the weekly schedule, publishing,
   and texting each person their shifts. One-time setup: run `supabase/schedule.sql` in Supabase.
