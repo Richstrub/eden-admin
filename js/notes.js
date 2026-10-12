@@ -104,7 +104,7 @@
     N.redo = [];
     build();
     document.body.classList.add('nt-open');
-    loadNotes().then(function () { if (C.noShare && N.folderEl) { N.folderEl.remove(); N.folderEl = null; } paintList(); if (N.dirty) saveNote(); });
+    loadNotes().then(function () { paintList(); paintFolder(); if (N.dirty) saveNote(); });
   }
   function close() {
     stopDictation();
@@ -121,13 +121,13 @@
     el.appendChild(h('header', { cls: 'nt-bar' }, [
       h('button', { type: 'button', cls: 'nt-b nt-listbtn', 'aria-label': 'My notes', title: 'My notes', text: '☰ Notes', on: { click: function () { el.classList.toggle('show-list'); } } }),
       title,
+      C.canShare ? folderPicker() : null,
       h('div', { cls: 'nt-mode', role: 'group', 'aria-label': 'Mode' }, [
         h('button', { type: 'button', 'data-mode': 'text', text: 'Write', title: 'Write with Apple Pencil; Scribble turns it into text', on: { click: function () { setMode('text'); } } }),
         h('button', { type: 'button', 'data-mode': 'ink', text: 'Sketch', title: 'Draw or keep handwriting as ink', on: { click: function () { setMode('ink'); } } })
       ]),
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
-        canShare() ? folderPicker() : null,
         h('button', { type: 'button', cls: 'nt-b nt-mic', 'aria-pressed': 'false', title: 'Speak your note; it’s typed on the Write page', on: { click: toggleDictation } }, [h('span', { cls: 'nt-mic-dot', 'aria-hidden': 'true' }), h('span', { cls: 'nt-mic-l', text: 'Dictate' })]),
         h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
         share,
@@ -153,6 +153,7 @@
     tools.appendChild(h('span', { cls: 'nt-grow' }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-b nt-convert', text: 'Convert sketch to text', on: { click: convert } }));
     el.appendChild(tools);
+    el.appendChild(h('div', { cls: 'nt-sharebar', role: 'status', hidden: true }));
     // body: list | page
     var list = h('aside', { cls: 'nt-list', 'aria-label': 'My notes' });
     var paper = h('div', { cls: 'nt-paper' });
@@ -179,22 +180,33 @@
     N.poll = setInterval(function () { if (N.el && !N.el.hidden && canShare()) loadNotes().then(paintList); }, 60000);   // see colleagues' new shared notes
     el.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.querySelector('.sc-modal')) close(); if ((e.metaKey || e.ctrlKey) && e.key === 'z' && N.mode === 'ink' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { e.preventDefault(); e.shiftKey ? redo() : undo(); } });
   }
+  // Share with the team: one obvious button next to the title
   function folderPicker() {
-    var sel = h('select', { cls: 'nt-folder', 'aria-label': 'Folder', title: 'Move this note to a folder' }, [
-      h('option', { value: 'mine', text: 'My notes (private)' }), h('option', { value: 'shared', text: SHARED_NAME })]);
-    sel.addEventListener('change', function () {
-      if (sel.value === 'mine' && !mine(N.note)) { sel.value = 'shared'; alert('Only ' + (N.note.author || 'the person who wrote it') + ' can move this note back to private.'); return; }
-      N.note.shared = sel.value === 'shared';
-      changed(); paintList(); paintFolder();
-      toast(N.note.shared ? 'Moved to the shared folder' : 'Moved to My notes', 'ok');
-    });
-    N.folderEl = sel;
-    return sel;
+    var btn = h('button', { type: 'button', cls: 'nt-share', on: { click: function () {
+      if (C.noShare) { alert('Sharing notes switches on once supabase/shared-notes.sql is run in Supabase (SQL Editor → New query → paste → Run).'); return; }
+      if (!N.note.shared) { N.note.shared = true; changed(); paintList(); paintFolder(); toast('Shared with the Owner and managers', 'ok'); return; }
+      if (!mine(N.note)) { alert('Only ' + (N.note.author || 'the person who wrote it') + ' can make this note private again.'); return; }
+      if (!confirm('Make this note private again? The Owner and managers will no longer see it.')) return;
+      N.note.shared = false; changed(); paintList(); paintFolder(); toast('Moved to My notes (private)', 'ok');
+    } } });
+    N.folderEl = btn;
+    return btn;
   }
   function paintFolder() {
-    if (!N.folderEl) return;
-    N.folderEl.value = N.note.shared ? 'shared' : 'mine';
-    N.folderEl.classList.toggle('on', !!N.note.shared);
+    var b = N.folderEl; if (!b) return;
+    var on = !!N.note.shared;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.innerHTML = '';
+    b.appendChild(h('span', { cls: 'nt-share-i', 'aria-hidden': 'true', text: on ? '\u2713' : '+' }));
+    b.appendChild(document.createTextNode(on ? 'Shared with team' : 'Share with team'));
+    b.title = on ? (mine(N.note) ? 'The Owner and managers can read and edit this note. Click to make it private again.' : 'Shared by ' + (N.note.author || 'a colleague') + '. The Owner and managers can read and edit it.')
+      : 'Put this note in the shared folder so the Owner and managers can read and edit it';
+    var bar = N.el && N.el.querySelector('.nt-sharebar');
+    if (bar) {
+      bar.hidden = !on;
+      bar.textContent = on ? 'Shared with the team: the Owner and managers can read and edit this note' + (N.note.author && !mine(N.note) ? ' · written by ' + N.note.author : '') + (N.note.edited_by && N.note.edited_by !== N.note.author ? ' · last edited by ' + N.note.edited_by : '') + '.' : '';
+    }
   }
   function setMode(m) {
     N.mode = m;
@@ -233,7 +245,7 @@
     if (N.missing) list.appendChild(h('p', { cls: 'nt-list-note', text: 'Notes are kept on this device until supabase/notes.sql is run in Supabase.' }));
     var isShared = function (n) { return !!(n.id === N.note.id ? N.note : n).shared; };
     section('My notes', all.filter(function (n) { return !isShared(n); }), false, 'No private notes yet.');
-    if (canShare()) section('Shared folder', all.filter(isShared), true, 'Nothing shared yet. Choose “' + SHARED_NAME + '” at the top of a note to share it with the Owner and managers.');
+    if (canShare()) section('Shared folder', all.filter(isShared), true, 'Nothing shared yet. Press “Share with team” at the top of a note to share it with the Owner and managers.');
     else if (C.canShare && C.noShare) list.appendChild(h('p', { cls: 'nt-list-note', text: 'The shared folder switches on once supabase/shared-notes.sql is run in Supabase.' }));
   }
   function load(n) {

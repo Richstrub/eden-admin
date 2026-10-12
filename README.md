@@ -112,7 +112,7 @@ The staff site lives at **https://edencny-staff.com/** (staff page: `/team/`). T
 
 ## Notes and the shared folder
 
-Everyone who signs in to the staff site has **Notes** (top bar): handwriting or typed, private to the writer. The Owner and managers also get a **Shared folder**: choose “Shared · Owner & managers” at the top of a note (or **+ New** under Shared folder) and the Owner and every manager can read and edit it. Each shared note shows who wrote it and who changed it last; only the writer can move it back to private; the writer or the Owner can delete it. Kitchen and Front of House logins keep private notes only. One-time setup: run `supabase/shared-notes.sql` (after `notes.sql`).
+Everyone who signs in to the staff site has **Notes** (top bar): handwriting or typed, private to the writer. The Owner and managers also get a **Shared folder**: press **Share with team** next to the note’s title (or **+ New** under Shared folder) and the Owner and every manager can read and edit it. Each shared note shows who wrote it and who changed it last; only the writer can move it back to private; the writer or the Owner can delete it. Kitchen and Front of House logins keep private notes only. One-time setup: run `supabase/shared-notes.sql` (after `notes.sql`).
 
 ## Passwords
 

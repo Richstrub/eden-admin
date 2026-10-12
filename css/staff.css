@@ -1245,3 +1245,11 @@ body.nt-open #app{visibility:hidden!important}
 .sb{overflow:hidden}
 .sb-nav.ed-nav{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:10px}
 @media (min-width:1024px){.sb-nav a,.sb-soon{padding-top:6px;padding-bottom:6px}.sb-g{margin-top:14px}}
+/* Notes: the "Share with team" button */
+.nt-share{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 16px 8px 10px;background:var(--ember);border:1px solid var(--ember);color:#fff;font-family:var(--sans);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;border-radius:2px;cursor:pointer;white-space:nowrap}
+.nt-share:hover{background:#c27d48;border-color:#c27d48}
+.nt-share-i{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.22);display:inline-flex;align-items:center;justify-content:center;font-size:.9rem;letter-spacing:0;line-height:1}
+.nt-share.on{background:transparent;color:var(--ember-hot);border-color:var(--ember-hot)}
+.nt-share.on .nt-share-i{background:var(--ember-hot);color:var(--ink)}
+.nt-share:focus-visible{outline:2px solid var(--ember-hot);outline-offset:2px}
+.nt-sharebar{padding:8px 16px;background:#fbf3ea;border-bottom:1px solid rgba(176,112,63,.35);color:#7a4a22;font-size:.84rem}
