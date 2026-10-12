@@ -9,6 +9,8 @@
   "name": "eden-admin",
   "compatibility_date": "2025-09-01",
   "main": "worker.js",
+  // copies an INQUIRY_KEY saved in the Build settings into the worker (see scripts/inquiry-key.mjs)
+  "build": { "command": "node scripts/inquiry-key.mjs" },
   "assets": { "directory": ".", "binding": "ASSETS" },
   "vars": {
     "SUPABASE_URL": "https://qmblccwyxbpvziiwrlne.supabase.co",

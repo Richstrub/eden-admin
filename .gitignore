@@ -7,3 +7,5 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+inquiry-key.generated.js
+node_modules

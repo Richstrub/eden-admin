@@ -22,6 +22,8 @@
  *   SUPABASE_URL, SUPABASE_KEY (public key), MAIL_FROM, NOTIFY_TO, SITE_URL: plain settings in wrangler.jsonc.
  */
 // Eden's website, its Cloudflare address (including preview copies) and its GitHub Pages copy
+import BUILD_KEY from './inquiry-key.generated.js';   // INQUIRY_KEY from the Build settings, if saved there
+
 const SITE_HOSTS = /(^|\.)edencny\.com$|(^|[.-])eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
 const BOTS = /bot|crawl|spider|slurp|preview|headless|lighthouse|pagespeed|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|curl|wget|python|axios|node-fetch|go-http|java\/|monitor|uptime|pingdom|scan/i;
 
@@ -111,7 +113,7 @@ function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ 
 // The private inquiry key. Forgiving about how it was entered in Cloudflare: the name in any case or with
 // spaces (e.g. "inquiry key"), and stray spaces, quotes or line breaks around the value.
 function keyName(env) { return Object.keys(env || {}).filter(k => k.replace(/[^a-z]/gi, '').toUpperCase() === 'INQUIRYKEY')[0] || ''; }
-function inqKey(env) { const n = keyName(env); return n ? String(env[n] || '').replace(/[^a-f0-9]/gi, '').toLowerCase() : ''; }
+function inqKey(env) { const n = keyName(env), v = n ? String(env[n] || '').replace(/[^a-f0-9]/gi, '').toLowerCase() : ''; return v || String(BUILD_KEY || ''); }
 function turnstileOn(env) { return !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET); }
 function mailOn(env) { return !!(env.RESEND_API_KEY && env.MAIL_FROM); }
 function inboundOn(env) { return !!(mailOn(env) && env.INBOUND_DOMAIN && env.RESEND_WEBHOOK_SECRET); }
@@ -192,8 +194,8 @@ async function notifyStaff(env, req, q, kind, extra) {
 async function inquiryConfig(req, env) {
   const c = siteCors(req), out = { ready: !!(inqKey(env) && env.SUPABASE_URL), turnstile: turnstileOn(env) ? env.TURNSTILE_SITE_KEY : '' };
   if (new URL(req.url).searchParams.get('check')) {
-    out.keySet = !!keyName(env) && !!env[keyName(env)]; out.keyLooksRight = inqKey(env).length === 64;
-    out.keyName = keyName(env);
+    out.keySet = !!inqKey(env); out.keyLooksRight = inqKey(env).length === 64;
+    out.keyName = keyName(env); out.keySource = keyName(env) && env[keyName(env)] ? 'secret' : (BUILD_KEY ? 'build settings' : '');
     // names only (never values) of the settings this worker can see, to spot one added in the wrong place
     out.settings = Object.keys(env).filter(k => k !== 'ASSETS').sort(); out.turnstileHalf = !!env.TURNSTILE_SITE_KEY !== !!env.TURNSTILE_SECRET;
     out.mail = mailOn(env); out.inbound = inboundOn(env); out.site = siteUrl(env);

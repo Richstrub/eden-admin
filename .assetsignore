@@ -6,3 +6,5 @@ wrangler.jsonc
 .assetsignore
 .gitignore
 worker.js
+scripts
+inquiry-key.generated.js
