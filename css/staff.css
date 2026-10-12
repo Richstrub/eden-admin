@@ -1405,3 +1405,4 @@ body.nt-open #app{visibility:hidden!important}
   .em-setup{padding:28px 16px 60px}
   .em-mhead{flex-direction:column;gap:2px}
 }
+.ed-btn.small.em-unread.on{background:var(--ember);border-color:var(--ember);color:#fff}

@@ -13,7 +13,7 @@
   'use strict';
 
   var M = { ctx: null, el: null, cfg: null, accounts: [], people: [], acct: '', prof: {}, label: 'INBOX', q: '', threads: [], next: '', back: [], page: '',
-    sel: {}, open: '', thread: null, busy: false, loaded: false, missingSql: false, timer: null, unread: {}, listSeq: 0 };
+    sel: {}, open: '', thread: null, unreadOnly: false, busy: false, loaded: false, missingSql: false, timer: null, unread: {}, listSeq: 0 };
   var SYS = [['INBOX', 'Inbox'], ['STARRED', 'Starred'], ['SENT', 'Sent'], ['ALL', 'All mail'], ['SPAM', 'Spam'], ['TRASH', 'Trash']];
   var MAX_ATTACH = 18 * 1024 * 1024;
 
@@ -182,6 +182,7 @@
   /* ---------- page ---------- */
   function show(ctx) {
     M.ctx = ctx; M.el = ctx.el;
+    try { M.unreadOnly = localStorage.getItem('eden-mail-unread') === '1'; } catch (e) {}
     if (!M.el.querySelector('.em')) { M.el.innerHTML = ''; M.el.appendChild(h('p', { cls: 'em-empty', text: 'Opening Business email…' })); }
     var arg = String(ctx.sub || '');
     var first = arg.indexOf('connected?') === 0 ? finishConnect(arg.slice(10)) : Promise.resolve();
@@ -389,7 +390,8 @@
     var list = M.el.querySelector('.em-list'); if (!list || !M.acct) return Promise.resolve();
     var seq = ++M.listSeq, id = M.acct;
     if (!quiet) { M.threads = []; paintList(null, true); }
-    return api('list', { label: M.q ? 'ALL' : M.label, q: M.q || '', page: M.page || '' }).then(function (j) {
+    var q = ((M.q || '') + (M.unreadOnly ? ' is:unread' : '')).trim();   // Gmail's own search, so it matches Gmail exactly
+    return api('list', { label: M.q ? 'ALL' : M.label, q: q, page: M.page || '' }).then(function (j) {
       if (seq !== M.listSeq || id !== M.acct) return;
       M.threads = j.threads || []; M.next = j.next || '';
       Object.keys(M.sel).forEach(function (k) { if (!M.threads.some(function (t) { return t.id === k; })) delete M.sel[k]; });
@@ -417,6 +419,9 @@
     if (any) actionButtons(ids, true).forEach(function (b) { tools.appendChild(b); });
     else tools.appendChild(h('span', { cls: 'em-where', text: M.q ? 'Search results' : labelName(M.label) }));
     tools.appendChild(h('span', { cls: 'em-sp' }));
+    if (!any) tools.appendChild(h('button', { type: 'button', cls: 'ed-btn small em-unread' + (M.unreadOnly ? ' on' : ''), 'aria-pressed': M.unreadOnly ? 'true' : 'false',
+      title: M.unreadOnly ? 'Showing unread email only. Click to show all.' : 'Show only unread email', text: M.unreadOnly ? '● Unread only' : 'Unread only',
+      on: { click: function () { M.unreadOnly = !M.unreadOnly; try { localStorage.setItem('eden-mail-unread', M.unreadOnly ? '1' : ''); } catch (e) {} M.page = ''; M.back = []; M.sel = {}; loadList(); } } }));
     tools.appendChild(btn('↻', function () { loadList(); counts(); }, 'em-icon', { 'aria-label': 'Refresh', title: 'Refresh' }));
     if (M.back.length) tools.appendChild(btn('‹', function () { M.page = M.back.pop() || ''; loadList(); }, 'em-icon', { 'aria-label': 'Newer', title: 'Newer' }));
     if (M.next) tools.appendChild(btn('›', function () { M.back.push(M.page); M.page = M.next; loadList(); }, 'em-icon', { 'aria-label': 'Older', title: 'Older' }));
@@ -425,7 +430,7 @@
     var rows = h('div', { cls: 'em-rows', role: 'list' });
     if (err) rows.appendChild(h('div', { cls: 'em-empty' }, [h('p', { text: err.message }), btn('Try again', function () { if (!M.prof[M.acct]) render(); else loadList(); })]));
     else if (loading) rows.appendChild(h('p', { cls: 'em-empty', text: 'Loading…' }));
-    else if (!M.threads.length) rows.appendChild(h('p', { cls: 'em-empty', text: M.q ? 'Nothing matches “' + M.q + '”.' : (M.label === 'INBOX' ? 'Your inbox is empty.' : 'Nothing in ' + labelName(M.label) + '.') }));
+    else if (!M.threads.length) rows.appendChild(h('p', { cls: 'em-empty', text: M.q ? 'Nothing ' + (M.unreadOnly ? 'unread ' : '') + 'matches “' + M.q + '”.' : M.unreadOnly ? 'No unread email in ' + labelName(M.label) + '. You’re all caught up.' : (M.label === 'INBOX' ? 'Your inbox is empty.' : 'Nothing in ' + labelName(M.label) + '.') }));
     if (M.label === 'TRASH' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Email in Trash is deleted forever by Gmail after 30 days.' }));
     if (M.label === 'SPAM' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes spam for good after 30 days.' }));
     M.threads.forEach(function (t) { rows.appendChild(row(t)); });
