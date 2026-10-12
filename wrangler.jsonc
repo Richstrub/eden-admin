@@ -16,6 +16,7 @@
     "SUPABASE_URL": "https://qmblccwyxbpvziiwrlne.supabase.co",
     "SUPABASE_KEY": "sb_publishable_Nbp1K_Co8tDVB-jNjBRs3w_D40qm4Mg",
     "SITE_URL": "https://edencny.com/",
+    "STAFF_URL": "https://edencny-staff.com/",
     "MAIL_FROM": "Eden Events <events@edencny.com>",
     "NOTIFY_TO": "Tyler@edencny.com,Rich@edencny.com"
   },
