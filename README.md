@@ -103,6 +103,10 @@ Setup (each step works on its own; anything not set up is skipped):
 
 The Catering & BEOs page shows a status line saying which of these are working. When edencny.com points to the new website, change `SITE_URL` in `wrangler.jsonc` and `guestSite` in `js/config.js` to `https://edencny.com/`.
 
+## Address (edencny-staff.com)
+
+The staff site lives at **https://edencny-staff.com/** (staff page: `/team/`). The old `eden-admin.richard-a-strub.workers.dev` address keeps working; `js/move.js` sends people from it to the same page on the new address as soon as the new one answers (it checks `/here`), bringing along the prep list pars and an unsaved note kept in that browser. Where the address is set: `staffHome` in `js/config.js`, optional `STAFF_URL` in `wrangler.jsonc` (links in team emails), `staffSite` in the public website's `js/config.js` (inquiries, visit counter, `#editor`), Supabase → Authentication → URL Configuration (redirect URL `https://edencny-staff.com/**`), and the Resend webhook (`https://edencny-staff.com/inbound`).
+
 ## Passwords
 
 - **Change password** (everyone): the **Password** button at the top of the staff site and the staff page. It asks for the current password, and can sign out every other phone, tablet and computer (use that if someone else may know the password).

@@ -4,6 +4,7 @@
 // Never put a secret key here: INQUIRY_KEY, TURNSTILE_SECRET and RESEND_API_KEY are added as
 // secrets in Cloudflare (Workers > eden-admin > Settings > Variables and Secrets). See README.
 // SITE_URL is where guests' questionnaire links point (keep it the same as guestSite in js/config.js).
+// STAFF_URL (optional) is this staff site's own address for links in the team's email notifications; without it they use the address the request came to.
 {
   "name": "eden-admin",
   "compatibility_date": "2025-09-01",

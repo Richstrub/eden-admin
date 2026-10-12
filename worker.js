@@ -117,6 +117,7 @@ function inqKey(env) { const n = keyName(env), v = n ? String(env[n] || '').repl
 function turnstileOn(env) { return !!(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET); }
 function mailOn(env) { return !!(env.RESEND_API_KEY && env.MAIL_FROM); }
 function inboundOn(env) { return !!(mailOn(env) && env.INBOUND_DOMAIN && env.RESEND_WEBHOOK_SECRET); }
+function staffUrl(env, req) { return String(env.STAFF_URL || new URL(req.url).origin).replace(/\/?$/, '/'); }
 function siteUrl(env) { return String(env.SITE_URL || 'https://edencny.com/').replace(/\/?$/, '/'); }
 function replyAddr(env, id) { return inboundOn(env) ? 'i-' + String(id).replace(/-/g, '') + '@' + String(env.INBOUND_DOMAIN).replace(/^@/, '') : ''; }
 function staffTo(env) { return String(env.NOTIFY_TO || '').split(',').map(x => x.trim()).filter(Boolean); }
@@ -173,7 +174,7 @@ function detailRows(q) {
 async function notifyStaff(env, req, q, kind, extra) {
   const to = staffTo(env);
   if (!mailOn(env) || !to.length) return false;
-  const admin = new URL(req.url).origin + '/#catering';
+  const admin = staffUrl(env, req) + '#catering';
   const who = q.name || 'A guest';
   const T = {
     inquiry: q.held
@@ -397,6 +398,7 @@ async function inbound(req, env) {
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
+    if (url.pathname === '/here') return json({ app: 'eden-staff' }, 200, { 'Access-Control-Allow-Origin': '*' });   // js/move.js checks the new address
     if (url.pathname === '/t') return track(req, env);
     if (url.pathname === '/inquiry/config') return inquiryConfig(req, env);
     if (url.pathname === '/inquiry') return inquiry(req, env);
