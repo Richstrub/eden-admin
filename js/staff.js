@@ -211,6 +211,11 @@
     var m = store.rows['site/menu'];
     $('homeMenuMeta').textContent = !store.loaded ? '' : m && m.updatedAt ? 'Last published ' + fmtWhen(m.updatedAt) : 'Not set up yet';
     if (isMgr() && window.EdenSchedule) window.EdenSchedule.summary(sb).then(function (t) { $('homeSchedMeta').textContent = t || ''; }, function () {});
+    if (isMgr()) sb.from('catering_inquiries').select('status').then(function (r) {
+      if (r.error) return;
+      var all = r.data || [], n = all.filter(function (x) { return x.status === 'new'; }).length, b = all.filter(function (x) { return x.status === 'received'; }).length;
+      $('homeCaterMeta').textContent = [n ? n + ' new ' + (n === 1 ? 'inquiry' : 'inquiries') : '', b ? b + ' questionnaire' + (b === 1 ? '' : 's') + ' back' : ''].filter(Boolean).join(' · ') || 'Nothing waiting';
+    }, function () {});
   }
 
   /* ---------------- data: read all website rows, keep them live ---------------- */
