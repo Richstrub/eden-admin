@@ -328,41 +328,81 @@
     }, function (e) { say(e.message, 'err'); });
   }
 
+  /* ---------- icons (drawn in the page, so they stay sharp and take the text colour) ---------- */
+  var ICONS = {
+    pencil: 'M4 20h4L18.5 9.5l-4-4L4 16v4zM13 7l4 4', archive: 'M3.5 5h17v4h-17zM5 9v10h14V9M10 13h4', trash: 'M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5',
+    spam: 'M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3zM12 7.5v5.5M12 16.2v.3', unread: 'M3.5 6h17v12h-17zM3.5 7l8.5 6 8.5-6', read: 'M3.5 10l8.5-6 8.5 6v9.5h-17zM3.5 10l8.5 6 8.5-6',
+    folder: 'M3 6.5h6.5l2 2H21V19H3z', star: 'M12 3.8l2.5 5.1 5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8z', refresh: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.6h-4.6',
+    back: 'M15 5l-7 7 7 7', prev: 'M15 6l-6 6 6 6', next: 'M9 6l6 6-6 6', reply: 'M10 7l-5 5 5 5M5 12h9.5a5 5 0 0 1 5 5v1.5', replyAll: 'M12 7l-5 5 5 5M7.5 7l-5 5 5 5M7 12h8a5 5 0 0 1 5 5v1.5',
+    forward: 'M14 7l5 5-5 5M19 12H9.5a5 5 0 0 0-5 5v1.5', restore: 'M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4.6h4.6', search: 'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM20 20l-4.8-4.8',
+    clip: 'M15.5 7.5l-6.3 6.3a1.8 1.8 0 0 0 2.6 2.6l6.6-6.6a3.6 3.6 0 0 0-5.1-5.1l-6.9 6.9a5.4 5.4 0 0 0 7.6 7.6l5.5-5.5', check: 'M5 12.5l4.5 4.5L19 7.5', x: 'M6 6l12 12M18 6L6 18',
+    send: 'M4 12l16-8-5.5 16-3-6.5z', more: 'M5 12h.01M12 12h.01M19 12h.01', inbox: 'M3.5 13.5L6 5h12l2.5 8.5V19h-17zM3.5 13.5h5l1.2 2h4.6l1.2-2h5', sent: 'M4 12l16-8-5.5 16-3-6.5z',
+    all: 'M4.5 7h15M4.5 12h15M4.5 17h15', plus: 'M12 5v14M5 12h14', gmail: 'M14 4h6v6M20 4l-9 9M18 14v5H5V6h5'
+  };
+  function ico(n, cls) { var s = document.createElement('span'); s.className = 'em-i' + (cls ? ' ' + cls : ''); s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="' + (n === 'more' ? 3 : 1.6) + '" stroke-linecap="round" stroke-linejoin="round"><path d="' + ICONS[n] + '"/></svg>'; return s; }
+  // an icon button; the word is shown beside the icon where there's room, and always read out by screen readers
+  function ib(n, label, fn, cls, attrs) {
+    return h('button', Object.assign({ type: 'button', cls: 'em-ib' + (cls ? ' ' + cls : ''), title: label, 'aria-label': label, on: { click: fn } }, attrs || {}), [ico(n), h('span', { cls: 'em-ib-t', text: label })]);
+  }
+  var AV = ['#b0703f', '#7b8a69', '#5d6e7b', '#8b6170', '#a08453', '#6a7d8f', '#9a6a4a'];
+  function avatar(nameOrAddr) {
+    var a = parseAddr(nameOrAddr || ''), label = a.name || a.email || '?';
+    var words = label.replace(/@.*/, '').replace(/[^\p{L}\p{N}\s.'-]/gu, ' ').split(/[\s._-]+/).filter(Boolean);
+    var ini = ((words[0] || '?')[0] + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+    var hsh = 0; String(a.email || label).toLowerCase().split('').forEach(function (c) { hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0; });
+    return { ini: ini, color: AV[hsh % AV.length] };
+  }
+  function when(ms) {
+    if (!ms) return '';
+    var d = new Date(ms), n = new Date(), t = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === n.toDateString()) return t;
+    return d.toLocaleDateString('en-US', d.getFullYear() === n.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }) + ', ' + t;
+  }
+  function splitAddrLabel(addr) { var i = String(addr).indexOf('@'); return i < 0 ? [addr, ''] : [addr.slice(0, i), addr.slice(i)]; }
+  function folderIcon(id) { return { INBOX: 'inbox', STARRED: 'star', SENT: 'sent', ALL: 'all', SPAM: 'spam', TRASH: 'trash' }[id] || 'folder'; }
+
   /* ---------- left: mailboxes and folders ---------- */
   function paintSide() {
     var side = M.el.querySelector('.em-side'); if (!side) return;
     side.innerHTML = '';
-    var a = acct();
-    side.appendChild(h('button', { type: 'button', cls: 'em-compose', text: 'Write', on: { click: function () { compose({}); } }, disabled: !a || a.status === 'reconnect' }));
-    var boxes = h('div', { cls: 'em-boxes' }, [h('p', { cls: 'em-g', text: mine().length > 1 ? 'Mailboxes' : 'Mailbox' })]);
+    var a = acct(), off = !a || a.status === 'reconnect';
+    // wide screens: a quiet column
+    var col = h('div', { cls: 'em-col' });
+    col.appendChild(h('button', { type: 'button', cls: 'em-compose', disabled: off, on: { click: function () { compose({}); } } }, [ico('pencil'), h('span', { text: 'Write' })]));
+    col.appendChild(h('p', { cls: 'em-g', text: mine().length > 1 ? 'Mailboxes' : 'Mailbox' }));
     mine().forEach(function (x) {
-      var n = M.unread[x.id] || 0;
-      boxes.appendChild(h('button', { type: 'button', cls: 'em-box', 'aria-current': x.id === M.acct ? 'true' : 'false', title: x.address, on: { click: function () { switchAcct(x.id); } } }, [
-        h('span', { cls: 'em-box-a', text: x.address }), x.status === 'reconnect' ? h('span', { cls: 'em-warn', text: 'Reconnect' }) : (n ? h('span', { cls: 'em-n', text: String(n) }) : null)]));
+      var n = M.unread[x.id] || 0, parts = splitAddrLabel(x.address);
+      col.appendChild(h('button', { type: 'button', cls: 'em-box', 'aria-current': x.id === M.acct ? 'true' : 'false', title: x.address, on: { click: function () { switchAcct(x.id); } } }, [
+        h('span', { cls: 'em-box-a' }, [h('b', { text: parts[0] }), h('span', { text: parts[1] })]),
+        x.status === 'reconnect' ? h('span', { cls: 'em-warn', text: 'Reconnect' }) : (n ? h('span', { cls: 'em-n', text: String(n) }) : null)]));
     });
-    side.appendChild(boxes);
-    var phoneBox = h('select', { cls: 'em-phone-box', 'aria-label': 'Mailbox', on: { change: function () { switchAcct(this.value); } } }, mine().map(function (x) { return h('option', { value: x.id, text: x.address + (M.unread[x.id] ? ' (' + M.unread[x.id] + ')' : ''), selected: x.id === M.acct }); }));
-    var folders = h('nav', { cls: 'em-folders', 'aria-label': 'Folders' });
-    var phoneFolder = h('select', { cls: 'em-phone-folder', 'aria-label': 'Folder', on: { change: function () { goLabel(this.value); } } });
+    col.appendChild(h('p', { cls: 'em-g', text: 'Folders' }));
     SYS.forEach(function (s) {
       var n = s[0] === 'INBOX' ? (M.unread[M.acct] || 0) : 0;
-      folders.appendChild(h('button', { type: 'button', cls: 'em-fold', 'aria-current': !M.q && M.label === s[0] ? 'true' : 'false', on: { click: function () { goLabel(s[0]); } } }, [h('span', { text: s[1] }), n ? h('span', { cls: 'em-n', text: String(n) }) : null]));
-      phoneFolder.appendChild(h('option', { value: s[0], text: s[1] + (n ? ' (' + n + ')' : ''), selected: M.label === s[0] }));
+      col.appendChild(h('button', { type: 'button', cls: 'em-fold', 'aria-current': !M.q && M.label === s[0] ? 'true' : 'false', on: { click: function () { goLabel(s[0]); } } }, [ico(folderIcon(s[0])), h('span', { cls: 'em-fold-t', text: s[1] }), n ? h('span', { cls: 'em-n', text: String(n) }) : null]));
     });
-    var ul = userLabels();
-    folders.appendChild(h('p', { cls: 'em-g', text: 'Folders' }));
-    ul.forEach(function (l) {
-      folders.appendChild(h('button', { type: 'button', cls: 'em-fold em-ufold', 'aria-current': !M.q && M.label === l.id ? 'true' : 'false', title: l.name, on: { click: function () { goLabel(l.id); } } }, [h('span', { text: l.name })]));
-      phoneFolder.appendChild(h('option', { value: l.id, text: l.name, selected: M.label === l.id }));
+    userLabels().forEach(function (l) {
+      col.appendChild(h('button', { type: 'button', cls: 'em-fold em-ufold', 'aria-current': !M.q && M.label === l.id ? 'true' : 'false', title: l.name, on: { click: function () { goLabel(l.id); } } }, [ico('folder'), h('span', { cls: 'em-fold-t', text: l.name })]));
     });
-    folders.appendChild(h('button', { type: 'button', cls: 'em-fold em-newf', text: '+ New folder', on: { click: function () { newFolder().then(function (l) { if (l) { paintSide(); } }); } } }));
-    side.appendChild(folders);
-    side.appendChild(h('div', { cls: 'em-phone' }, [phoneBox, phoneFolder, h('button', { type: 'button', cls: 'ed-btn small em-go', text: 'Write', on: { click: function () { compose({}); } } }),
-      h('button', { type: 'button', cls: 'ed-btn small', text: '⋯', title: isOwner() ? 'Manage mailboxes' : 'My mailboxes', 'aria-label': isOwner() ? 'Manage mailboxes' : 'My mailboxes', on: { click: manage } })]));
-    side.appendChild(h('div', { cls: 'em-side-foot' }, [
-      btn(isOwner() ? 'Manage mailboxes' : 'My mailboxes', manage),
-      h('a', { cls: 'em-gmail', href: 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent((a && a.address) || ''), target: '_blank', rel: 'noopener', text: 'Open in Gmail ↗' })
+    col.appendChild(h('button', { type: 'button', cls: 'em-fold em-newf', on: { click: function () { newFolder(); } } }, [ico('plus'), h('span', { cls: 'em-fold-t', text: 'New folder' })]));
+    col.appendChild(h('div', { cls: 'em-side-foot' }, [
+      h('button', { type: 'button', cls: 'em-link', text: isOwner() ? 'Manage mailboxes' : 'My mailboxes', on: { click: manage } }),
+      h('a', { cls: 'em-link', href: 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent((a && a.address) || ''), target: '_blank', rel: 'noopener' }, ['Open in Gmail ', ico('gmail', 'em-i-s')])
     ]));
+    side.appendChild(col);
+    // phones: the mailbox as a heading you can change, and the folders as a strip you swipe
+    var pbox = h('select', { cls: 'em-pbox', 'aria-label': 'Mailbox', on: { change: function () { switchAcct(this.value); } } }, mine().map(function (x) { return h('option', { value: x.id, text: x.address + (M.unread[x.id] ? '  ·  ' + M.unread[x.id] + ' unread' : ''), selected: x.id === M.acct }); }));
+    var chips = h('nav', { cls: 'em-strip', 'aria-label': 'Folders' });
+    SYS.concat(userLabels().map(function (l) { return [l.id, l.name]; })).forEach(function (s) {
+      var n = s[0] === 'INBOX' ? (M.unread[M.acct] || 0) : 0;
+      chips.appendChild(h('button', { type: 'button', cls: 'em-chipf', 'aria-current': !M.q && M.label === s[0] ? 'true' : 'false', on: { click: function () { goLabel(s[0]); } } }, [s[1], n ? h('span', { cls: 'em-n', text: String(n) }) : null]));
+    });
+    side.appendChild(h('div', { cls: 'em-phone' }, [h('div', { cls: 'em-phead' }, [h('label', { cls: 'em-pboxw' }, [pbox, ico('next', 'em-pchev')]), ib('more', isOwner() ? 'Manage mailboxes' : 'My mailboxes', manage, 'em-pmore')]), chips]));
+    var cur = chips.querySelector('[aria-current="true"]'); if (cur) setTimeout(function () { try { cur.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {} }, 0);
+    var fab = M.el.querySelector('.em-fab');
+    if (!fab) { fab = h('button', { type: 'button', cls: 'em-fab', 'aria-label': 'Write an email', on: { click: function () { compose({}); } } }, [ico('pencil'), h('span', { text: 'Write' })]); M.el.querySelector('.em').appendChild(fab); }
+    fab.disabled = off;
   }
   function switchAcct(id) {
     if (id === M.acct) return;
@@ -400,87 +440,100 @@
     }, function (e) { if (seq === M.listSeq) paintList(e); });
   }
   function selIds() { return Object.keys(M.sel); }
+  function setUnreadOnly(on) { if (M.unreadOnly === on) return; M.unreadOnly = on; try { localStorage.setItem('eden-mail-unread', on ? '1' : ''); } catch (e) {} M.page = ''; M.back = []; M.sel = {}; loadList(); }
   function paintList(err, loading) {
     var list = M.el.querySelector('.em-list'); if (!list) return;
-    var scroll = list.querySelector('.em-rows') ? list.querySelector('.em-rows').scrollTop : 0;
+    var old = list.querySelector('.em-rows'), scroll = old ? old.scrollTop : 0;
+    var hadFocus = document.activeElement && document.activeElement.classList.contains('em-search');
     list.innerHTML = '';
-    var a = acct();
-    // search
+    var a = acct(), ids = selIds(), any = ids.length > 0;
+    // heading, search and the All / Unread switch
+    var head = h('div', { cls: 'em-lhead' });
+    head.appendChild(h('div', { cls: 'em-ltop' }, [
+      h('h2', { cls: 'em-ltitle', text: M.q ? 'Search' : labelName(M.label) }),
+      h('span', { cls: 'em-sp' }),
+      M.back.length ? ib('prev', 'Newer', function () { M.page = M.back.pop() || ''; loadList(); }) : null,
+      M.next ? ib('next', 'Older', function () { M.back.push(M.page); M.page = M.next; loadList(); }) : null,
+      ib('refresh', 'Refresh', function () { loadList(); counts(); })]));
     var q = h('input', { type: 'search', cls: 'em-search', placeholder: 'Search ' + ((a && a.address) || 'mail'), value: M.q, 'aria-label': 'Search mail', enterkeyhint: 'search' });
-    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { M.q = q.value.trim(); M.page = ''; M.back = []; M.sel = {}; paintSide(); loadList(); } });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { M.q = q.value.trim(); M.page = ''; M.back = []; M.sel = {}; q.blur(); paintSide(); loadList(); } });
     q.addEventListener('search', function () { if (!q.value && M.q) { M.q = ''; M.page = ''; M.back = []; paintSide(); loadList(); } });
-    list.appendChild(h('div', { cls: 'em-searchbar' }, [q]));
-    // tools
-    var ids = selIds(), any = ids.length > 0;
-    var all = h('input', { type: 'checkbox', 'aria-label': 'Select all', checked: any && ids.length === M.threads.length });
-    all.indeterminate = any && ids.length < M.threads.length;
-    all.addEventListener('change', function () { M.sel = {}; if (all.checked) M.threads.forEach(function (t) { M.sel[t.id] = 1; }); paintList(); });
-    var tools = h('div', { cls: 'em-tools' }, [h('label', { cls: 'em-all' }, [all])]);
-    if (any) actionButtons(ids, true).forEach(function (b) { tools.appendChild(b); });
-    else tools.appendChild(h('span', { cls: 'em-where', text: M.q ? 'Search results' : labelName(M.label) }));
-    tools.appendChild(h('span', { cls: 'em-sp' }));
-    if (!any) tools.appendChild(h('button', { type: 'button', cls: 'ed-btn small em-unread' + (M.unreadOnly ? ' on' : ''), 'aria-pressed': M.unreadOnly ? 'true' : 'false',
-      title: M.unreadOnly ? 'Showing unread email only. Click to show all.' : 'Show only unread email', text: M.unreadOnly ? '● Unread only' : 'Unread only',
-      on: { click: function () { M.unreadOnly = !M.unreadOnly; try { localStorage.setItem('eden-mail-unread', M.unreadOnly ? '1' : ''); } catch (e) {} M.page = ''; M.back = []; M.sel = {}; loadList(); } } }));
-    tools.appendChild(btn('↻', function () { loadList(); counts(); }, 'em-icon', { 'aria-label': 'Refresh', title: 'Refresh' }));
-    if (M.back.length) tools.appendChild(btn('‹', function () { M.page = M.back.pop() || ''; loadList(); }, 'em-icon', { 'aria-label': 'Newer', title: 'Newer' }));
-    if (M.next) tools.appendChild(btn('›', function () { M.back.push(M.page); M.page = M.next; loadList(); }, 'em-icon', { 'aria-label': 'Older', title: 'Older' }));
-    list.appendChild(tools);
+    head.appendChild(h('label', { cls: 'em-sbox' }, [ico('search'), q]));
+    head.appendChild(h('div', { cls: 'em-seg', role: 'group', 'aria-label': 'Show' }, [
+      h('button', { type: 'button', cls: 'em-seg-b', 'aria-pressed': M.unreadOnly ? 'false' : 'true', text: 'All', on: { click: function () { setUnreadOnly(false); } } }),
+      h('button', { type: 'button', cls: 'em-seg-b em-unread', 'aria-pressed': M.unreadOnly ? 'true' : 'false', text: 'Unread', on: { click: function () { setUnreadOnly(true); } } })]));
+    list.appendChild(head);
+    // when emails are chosen: what to do with them
+    if (any) {
+      var bar = h('div', { cls: 'em-tools em-selbar' }, [
+        ib('x', 'Clear selection', function () { M.sel = {}; paintList(); }),
+        h('span', { cls: 'em-selcount', text: ids.length + ' selected' }),
+        ids.length < M.threads.length ? h('button', { type: 'button', cls: 'em-link', text: 'Select all', on: { click: function () { M.threads.forEach(function (t) { M.sel[t.id] = 1; }); paintList(); } } }) : null,
+        h('span', { cls: 'em-sp' })]);
+      actionButtons(ids).forEach(function (b) { bar.appendChild(b); });
+      list.appendChild(bar);
+    }
     if (a && a.status === 'reconnect') { list.appendChild(h('div', { cls: 'em-empty' }, [h('p', { text: 'Google no longer lets the staff site into ' + a.address + '. This happens when the password changes or access is removed.' }), btn('Connect it again', function () { reconnect(a); }, 'em-go')])); return; }
     var rows = h('div', { cls: 'em-rows', role: 'list' });
     if (err) rows.appendChild(h('div', { cls: 'em-empty' }, [h('p', { text: err.message }), btn('Try again', function () { if (!M.prof[M.acct]) render(); else loadList(); })]));
-    else if (loading) rows.appendChild(h('p', { cls: 'em-empty', text: 'Loading…' }));
-    else if (!M.threads.length) rows.appendChild(h('p', { cls: 'em-empty', text: M.q ? 'Nothing ' + (M.unreadOnly ? 'unread ' : '') + 'matches “' + M.q + '”.' : M.unreadOnly ? 'No unread email in ' + labelName(M.label) + '. You’re all caught up.' : (M.label === 'INBOX' ? 'Your inbox is empty.' : 'Nothing in ' + labelName(M.label) + '.') }));
-    if (M.label === 'TRASH' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Email in Trash is deleted forever by Gmail after 30 days.' }));
+    else if (loading) for (var i = 0; i < 6; i++) rows.appendChild(h('div', { cls: 'em-ghost', 'aria-hidden': 'true' }, [h('span'), h('span'), h('span')]));
+    else if (!M.threads.length) rows.appendChild(h('div', { cls: 'em-empty em-calm' }, [h('p', { cls: 'em-calm-t', text: M.q ? 'Nothing found' : M.unreadOnly ? 'All caught up' : 'Nothing here' }),
+      h('p', { text: M.q ? 'Nothing ' + (M.unreadOnly ? 'unread ' : '') + 'matches “' + M.q + '”.' : M.unreadOnly ? 'No unread email in ' + labelName(M.label) + '.' : (M.label === 'INBOX' ? 'Your inbox is empty.' : 'Nothing in ' + labelName(M.label) + '.') })]));
+    if (M.label === 'TRASH' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes email in Trash for good after 30 days.' }));
     if (M.label === 'SPAM' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes spam for good after 30 days.' }));
-    M.threads.forEach(function (t) { rows.appendChild(row(t)); });
+    M.threads.forEach(function (t) { rows.appendChild(row(t, any)); });
     list.appendChild(rows);
     rows.scrollTop = scroll;
+    if (hadFocus) { q.focus(); }
   }
-  function row(t) {
+  function row(t, selecting) {
     var sent = M.label === 'SENT';
-    var cb = h('input', { type: 'checkbox', 'aria-label': 'Select', checked: !!M.sel[t.id], on: { click: function (e) { e.stopPropagation(); }, change: function () { if (this.checked) M.sel[t.id] = 1; else delete M.sel[t.id]; paintList(); } } });
-    var star = h('button', { type: 'button', cls: 'em-star' + (t.starred ? ' on' : ''), 'aria-label': t.starred ? 'Starred' : 'Not starred', 'aria-pressed': t.starred ? 'true' : 'false', text: t.starred ? '★' : '☆',
-      on: { click: function (e) { e.stopPropagation(); act([t.id], t.starred ? { remove: ['STARRED'] } : { add: ['STARRED'] }); } } });
-    var name = sent ? 'To: ' + splitAddrs(t.to).map(function (x) { return x.name || x.email; }).join(', ') : who(t.from);
-    var r = h('div', { cls: 'em-row-t' + (t.unread ? ' unread' : '') + (M.open === t.id ? ' open' : '') + (M.sel[t.id] ? ' sel' : ''), role: 'listitem', tabindex: '0',
-      on: { click: function () { openThread(t.id); }, keydown: function (e) { if (e.key === 'Enter') openThread(t.id); } } }, [
-      h('span', { cls: 'em-pick' }, [cb]), star,
-      h('span', { cls: 'em-from' }, [name || '(no sender)', t.n > 1 ? h('small', { text: ' ' + t.n }) : null]),
-      h('span', { cls: 'em-subj' }, [h('b', { text: t.subject || '(no subject)' }), h('span', { cls: 'em-snip', text: ' — ' + decodeEntities(t.snippet) })]),
-      t.attach ? h('span', { cls: 'em-clip', 'aria-label': 'Has attachments', title: 'Has attachments', text: '📎' }) : null,
-      h('span', { cls: 'em-date', text: shortDate(t.date) })
+    var name = sent ? 'To ' + splitAddrs(t.to).map(function (x) { return x.name || x.email; }).join(', ') : who(t.from);
+    var av = avatar(sent ? (splitAddrs(t.to)[0] ? (splitAddrs(t.to)[0].name || splitAddrs(t.to)[0].email) : '') : t.from);
+    var picked = !!M.sel[t.id];
+    var pick = h('button', { type: 'button', cls: 'em-av' + (picked ? ' on' : ''), style: picked ? null : 'background:' + av.color, 'aria-pressed': picked ? 'true' : 'false', 'aria-label': picked ? 'Selected. Tap to unselect' : 'Select this email',
+      on: { click: function (e) { e.stopPropagation(); if (M.sel[t.id]) delete M.sel[t.id]; else M.sel[t.id] = 1; paintList(); } } }, picked ? [ico('check')] : [h('span', { text: av.ini })]);
+    var star = h('button', { type: 'button', cls: 'em-star' + (t.starred ? ' on' : ''), 'aria-label': t.starred ? 'Starred' : 'Not starred', 'aria-pressed': t.starred ? 'true' : 'false', title: t.starred ? 'Unstar' : 'Star',
+      on: { click: function (e) { e.stopPropagation(); act([t.id], t.starred ? { remove: ['STARRED'] } : { add: ['STARRED'] }); } } }, [ico('star')]);
+    return h('div', { cls: 'em-row-t' + (t.unread ? ' unread' : '') + (M.open === t.id ? ' open' : '') + (picked ? ' sel' : ''), role: 'listitem', tabindex: '0',
+      on: { click: function () { if (selecting) { if (M.sel[t.id]) delete M.sel[t.id]; else M.sel[t.id] = 1; paintList(); } else openThread(t.id); }, keydown: function (e) { if (e.key === 'Enter') openThread(t.id); } } }, [
+      pick,
+      h('div', { cls: 'em-rmain' }, [
+        h('div', { cls: 'em-rtop' }, [h('span', { cls: 'em-from' }, [name || '(no sender)', t.n > 1 ? h('span', { cls: 'em-cnt', text: String(t.n) }) : null]), h('span', { cls: 'em-date', text: shortDate(t.date) })]),
+        h('div', { cls: 'em-rsub' }, [h('span', { cls: 'em-subj', text: t.subject || '(no subject)' }), t.attach ? h('span', { cls: 'em-clip', title: 'Has attachments' }, [ico('clip')]) : null, star]),
+        h('div', { cls: 'em-snip', text: decodeEntities(t.snippet) })
+      ])
     ]);
-    return r;
   }
   function decodeEntities(s) { var d = document.createElement('textarea'); d.innerHTML = String(s || ''); return d.value; }
 
   /* ---------- actions (all done in Gmail) ---------- */
-  function actionButtons(ids, compact) {
+  function actionButtons(ids) {
     var inTrash = M.label === 'TRASH', inSpam = M.label === 'SPAM';
     var t = M.threads.filter(function (x) { return ids.indexOf(x.id) !== -1; });
     if (!t.length && M.thread && ids[0] === M.thread.id) t = [{ id: M.thread.id, labels: M.thread.labels, unread: false }];
     var hasInbox = t.some(function (x) { return (x.labels || []).indexOf('INBOX') !== -1; });
     var anyUnread = t.some(function (x) { return x.unread; });
+    var many = ids.length === 1 ? 'this conversation' : ids.length + ' conversations';
     var out = [];
     if (inTrash) {
-      out.push(btn('Restore', function () { act(ids, 'untrash', 'Moved out of Trash.'); }));
-      out.push(btn('Delete forever', function () { if (confirm('Delete ' + (ids.length === 1 ? 'this conversation' : ids.length + ' conversations') + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'danger'));
+      out.push(ib('restore', 'Restore', function () { act(ids, 'untrash', 'Moved out of Trash.'); }));
+      out.push(ib('trash', 'Delete forever', function () { if (confirm('Delete ' + many + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'em-danger'));
       return out;
     }
-    if (hasInbox) out.push(btn('Archive', function () { act(ids, { remove: ['INBOX'] }, 'Archived. It’s still in All mail.'); }, '', { title: 'Take out of the inbox (stays in All mail)' }));
-    else if (!inSpam) out.push(btn('To inbox', function () { act(ids, { add: ['INBOX'] }, 'Moved to the inbox.'); }));
-    out.push(btn('Delete', function () { act(ids, 'trash', 'Moved to Trash.'); }, 'danger'));
+    if (hasInbox) out.push(ib('archive', 'Archive', function () { act(ids, { remove: ['INBOX'] }, 'Archived. It’s still in All mail.'); }));
+    else if (!inSpam) out.push(ib('inbox', 'To inbox', function () { act(ids, { add: ['INBOX'] }, 'Moved to the inbox.'); }));
+    out.push(ib('trash', 'Delete', function () { act(ids, 'trash', 'Moved to Trash.'); }));
     if (inSpam) {
-      out.push(btn('Not spam', function () { act(ids, { remove: ['SPAM'], add: ['INBOX'] }, 'Moved to the inbox.'); }));
-      out.push(btn('Delete forever', function () { if (confirm('Delete forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'danger'));
-    } else out.push(btn('Spam', function () { act(ids, { add: ['SPAM'], remove: ['INBOX'] }, 'Marked as spam.'); }));
-    out.push(btn(anyUnread ? 'Mark read' : 'Mark unread', function () { act(ids, anyUnread ? { remove: ['UNREAD'] } : { add: ['UNREAD'] }); }));
+      out.push(ib('inbox', 'Not spam', function () { act(ids, { remove: ['SPAM'], add: ['INBOX'] }, 'Moved to the inbox.'); }));
+      out.push(ib('trash', 'Delete forever', function () { if (confirm('Delete ' + many + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'em-danger'));
+    } else out.push(ib('spam', 'Spam', function () { act(ids, { add: ['SPAM'], remove: ['INBOX'] }, 'Marked as spam.'); }));
+    out.push(anyUnread ? ib('read', 'Mark read', function () { act(ids, { remove: ['UNREAD'] }); }) : ib('unread', 'Mark unread', function () { act(ids, { add: ['UNREAD'] }); }));
     out.push(moveMenu(ids));
     return out;
   }
   function moveMenu(ids) {
-    var sel = h('select', { cls: 'em-move', 'aria-label': 'Move to folder' }, [h('option', { value: '', text: 'Move to…' })].concat(
+    var sel = h('select', { cls: 'em-move', 'aria-label': 'Move to folder', title: 'Move to folder' }, [h('option', { value: '', text: 'Move to…' })].concat(
       [h('option', { value: 'INBOX', text: 'Inbox' })], userLabels().map(function (l) { return h('option', { value: l.id, text: l.name }); }), [h('option', { value: '+', text: '+ New folder…' })]));
     sel.addEventListener('change', function () {
       var v = sel.value; sel.value = '';
@@ -492,7 +545,7 @@
         act(ids, { add: [l.id], remove: rem }, 'Moved to ' + l.name + '.');
       });
     });
-    return sel;
+    return h('span', { cls: 'em-ib em-movew' }, [ico('folder'), h('span', { cls: 'em-ib-t', text: 'Move' }), sel]);
   }
   function newFolder() {
     var name = prompt('Name for the new folder (it’s made in Gmail too):', '');
@@ -567,15 +620,16 @@
     var pane = M.el.querySelector('.em-read'); if (!pane) return;
     pane.innerHTML = '';
     var t = M.thread;
-    if (!t) { pane.appendChild(h('div', { cls: 'em-none' }, [h('p', { text: 'Choose an email to read it.' }), h('p', { cls: 'em-note', text: 'Changes you make here happen in Gmail too.' })])); return; }
-    var top = h('div', { cls: 'em-rtools' }, [btn('← Back', closeThread, 'em-backbtn')]);
+    if (!t) { pane.appendChild(h('div', { cls: 'em-none' }, [ico('inbox', 'em-none-i'), h('p', { text: 'Choose an email to read it.' }), h('p', { cls: 'em-note', text: 'Whatever you do here happens in Gmail too.' })])); return; }
+    var top = h('div', { cls: 'em-rtools' }, [ib('back', 'Back', closeThread, 'em-backbtn')]);
     if (!t.loading && !t.error) {
       actionButtons([t.id]).forEach(function (b) { top.appendChild(b); });
+      top.appendChild(h('span', { cls: 'em-sp' }));
       var starred = t.labels.indexOf('STARRED') !== -1;
-      top.appendChild(btn(starred ? '★ Starred' : '☆ Star', function () { act([t.id], starred ? { remove: ['STARRED'] } : { add: ['STARRED'] }); }));
+      top.appendChild(ib('star', starred ? 'Starred' : 'Star', function () { act([t.id], starred ? { remove: ['STARRED'] } : { add: ['STARRED'] }); }, starred ? 'em-starred' : '', { 'aria-pressed': starred ? 'true' : 'false' }));
     }
     pane.appendChild(top);
-    if (t.loading) { pane.appendChild(h('p', { cls: 'em-empty', text: 'Opening…' })); return; }
+    if (t.loading) { pane.appendChild(h('div', { cls: 'em-thread' }, [h('div', { cls: 'em-ghost em-ghost-l', 'aria-hidden': 'true' }, [h('span'), h('span'), h('span')]), h('p', { cls: 'em-sr', text: 'Opening…' })])); return; }
     if (t.error) { pane.appendChild(h('p', { cls: 'em-empty', text: t.error })); return; }
     var body = h('div', { cls: 'em-thread' });
     body.appendChild(h('h2', { cls: 'em-tsubj', text: t.subject }));
@@ -584,24 +638,29 @@
     t.msgs.forEach(function (m) { body.appendChild(message(m)); });
     var last = t.msgs[t.msgs.length - 1];
     if (last && M.label !== 'TRASH') body.appendChild(h('div', { cls: 'em-replybar' }, [
-      btn('Reply', function () { replyTo(last, false); }, 'em-go'),
-      splitAddrs((last.h.to || '') + ',' + (last.h.cc || '')).length > 1 ? btn('Reply all', function () { replyTo(last, true); }) : null,
-      btn('Forward', function () { forward(last); })]));
+      h('button', { type: 'button', cls: 'em-pill em-pill-go', on: { click: function () { replyTo(last, false); } } }, [ico('reply'), 'Reply']),
+      splitAddrs((last.h.to || '') + ',' + (last.h.cc || '')).length > 1 ? h('button', { type: 'button', cls: 'em-pill', on: { click: function () { replyTo(last, true); } } }, [ico('replyAll'), 'Reply all']) : null,
+      h('button', { type: 'button', cls: 'em-pill', on: { click: function () { forward(last); } } }, [ico('forward'), 'Forward'])]));
     pane.appendChild(body);
     pane.scrollTop = 0;
   }
   function message(m) {
     var open = !!M.thread.expanded[m.id];
-    var from = parseAddr(m.h.from || '');
+    var from = parseAddr(m.h.from || ''), av = avatar(m.h.from || '');
+    var toWho = splitAddrs((m.h.to || '') + (m.h.cc ? ',' + m.h.cc : '')).map(function (x) { return ownAddrs().indexOf(x.email.toLowerCase()) !== -1 ? 'me' : (x.name || x.email).split(' ')[0]; });
+    toWho = toWho.filter(function (x, i) { return toWho.indexOf(x) === i; });
     var head = h('button', { type: 'button', cls: 'em-mhead', 'aria-expanded': open ? 'true' : 'false', on: { click: function () { if (open) delete M.thread.expanded[m.id]; else M.thread.expanded[m.id] = 1; paintReader(); } } }, [
-      h('span', { cls: 'em-mfrom' }, [h('b', { text: from.name || from.email }), from.name ? h('span', { cls: 'em-addr', text: ' <' + from.email + '>' }) : null]),
-      h('span', { cls: 'em-mdate', text: longDate(m.date) })]);
+      h('span', { cls: 'em-av em-av-m', style: 'background:' + av.color, 'aria-hidden': 'true' }, [h('span', { text: av.ini })]),
+      h('span', { cls: 'em-mwho' }, [
+        h('span', { cls: 'em-mline' }, [h('b', { text: from.name || from.email }), from.name ? h('span', { cls: 'em-addr', text: from.email }) : null]),
+        h('span', { cls: 'em-mto', text: open ? (toWho.length ? 'to ' + toWho.join(', ') : '') : decodeEntities(m.snippet) })]),
+      h('span', { cls: 'em-mdate', title: longDate(m.date), text: when(m.date) })]);
     var card = h('article', { cls: 'em-msg' + (open ? ' open' : '') }, [head]);
-    if (!open) { card.appendChild(h('p', { cls: 'em-msnip', text: decodeEntities(m.snippet) })); return card; }
+    if (!open) return card;
     var meta = [];
     if (m.h.to) meta.push(h('div', [h('span', { text: 'To ' }), m.h.to]));
     if (m.h.cc) meta.push(h('div', [h('span', { text: 'Cc ' }), m.h.cc]));
-    if (meta.length) card.appendChild(h('div', { cls: 'em-meta' }, meta));
+    if (meta.length) card.appendChild(h('details', { cls: 'em-meta' }, [h('summary', { text: 'Details' })].concat(meta)));
     var bodyBox = h('div', { cls: 'em-body' });
     card.appendChild(bodyBox);
     var ready = Promise.resolve();
@@ -610,7 +669,9 @@
     ready.then(function () { if (m.html) htmlFrame(bodyBox, m); else textBody(bodyBox, m.text || m.snippet || ''); }, function () { textBody(bodyBox, m.snippet || ''); });
     var files = m.atts.filter(function (a) { return !a.inline || !m.html; });
     if (files.length) card.appendChild(h('div', { cls: 'em-atts' }, files.map(function (a) {
-      return h('button', { type: 'button', cls: 'em-att', title: 'Download ' + a.name, on: { click: function () { download(m, a, this); } } }, [h('span', { text: '📎 ' + a.name }), h('small', { text: ' ' + size(a.size) })]);
+      var ext = (/\.([a-z0-9]{1,5})$/i.exec(a.name) || [])[1] || 'file';
+      return h('button', { type: 'button', cls: 'em-att', title: 'Download ' + a.name, on: { click: function () { download(m, a, this); } } }, [
+        h('span', { cls: 'em-att-x', text: ext.toUpperCase() }), h('span', { cls: 'em-att-n' }, [h('b', { text: a.name }), h('small', { text: size(a.size) })])]);
     })));
     return card;
   }
@@ -632,7 +693,7 @@
     var f = h('iframe', { cls: 'em-frame', title: 'Email from ' + who(m.h.from || ''), sandbox: 'allow-same-origin allow-popups allow-popups-to-escape-sandbox', referrerpolicy: 'no-referrer' });
     var csp = "default-src 'none'; img-src https: http: data: blob:; style-src 'unsafe-inline' https:; font-src https: data:; media-src https:";
     f.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' + csp + '"><base target="_blank">' +
-      '<style>html,body{margin:0;padding:0;background:#fff}body{font:15px/1.55 Arial,Helvetica,sans-serif;color:#24282c;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 2px 8px}img{max-width:100%;height:auto}table{max-width:100%}' +
+      '<style>html,body{margin:0;padding:0;background:transparent}body{font:15px/1.55 Arial,Helvetica,sans-serif;color:#24282c;word-wrap:break-word;overflow-wrap:anywhere;padding:2px 2px 8px}img{max-width:100%;height:auto}table{max-width:100%}' +
       'a{color:#8a5226}.eden-q-hide{display:none!important}.eden-dots{display:inline-block;margin:6px 0;padding:0 8px;border:1px solid #d9d3c8;border-radius:8px;background:#f3eee5;color:#555;font:12px Arial;cursor:pointer;line-height:16px}</style></head><body>' + m.html + '</body></html>';
     box.appendChild(f);
     f.addEventListener('load', function () {
@@ -702,9 +763,9 @@
     var old = document.querySelector('.em-compose-w'); if (old && !confirm('Discard the email you were writing?')) return; if (old) old.remove();
     var fromSel = h('select', { cls: 'em-in', 'aria-label': 'From' }, sendAs.map(function (s, i) { return h('option', { value: String(i), text: (s.name ? s.name + ' <' + s.email + '>' : s.email), selected: s.isDefault }); }));
     var fmt = function (list) { return (list || []).map(function (x) { return x.name ? x.name + ' <' + x.email + '>' : x.email; }).join(', '); };
-    var to = h('input', { cls: 'em-in', type: 'text', value: fmt(o.to), 'aria-label': 'To', autocomplete: 'off', placeholder: 'name@example.com' });
-    var cc = h('input', { cls: 'em-in', type: 'text', value: fmt(o.cc), 'aria-label': 'Cc', autocomplete: 'off' });
-    var bcc = h('input', { cls: 'em-in', type: 'text', value: '', 'aria-label': 'Bcc', autocomplete: 'off' });
+    var to = h('input', { cls: 'em-in', type: 'text', inputmode: 'email', value: fmt(o.to), 'aria-label': 'To', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'name@example.com' });
+    var cc = h('input', { cls: 'em-in', type: 'text', inputmode: 'email', autocapitalize: 'off', spellcheck: 'false', value: fmt(o.cc), 'aria-label': 'Cc', autocomplete: 'off' });
+    var bcc = h('input', { cls: 'em-in', type: 'text', inputmode: 'email', autocapitalize: 'off', spellcheck: 'false', value: '', 'aria-label': 'Bcc', autocomplete: 'off' });
     var ccRow = h('label', { cls: 'em-crow', hidden: !(o.cc && o.cc.length) }, [h('span', { text: 'Cc' }), cc]);
     var bccRow = h('label', { cls: 'em-crow', hidden: true }, [h('span', { text: 'Bcc' }), bcc]);
     var subj = h('input', { cls: 'em-in', type: 'text', value: o.subject || '', 'aria-label': 'Subject', placeholder: 'Subject' });
@@ -725,9 +786,9 @@
     var quoteOn = !!o.quote;
     var quoteRow = o.quote ? h('label', { cls: 'em-check' }, [h('input', { type: 'checkbox', checked: true, on: { change: function () { quoteOn = this.checked; } } }), o.mode === 'Forward' ? ' Include the forwarded email' : ' Include the earlier email (quoted)']) : null;
     var err = h('p', { cls: 'em-err', role: 'alert' });
-    var send = btn('Send', doSend, 'em-go');
+    var send = h('button', { type: 'button', cls: 'em-pill em-pill-go em-go', on: { click: doSend } }, [ico('send'), h('span', { text: 'Send' })]);
     var w = h('div', { cls: 'em-compose-w', role: 'dialog', 'aria-label': o.mode || 'New email' }, [
-      h('div', { cls: 'em-ch' }, [h('b', { text: o.mode || 'New email' }), h('span', { cls: 'em-sp' }), h('button', { type: 'button', cls: 'em-cx', 'aria-label': 'Close', text: '✕', on: { click: discard } })]),
+      h('div', { cls: 'em-ch' }, [h('button', { type: 'button', cls: 'em-cx', 'aria-label': 'Close', title: 'Close', on: { click: discard } }, [ico('x')]), h('b', { text: o.mode || 'New email' }), h('span', { cls: 'em-sp' }), send]),
       h('div', { cls: 'em-cb' }, [
         h('label', { cls: 'em-crow' }, [h('span', { text: 'From' }), fromSel]),
         h('label', { cls: 'em-crow' }, [h('span', { text: 'To' }), to, h('button', { type: 'button', cls: 'em-ccb', text: 'Cc Bcc', on: { click: function (e) { e.preventDefault(); ccRow.hidden = false; bccRow.hidden = false; } } })]),
@@ -735,7 +796,7 @@
         h('label', { cls: 'em-crow' }, [h('span', { text: 'Subject' }), subj]),
         text, chips, sigRow, quoteRow, err
       ]),
-      h('div', { cls: 'em-cf' }, [send, btn('Attach files', function () { fileIn.click(); }), fileIn, h('span', { cls: 'em-sp' }), btn('Discard', discard)])
+      h('div', { cls: 'em-cf' }, [ib('clip', 'Attach files', function () { fileIn.click(); }, 'em-ib-wide'), fileIn, h('span', { cls: 'em-sp' }), ib('trash', 'Discard', discard, 'em-ib-wide')])
     ]);
     document.body.appendChild(w);
     paintSig(); paintChips();
@@ -756,7 +817,7 @@
       var sigHtml = sigBox.checked && sig() ? sig() : '';
       var html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">' + textToHtml(body) + (sigHtml ? '<br><div class="gmail_signature">' + sigHtml + '</div>' : '') + '</div>' + (quoteOn && o.quote ? '<br>' + o.quote.html : '');
       var plain = body + (sigHtml ? '\n\n-- \n' + htmlToText(sigHtml) : '') + (quoteOn && o.quote ? '\n\n' + o.quote.text : '');
-      send.disabled = true; send.textContent = 'Sending…';
+      send.disabled = true; send.lastChild.textContent = 'Sending…';
       Promise.all(files.map(function (f) {
         if (f.file) return f.file.arrayBuffer().then(function (b) { return { name: f.name, mime: f.mime, bytes: new Uint8Array(b) }; });
         return attData(f.msg, f.att).then(function (b) { return { name: f.name, mime: f.mime, bytes: b }; });
@@ -767,7 +828,7 @@
         w.remove(); say('Sent from ' + s.email + '. It’s in Sent here and in Gmail.', 'ok');
         if (M.thread && o.threadId === M.thread.id && o.mode !== 'Forward') openThread(M.thread.id);
         loadList(true);
-      }, function (e) { err.textContent = e.message || 'The email couldn’t be sent.'; send.disabled = false; send.textContent = 'Send'; });
+      }, function (e) { err.textContent = e.message || 'The email couldn’t be sent.'; send.disabled = false; send.lastChild.textContent = 'Send'; });
     }
   }
 
