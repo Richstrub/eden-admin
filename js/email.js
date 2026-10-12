@@ -13,7 +13,7 @@
   'use strict';
 
   var M = { ctx: null, el: null, cfg: null, accounts: [], people: [], acct: '', prof: {}, label: 'INBOX', q: '', threads: [], next: '', back: [], page: '',
-    sel: {}, open: '', thread: null, unreadOnly: false, busy: false, loaded: false, missingSql: false, timer: null, unread: {}, listSeq: 0 };
+    sel: {}, open: '', thread: null, unreadOnly: false, sigs: {}, sigMissing: false, busy: false, loaded: false, missingSql: false, timer: null, unread: {}, listSeq: 0 };
   var SYS = [['INBOX', 'Inbox'], ['STARRED', 'Starred'], ['SENT', 'Sent'], ['ALL', 'All mail'], ['SPAM', 'Spam'], ['TRASH', 'Trash']];
   var MAX_ATTACH = 18 * 1024 * 1024;
 
@@ -212,6 +212,7 @@
     var ppl = isOwner() ? M.ctx.sb.from('staff').select('user_id,name,role').in('role', ['owner', 'manager']).then(function (r) { return (r && r.data) || []; }, function () { return []; }) : Promise.resolve([]);
     return Promise.all([st, acc, ppl]).then(function (x) {
       M.cfg = x[0]; M.accounts = sortAccounts(x[1]); M.people = x[2]; M.loaded = true;
+      loadSigs();
       var m = mine();
       if (!acct(M.acct) || !acct(M.acct).mine) M.acct = (m.filter(function (a) { return a.id === savedAcct(); })[0] || m[0] || {}).id || '';
     });
@@ -388,6 +389,7 @@
     col.appendChild(h('button', { type: 'button', cls: 'em-fold em-newf', on: { click: function () { newFolder(); } } }, [ico('plus'), h('span', { cls: 'em-fold-t', text: 'New folder' })]));
     col.appendChild(h('div', { cls: 'em-side-foot' }, [
       h('button', { type: 'button', cls: 'em-link', text: isOwner() ? 'Manage mailboxes' : 'My mailboxes', on: { click: manage } }),
+      h('button', { type: 'button', cls: 'em-link', text: 'Email sign-off', on: { click: function () { modal('Email sign-off', [signatureEditor()]); } } }),
       h('a', { cls: 'em-link', href: 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent((a && a.address) || ''), target: '_blank', rel: 'noopener' }, ['Open in Gmail ', ico('gmail', 'em-i-s')])
     ]));
     side.appendChild(col);
@@ -771,9 +773,12 @@
     var subj = h('input', { cls: 'em-in', type: 'text', value: o.subject || '', 'aria-label': 'Subject', placeholder: 'Subject' });
     var text = h('textarea', { cls: 'em-in em-body-in', rows: '10', 'aria-label': 'Message', placeholder: 'Write your message' });
     var sigBox = h('input', { type: 'checkbox', checked: true });
-    var sigRow = h('label', { cls: 'em-check' }, [sigBox, ' Add my Gmail signature']);
-    function sig() { var s = sendAs[+fromSel.value] || {}; return s.signature || ''; }
+    var own = mySig();
+    var sigRow = h('label', { cls: 'em-check' }, [sigBox, own ? ' Add my sign-off' : ' Add my Gmail signature']);
+    // your staff-site sign-off (three lines and the Eden picture); without one, the mailbox's Gmail signature
+    function sig() { if (own) return sigHtml(own); var s = sendAs[+fromSel.value] || {}; return s.signature || ''; }
     function paintSig() { sigRow.hidden = !sig(); }
+    if (own) sigRow.appendChild(h('span', { cls: 'em-sigmini', text: '· ' + [own.line1, own.line2].filter(Boolean).join(', ') }));
     fromSel.addEventListener('change', paintSig);
     var files = (o.fwdAtts || []).slice();
     var fileIn = h('input', { type: 'file', multiple: true, hidden: true });
@@ -816,7 +821,7 @@
       var body = text.value.replace(/\s+$/, '');
       var sigHtml = sigBox.checked && sig() ? sig() : '';
       var html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">' + textToHtml(body) + (sigHtml ? '<br><div class="gmail_signature">' + sigHtml + '</div>' : '') + '</div>' + (quoteOn && o.quote ? '<br>' + o.quote.html : '');
-      var plain = body + (sigHtml ? '\n\n-- \n' + htmlToText(sigHtml) : '') + (quoteOn && o.quote ? '\n\n' + o.quote.text : '');
+      var plain = body + (sigHtml ? '\n\n-- \n' + (own ? sigText(own) : htmlToText(sigHtml)) : '') + (quoteOn && o.quote ? '\n\n' + o.quote.text : '');
       send.disabled = true; send.lastChild.textContent = 'Sending…';
       Promise.all(files.map(function (f) {
         if (f.file) return f.file.arrayBuffer().then(function (b) { return { name: f.name, mime: f.mime, bytes: new Uint8Array(b) }; });
@@ -830,6 +835,77 @@
         loadList(true);
       }, function (e) { err.textContent = e.message || 'The email couldn’t be sent.'; send.disabled = false; send.lastChild.textContent = 'Send'; });
     }
+  }
+
+
+  /* ---------- email sign-offs (three lines with the Eden picture beside them) ---------- */
+  function loadSigs() {
+    var q = M.ctx.sb.from('mail_signatures').select('user_id,line1,line2,line3');
+    if (!isOwner()) q = q.eq('user_id', M.ctx.uid);
+    return q.then(function (r) {
+      if (r.error) { M.sigMissing = true; return; }
+      M.sigMissing = false; M.sigs = {}; (r.data || []).forEach(function (x) { M.sigs[x.user_id] = x; });
+    }, function () { M.sigMissing = true; });
+  }
+  function mySig() { var x = M.sigs[M.ctx.uid]; return x && (x.line1 || x.line2 || x.line3) ? x : null; }
+  function markUrl() { var base = String((window.EDEN_STAFF_CONFIG || {}).staffHome || location.origin + '/').replace(/\/?$/, '/'); return base + 'assets/brand/email-mark.png'; }
+  // laid out with a table so it looks the same in Gmail, Apple Mail and Outlook
+  function sigHtml(x) {
+    var line = function (t, css) { return t ? '<div style="' + css + '">' + esc(t) + '</div>' : ''; };
+    return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0"><tr>' +
+      '<td style="padding:0 14px 0 0;vertical-align:middle"><img src="' + markUrl() + '" width="60" height="60" alt="Eden" style="display:block;width:60px;height:60px;border:0;border-radius:6px"></td>' +
+      '<td style="vertical-align:middle;padding:2px 0 2px 14px;border-left:1px solid #d8cdbd">' +
+      line(x.line1, "font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:22px;color:#0f1215") +
+      line(x.line2, 'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#8a5226') +
+      line(x.line3, 'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#7f7a71') +
+      '</td></tr></table>';
+  }
+  function sigText(x) { return [x.line1, x.line2, x.line3].filter(Boolean).join('\n'); }
+  function sigPreview(x) { var d = h('div', { cls: 'em-sigprev' }); d.innerHTML = sigHtml(x); return d; }
+  function signatureEditor() {
+    var box = h('div', { cls: 'em-sigedit' });
+    if (M.sigMissing) { box.appendChild(h('p', { cls: 'em-note', text: isOwner() ? 'To save sign-offs, run supabase/email-signatures.sql in Supabase (SQL Editor > New query > Run), then reload this page.' : 'Sign-offs aren’t switched on yet. Ask the Owner.' })); return box; }
+    var who = M.ctx.uid, pick = null;
+    if (isOwner() && M.people.length > 1) {
+      pick = h('select', { cls: 'em-in', 'aria-label': 'Whose sign-off' }, M.people.map(function (p) { return h('option', { value: p.user_id, text: p.name + (p.user_id === M.ctx.uid ? ' (you)' : ''), selected: p.user_id === who }); }));
+      pick.addEventListener('change', function () { who = pick.value; fill(); });
+    }
+    var l1 = h('input', { cls: 'em-in', type: 'text', 'aria-label': 'First line (name)', placeholder: 'Name' });
+    var l2 = h('input', { cls: 'em-in', type: 'text', 'aria-label': 'Second line (title)', placeholder: 'Title' });
+    var l3 = h('input', { cls: 'em-in', type: 'text', 'aria-label': 'Third line', placeholder: 'Eden Hospitality' });
+    var prev = h('div', { cls: 'em-sigwrap' });
+    function cur() { return { line1: l1.value.trim(), line2: l2.value.trim(), line3: l3.value.trim() }; }
+    function paint() { prev.innerHTML = ''; prev.appendChild(sigPreview(cur())); }
+    function fill() { var x = M.sigs[who] || {}; l1.value = x.line1 || ''; l2.value = x.line2 || ''; l3.value = x.line3 || ''; paint(); }
+    [l1, l2, l3].forEach(function (i) { i.addEventListener('input', paint); });
+    var save = btn('Save sign-off', function () {
+      save.disabled = true;
+      var row = Object.assign({ user_id: who, updated_at: new Date().toISOString() }, cur());
+      M.ctx.sb.from('mail_signatures').upsert(row).then(function (r) {
+        save.disabled = false;
+        if (r.error) { say('Couldn’t save the sign-off.', 'err'); return; }
+        M.sigs[who] = row; say('Sign-off saved. It’s added to emails sent from the staff site.', 'ok');
+      });
+    }, 'em-go');
+    var copy = btn('Copy for Gmail', function () {
+      var html = sigHtml(cur()), text = sigText(cur());
+      var done = function () { say('Copied. In Gmail: Settings (gear) > See all settings > Signature > Create new, paste, then Save changes at the bottom.', 'ok'); };
+      try {
+        if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+          navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]).then(done, function () { selectCopy(); });
+        } else selectCopy();
+      } catch (e) { selectCopy(); }
+      function selectCopy() { var r = document.createRange(); r.selectNodeContents(prev.firstChild); var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); try { document.execCommand('copy'); done(); } catch (x) {} sel.removeAllRanges(); }
+    }, '', { title: 'To use the same sign-off when you write from Gmail itself' });
+    box.appendChild(h('div', { cls: 'em-form em-sigform' }, [
+      pick ? h('label', { cls: 'em-f' }, [h('span', { text: 'Whose sign-off' }), pick]) : null,
+      h('label', { cls: 'em-f' }, [h('span', { text: 'Line 1' }), l1]),
+      h('label', { cls: 'em-f' }, [h('span', { text: 'Line 2' }), l2]),
+      h('label', { cls: 'em-f' }, [h('span', { text: 'Line 3' }), l3]),
+      h('p', { cls: 'em-note', text: 'How it looks at the bottom of an email:' }), prev,
+      h('div', { cls: 'em-row' }, [save, copy])]));
+    fill();
+    return box;
   }
 
   /* ---------- managing mailboxes ---------- */
@@ -883,6 +959,8 @@
           }, 'danger') : null]));
         md.body.appendChild(row);
       });
+      md.body.appendChild(h('h3', { cls: 'em-h3', text: 'Email sign-off' }));
+      md.body.appendChild(signatureEditor());
       md.body.appendChild(h('h3', { cls: 'em-h3', text: isOwner() ? 'Connect another mailbox' : 'Connect your mailbox' }));
       md.body.appendChild(connectCard(false));
     }

@@ -1507,3 +1507,7 @@ body.nt-open #app{visibility:hidden!important}
   .em-body-in{min-height:40vh}
   .em-setup{padding:28px 16px 60px}
 }
+.em-sigwrap{padding:16px;background:#fff;border:1px solid rgba(15,18,21,.1);border-radius:8px;overflow-x:auto}
+.em-sigprev table{border-collapse:collapse}
+.em-sigform{max-width:560px}
+.em-sigmini{color:#857f75;font-size:.8rem;margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
