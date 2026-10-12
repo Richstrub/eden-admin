@@ -116,6 +116,7 @@
         document.querySelectorAll('[data-menu]').forEach(function (el) { el.hidden = role === 'scheduler'; });
         document.querySelectorAll('[data-prep]').forEach(function (el) { el.hidden = !canPrep(); });
         document.querySelectorAll('[data-owner]').forEach(function (el) { el.hidden = role !== 'owner'; });
+        document.querySelectorAll('[data-mailer]').forEach(function (el) { el.hidden = !canMail(); });
         // a menu group with nothing this person can open is left out
         document.querySelectorAll('.sb-group').forEach(function (g) { if (!g.hasAttribute('data-owner')) g.hidden = ![].some.call(g.querySelectorAll('a'), function (a) { return !a.hidden; }); });
         show('app'); entered = session.user.id;
@@ -123,6 +124,7 @@
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
         refreshToday();
+        mailCounts();
       });
       });
     });
@@ -133,21 +135,28 @@
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], eod: ['Service', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Owner', 'Business email'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   function canPrep() { return isMgr() || role === 'kitchen'; }
+  function canMail() { return role === 'owner' || role === 'manager'; }
+  function mailCtx() { return { sb: sb, el: $('viewEmail'), status: status, role: role, uid: session && session.user && session.user.id, name: staffName }; }
+  function mailCounts() { if (canMail() && window.EdenMail) window.EdenMail.counts(mailCtx()); }
+  setInterval(function () { if (!$('app').hidden && view !== 'email') mailCounts(); }, 180000);
   function route() {
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, ''), sub = '';
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
     if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'email') && role !== 'owner') || (v === 'eod' && !isMgr())) { v = 'home'; sub = ''; }
+    var mailArg = '';
+    if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr())) { v = 'home'; sub = ''; }
     var want = '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
     if (view === 'payroll' && v !== 'payroll' && window.EdenPayroll) window.EdenPayroll.hide();
+    if (view === 'email' && v !== 'email' && window.EdenMail) window.EdenMail.hide();
     if (view === 'menu' && v !== 'menu' && ed.dirty) save();
     view = v;
     Object.keys(VIEWS).forEach(function (k) { $(VIEWS[k]).hidden = k !== v; });
@@ -195,7 +204,10 @@
       status('');
       showPrep();
       if (!store.loaded) loadAll().then(showPrep, function () { status('Couldn’t load the menu. Check your connection and reload.', 'err'); });
-    } else if (v === 'preshift' || v === 'eod' || v === 'email') {
+    } else if (v === 'email') {
+      status('');
+      if (window.EdenMail) window.EdenMail.show(Object.assign(mailCtx(), { sub: mailArg }));
+    } else if (v === 'preshift' || v === 'eod') {
       status(''); comingSoon(v);
     } else {
       status(''); renderHome();
@@ -238,8 +250,7 @@
   /* ---------------- pages that are coming next ---------------- */
   var SOON = {
     preshift: ['Service', 'Pre-shift meeting', 'Tonight’s line-up for the whole team: specials, 86’d items, VIPs and allergies, the private events, wine pours and who’s working. The Owner and managers write it; every employee can read it here and on the staff page.', 'Everyone can see this page. The Owner and managers will be able to edit it.'],
-    eod: ['Service', 'End of day report', 'A short report at close: covers and sales, comps and voids, staffing notes, incidents, maintenance, guest feedback and anything the next shift should know. Filled in by the Owner or the closing manager, with past reports kept and searchable.', 'Only the Owner and managers can see this page.'],
-    email: ['Owner', 'Business email', 'Your edencny.com mailbox inside the staff site: read and answer email, and turn a message into a catering inquiry, a to-do or a calendar event.', 'Only you (the Owner) can see this page.']
+    eod: ['Service', 'End of day report', 'A short report at close: covers and sales, comps and voids, staffing notes, incidents, maintenance, guest feedback and anything the next shift should know. Filled in by the Owner or the closing manager, with past reports kept and searchable.', 'Only the Owner and managers can see this page.']
   };
   function comingSoon(v) {
     var el = $(VIEWS[v]), t = SOON[v];

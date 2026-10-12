@@ -106,6 +106,22 @@ Setup (each step works on its own; anything not set up is skipped):
 
 The Catering & BEOs page shows a status line saying which of these are working. When edencny.com points to the new website, change `SITE_URL` in `wrangler.jsonc` and `guestSite` in `js/config.js` to `https://edencny.com/`.
 
+## Business email (Google Workspace)
+
+The Business email page (menu: Office) shows your edencny.com Gmail mailboxes. Nothing is copied to the staff site:
+every list, email and attachment comes from Gmail each time, and every action (send, reply, reply all, forward,
+delete, delete forever, archive, move to a folder, new folder, star, mark read or unread, spam) is done in Gmail
+itself. So the staff site and Gmail always match; changes made in Gmail or on a phone show here within a minute.
+
+- Who: the Owner and managers. The Owner chooses who can open each mailbox (Manage mailboxes); a manager can
+  connect their own mailbox. Front-of-house and kitchen staff never see the page.
+- Setup, once: run `supabase/business-email.sql`; make a Google OAuth client (Internal, Gmail API on, redirect
+  `https://edencny-staff.com/mail/callback`); add the secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+  `MAIL_TOKEN_KEY` in Cloudflare. The page walks you through it and ticks each step off.
+- Security: the Google permission for each mailbox is stored encrypted with `MAIL_TOKEN_KEY`, which exists only in
+  Cloudflare. Emails open in a sealed frame (no scripts). Disconnect also cancels the permission at Google.
+- Code: `js/email.js` (the page) and `mail-worker.js` (talks to Gmail).
+
 ## Address (edencny-staff.com)
 
 The staff site lives at **https://edencny-staff.com/** (staff page: `/team/`). The old `eden-admin.richard-a-strub.workers.dev` address keeps working; `js/move.js` sends people from it to the same page on the new address as soon as the new one answers (it checks `/here`), bringing along the prep list pars and an unsaved note kept in that browser. Where the address is set: `staffHome` in `js/config.js`, optional `STAFF_URL` in `wrangler.jsonc` (links in team emails), `staffSite` in the public website's `js/config.js` (inquiries, visit counter, `#editor`), Supabase → Authentication → URL Configuration (redirect URL `https://edencny-staff.com/**`), and the Resend webhook (`https://edencny-staff.com/inbound`).
