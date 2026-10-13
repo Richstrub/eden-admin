@@ -178,6 +178,7 @@
     sb.rpc('team_me').then(function (r) {
       if (r.error) { $('loadingMsg').textContent = /team_me|function/i.test(r.error.message || '') ? 'The staff page isn’t set up yet. Ask a manager.' : 'Couldn’t reach the schedule. Check your connection and reload.'; return; }
       me = r.data || {};
+      if (me.role === 'hub') { location.replace('../hub/'); return; }   // the Hub's own login only opens the Hub
       if (!me.employee && !me.role) {
         $('notlistedMsg').textContent = 'You’re signed in as ' + (session.user && session.user.email) + ', but that email isn’t on Eden’s current staff list. Ask a manager if you think this is a mistake.';
         show('notlisted'); return;

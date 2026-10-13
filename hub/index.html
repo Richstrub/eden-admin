@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1215">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Eden Hub</title>
+<link rel="icon" href="../favicon.ico?v=2" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/brand/favicon-32.png?v=2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="hub.css?v=20261013a">
+</head>
+<body>
+
+<!-- loading -->
+<div class="hb-gate" id="loading"><div class="hb-mark">EDEN<span>Hub</span></div><p id="loadingMsg">Loading…</p></div>
+
+<!-- the Hub's own sign-in (done once; it stays signed in) -->
+<div class="hb-gate" id="signin" hidden>
+  <form id="signinForm" class="hb-signin" novalidate autocomplete="on">
+    <div class="hb-mark">EDEN<span>Hub</span></div>
+    <label>Hub login email<input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="hb-btn hb-primary">Sign in</button>
+    <p class="hb-msg" id="signinMsg" role="status"></p>
+    <p class="hb-fine">This screen signs in once and stays signed in. Use the Hub login, not your own.</p>
+  </form>
+</div>
+
+<!-- signed in, but not allowed -->
+<div class="hb-gate" id="noaccess" hidden>
+  <div class="hb-signin">
+    <div class="hb-mark">EDEN<span>Hub</span></div>
+    <p id="noaccessMsg">This login can’t open the Hub.</p>
+    <button type="button" class="hb-btn" id="noaccessOut">Sign out</button>
+  </div>
+</div>
+
+<!-- the Hub (a sample for now: the real panels come later) -->
+<div class="hb" id="app" hidden>
+  <header class="hb-top">
+    <button type="button" class="hb-logo" id="logo" aria-label="Eden. Press and hold for 3 seconds for Hub settings">EDEN<span>Hub</span></button>
+    <div class="hb-clock"><b id="clock">--:--</b><span id="date"></span></div>
+    <div class="hb-status"><span class="hb-dot" id="netDot" aria-hidden="true"></span><span id="netText">Online</span></div>
+  </header>
+
+  <main class="hb-grid">
+    <section class="hb-tile hb-welcome">
+      <p class="hb-eyebrow">Sample page</p>
+      <h1>The Hub is working.</h1>
+      <p>This is a placeholder. Restaurant information goes here once we design the panels: tonight’s reservations, events, the 86 list, and more.</p>
+      <ul class="hb-checks">
+        <li id="chkLogin">Signed in with the Hub login</li>
+        <li id="chkTouch">Tap anywhere on the touch test to check the screen</li>
+        <li id="chkWake">Screen stays on</li>
+      </ul>
+    </section>
+
+    <section class="hb-tile hb-order" aria-labelledby="orderH">
+      <div class="hb-tile-h"><h2 id="orderH">Ordering list</h2><span class="hb-tag">Sample · saved on this screen only</span></div>
+      <form id="orderForm" class="hb-add" autocomplete="off">
+        <input id="orderIn" type="text" maxlength="80" placeholder="Type something we need, e.g. Lemons" aria-label="Item to order" enterkeyhint="done">
+        <button type="submit" class="hb-btn hb-primary">Add</button>
+      </form>
+      <ul class="hb-list" id="orderList" aria-live="polite"></ul>
+      <p class="hb-empty" id="orderEmpty">Nothing on the list. Tap the box above to type.</p>
+      <button type="button" class="hb-btn hb-ghost" id="orderClear" hidden>Clear ticked items</button>
+    </section>
+
+    <section class="hb-tile hb-touch" aria-labelledby="touchH">
+      <div class="hb-tile-h"><h2 id="touchH">Touch test</h2><span class="hb-tag" id="touchCount">0 taps</span></div>
+      <div class="hb-pad" id="pad" role="application" aria-label="Touch test area. Tap or draw with your fingers."><p id="padHint">Tap or draw here.<br>Try two fingers.</p></div>
+      <p class="hb-fine" id="touchInfo">Waiting for a touch…</p>
+    </section>
+  </main>
+</div>
+
+<!-- Hub settings (press and hold the logo for 3 seconds) -->
+<div class="hb-sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetH">
+  <div class="hb-sheet-in">
+    <h2 id="sheetH">Hub settings</h2>
+    <p class="hb-fine" id="sheetWho"></p>
+    <div class="hb-sheet-btns">
+      <button type="button" class="hb-btn" id="btnFull">Full screen</button>
+      <button type="button" class="hb-btn" id="btnReload">Reload the page</button>
+      <button type="button" class="hb-btn hb-danger" id="btnOut">Sign out of the Hub</button>
+      <button type="button" class="hb-btn hb-primary" id="btnClose">Close</button>
+    </div>
+    <p class="hb-fine" id="sheetInfo"></p>
+  </div>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script src="hub.js?v=20261013a"></script>
+</body>
+</html>

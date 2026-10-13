@@ -93,6 +93,7 @@
     sb.rpc('staff_role').then(function (r) {
       if (r.error) { $('loadingMsg').textContent = 'Could not reach the database. Check your connection and reload.'; return; }
       role = r.data || null;
+      if (role === 'hub') { location.replace('hub/'); return; }   // the Hub's own login only opens the Hub
       var email = session.user && session.user.email;
       // no staff role: an employee whose access level is Manager can still use the Schedule
       var tier = role ? Promise.resolve(null) : sb.rpc('team_me').then(function (t) { return t && !t.error ? t.data : null; }, function () { return null; });
