@@ -119,6 +119,9 @@
       tr.classList.toggle('is-done', !!e.done);
       var b = tr.querySelector('.pp-box'); if (b) b.setAttribute('aria-checked', e.done ? 'true' : 'false');
       tr.querySelectorAll('input[data-f]').forEach(function (i) { if (i !== a) i.value = e[i.getAttribute('data-f')] || ''; });
+      var sel = tr.querySelector('select[data-f=prep]');
+      if (sel && sel !== a) { var pv = e.prep || ''; if (pv && !sel.querySelector('option[value="' + pv.replace(/"/g, '') + '"]')) sel.appendChild(h('option', { value: pv, text: pv })); sel.value = pv; paintSel(sel); }
+      var ib = tr.querySelector('.pp-inibtn'); if (ib) ib.textContent = e.ini || '';
     });
     paintCount();
   }
@@ -215,6 +218,28 @@
     i.addEventListener('blur', function () { if (f === 'ini' && i.value !== i.value.toUpperCase()) i.value = i.value.toUpperCase(); });
     return i;
   }
+  // Prep: Do or X
+  function prepSel(k, label) {
+    var v = entry(k).prep || '';
+    var sel = h('select', { cls: 'pp-sel', 'data-f': 'prep', 'aria-label': 'Prep: ' + label }, [h('option', { value: '', text: '–' }), h('option', { value: 'Do', text: 'Do' }), h('option', { value: 'X', text: 'X' })]);
+    if (v && v !== 'Do' && v !== 'X') sel.appendChild(h('option', { value: v, text: v }));   // an older typed value
+    sel.value = v; paintSel(sel);
+    sel.addEventListener('change', function () { setField(k, 'prep', sel.value); paintSel(sel); });
+    return sel;
+  }
+  function paintSel(sel) { sel.classList.toggle('is-do', sel.value === 'Do'); sel.classList.toggle('is-x', sel.value === 'X'); }
+  // Init.: tap to sign with your initials (tap again to take them off)
+  function iniBtn(k, label) {
+    var v = entry(k).ini || '';
+    var b = h('button', { type: 'button', cls: 'pp-inibtn', 'data-f': 'ini', 'aria-label': 'Initials: ' + label + (v ? ' (' + v + ')' : ''), title: 'Tap to put your initials here', text: v });
+    b.addEventListener('click', function () {
+      var mine = initials(P.st.me), cur = entry(k).ini || '';
+      if (!mine) { say('Couldn’t tell who you are to add your initials.', 'err'); return; }
+      var nv = cur === mine ? '' : mine;
+      setField(k, 'ini', nv); b.textContent = nv; b.setAttribute('aria-label', 'Initials: ' + label + (nv ? ' (' + nv + ')' : ''));
+    });
+    return b;
+  }
   function row(label, used, k, cls) {
     var e = entry(k);
     var chk = h('button', { type: 'button', cls: 'pp-box', role: 'checkbox', 'aria-checked': e.done ? 'true' : 'false', 'aria-label': 'Done: ' + label });
@@ -222,16 +247,16 @@
       h('td', { cls: 'pp-chk' }, chk),
       h('td', { cls: 'pp-item' }, [h('span', { text: label }), used ? h('small', { text: used }) : null]),
       h('td', { cls: 'pp-num' }, box(k, 'onhand', 'On hand: ' + label, 40)),
-      h('td', { cls: 'pp-num' }, box(k, 'prep', 'Prep: ' + label, 40)),
-      h('td', { cls: 'pp-ini' }, box(k, 'ini', 'Initials: ' + label, 6)),
+      h('td', { cls: 'pp-num' }, prepSel(k, label)),
+      h('td', { cls: 'pp-ini' }, iniBtn(k, label)),
       h('td', { cls: 'pp-tool' }, removeBtn(k))
     ]);
     chk.addEventListener('click', function () {
       var on = !entry(k).done;
       setField(k, 'done', on);
       // ticking a line signs it with your initials, if nobody has
-      var ini = tr.querySelector('input[data-f=ini]');
-      if (on && ini && !ini.value.trim() && P.st.me) { ini.value = initials(P.st.me); setField(k, 'ini', ini.value); }
+      var ini = tr.querySelector('.pp-inibtn');
+      if (on && ini && !ini.textContent.trim() && P.st.me) { ini.textContent = initials(P.st.me); setField(k, 'ini', ini.textContent); }
       chk.setAttribute('aria-checked', on ? 'true' : 'false'); tr.classList.toggle('is-done', on); paintCount();
     });
     return tr;
@@ -344,7 +369,7 @@
       ])
     ]));
     wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
-      (P.db === true ? 'Tick a line when it’s done and fill in On hand, Prep and your initials; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next day at 8:00 pm unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
+      (P.db === true ? 'Tick a line when it’s done, fill in On hand, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next day at 8:00 pm unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
       '“Combined” merges components used in more than one dish (it keeps its own ticks). Prints on one landscape 11 × 8½ page.' }));
     wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));
     if (P.db === false && P.ctx.role === 'owner') wrap.appendChild(h('p', { cls: 'pp-setup', text: 'To share the Prep List with managers and cooks, run supabase/prep-list.sql in Supabase (SQL Editor → New query → paste → Run), then reload.' }));
@@ -403,6 +428,9 @@
     var src = sheet.querySelectorAll('input'), dst = copy.querySelectorAll('input');
     for (var i = 0; i < dst.length; i++) { var t = document.createElement('span'); t.className = 'pp-parv'; t.textContent = src[i] ? src[i].value : ''; dst[i].replaceWith(t); }
     copy.querySelectorAll('.pp-add, .pp-x').forEach(function (x) { x.remove(); });
+    var ssrc = sheet.querySelectorAll('select'), sdst = copy.querySelectorAll('select');
+    for (var j = 0; j < sdst.length; j++) { var sv = document.createElement('span'); sv.className = 'pp-parv'; sv.textContent = ssrc[j] ? ssrc[j].value : ''; sdst[j].replaceWith(sv); }
+    copy.querySelectorAll('.pp-inibtn').forEach(function (b) { var t = document.createElement('span'); t.className = 'pp-parv'; t.textContent = b.textContent; b.replaceWith(t); });
     copy.querySelectorAll('.pp-box').forEach(function (b) { var t = document.createElement('span'); t.className = 'pp-boxp'; t.textContent = b.getAttribute('aria-checked') === 'true' ? '✓' : ''; b.replaceWith(t); });
     copy.removeAttribute('id');
     var page = h('div', { cls: 'pp-page' }, h('div', { cls: 'pp-page-in' }, copy));

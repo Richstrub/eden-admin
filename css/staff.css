@@ -1862,3 +1862,14 @@ body.nt-open #app{visibility:hidden!important}
   .pp-controls .pp-ctl{width:100%}
 }
 .tm-prep{background:var(--paper)}
+/* Prep List: Prep (Do / X) and tap-to-sign initials */
+.pp-table .pp-sel{width:100%;box-sizing:border-box;min-height:30px;margin:0;padding:2px 14px 2px 4px;border:1px solid transparent;border-radius:4px;background:#faf7f1 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23857f75'/%3E%3C/svg%3E") no-repeat right 4px center;-webkit-appearance:none;appearance:none;font:inherit;text-align:center;text-align-last:center;color:#857f75;cursor:pointer;box-shadow:none;height:auto}
+.pp-table .pp-sel:focus{border-color:#8a5226;outline:none;background-color:#fff}
+.pp-table .pp-sel.is-do{background-color:#fbf3ea;color:#8a5226;font-weight:500;border-color:#e8d3bd}
+.pp-table .pp-sel.is-x{background-color:#f0eeea;color:#4a4e53;font-weight:500}
+.pp-table .pp-inibtn{width:100%;box-sizing:border-box;min-height:30px;margin:0;padding:2px;border:1px dashed #d6d0c4;border-radius:4px;background:#faf7f1;font:inherit;font-weight:500;letter-spacing:.04em;color:#111;cursor:pointer}
+.pp-table .pp-inibtn:not(:empty){border-style:solid;border-color:transparent;background:#fff}
+@media (hover:hover){.pp-table .pp-inibtn:hover{border-color:#8a5226}}
+.pp-paper .pp-table .pp-sel,.pp-paper .pp-table .pp-inibtn{font-size:7.5pt;padding:0;min-height:0;background:none;border:0}
+@media print{.pp-table .pp-sel,.pp-table .pp-inibtn{border:0!important;background:none!important}}
+@media (max-width:640px){.pp-table .pp-sel,.pp-table .pp-inibtn{min-height:38px;font-size:16px}}
