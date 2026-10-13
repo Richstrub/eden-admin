@@ -77,7 +77,13 @@
     if (P.db !== true) { local(); persist(); render(); return; }
     local(); render();
     P.ctx.sb.rpc(name, args).then(function (r) {
-      if (r.error || !r.data || r.data.error) { say('Couldn’t save that. Check your connection.', 'err'); return; }
+      if (r.error || !r.data || r.data.error) {
+        var why = r.data && r.data.error;
+        say(why === 'owner_only' ? 'Only the Owner can take lines off the prep list.' : why === 'view_only' ? 'You can read the Prep List, but not change it.' : 'Couldn’t save that. Check your connection.', 'err');
+        // put the list back the way the database has it
+        P.ctx.sb.rpc('prep_get').then(function (x) { if (x && !x.error && x.data && !x.data.error) { var ke = P.st.entries; P.st = norm(x.data); P.st.entries = Object.assign({}, P.st.entries, ke); render(); } }, function () {});
+        return;
+      }
       var keepEntries = P.st.entries; P.st = norm(r.data); P.st.entries = Object.assign({}, P.st.entries, keepEntries); render();
     }, function () { say('Couldn’t save that. Check your connection.', 'err'); });
   }
@@ -210,7 +216,10 @@
   }
 
   /* ---------- rendering ---------- */
+  // only the Owner can take lines off the list (the database checks this too)
+  function canDelete() { return P.st && P.st.can_delete !== undefined ? !!P.st.can_delete : P.ctx.role === 'owner'; }
   function removeBtn(k) {
+    if (!canDelete()) return null;
     return h('button', { type: 'button', cls: 'pp-x', title: 'Take this line off the prep list', 'aria-label': 'Take line off the list', text: '✕', on: { click: function () { hideLine(k); } } });
   }
   function box(k, f, label, max) {
@@ -271,7 +280,7 @@
     return (P.st.extra[secId] || []).map(function (name) {
       var k = 'x:' + secId + ':' + keyOf(name);
       var tr = row(name, 'Added', k, 'pp-extra');
-      tr.querySelector('.pp-x').onclick = function () { delExtra(secId, name); };
+      var x = tr.querySelector('.pp-x'); if (x) x.onclick = function () { delExtra(secId, name); };
       return tr;
     });
   }
@@ -392,7 +401,7 @@
       chk,
       h('div', { cls: 'pa-name' }, [h('b', { text: it.label }), it.sub ? h('span', { text: it.sub }) : null, it.extra ? h('span', { text: 'Added' }) : null]),
       h('div', { cls: 'pa-ctl' }, [oh, prep, ini]),
-      P.editing ? h('button', { type: 'button', cls: 'pa-x', 'aria-label': 'Take ' + it.label + ' off the list', text: '✕', on: { click: function () { if (it.extra) delExtra(secId, it.extra); else hideLine(k); } } }) : null
+      P.editing && canDelete() ? h('button', { type: 'button', cls: 'pa-x', 'aria-label': 'Take ' + it.label + ' off the list', text: '✕', on: { click: function () { if (it.extra) delExtra(secId, it.extra); else hideLine(k); } } }) : null
     ]);
     chk.addEventListener('click', function () {
       var on = !entry(k).done;

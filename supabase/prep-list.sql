@@ -83,7 +83,8 @@ create or replace function public.prep_row() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare r jsonb; kit boolean := true; bar boolean := true;
 begin
-  select to_jsonb(p) - 'id' || jsonb_build_object('can_reset', coalesce(public.can_schedule(), false), 'me', public.prep_me()) into r from public.prep_lists p where id = 'eden';
+  select to_jsonb(p) - 'id' || jsonb_build_object('can_reset', coalesce(public.can_schedule(), false), 'me', public.prep_me(),
+    'can_delete', coalesce(public.staff_role() = 'owner', false)) into r from public.prep_lists p where id = 'eden';
   -- Team > Permissions: only the kitchen list, or only the bar list (bar sections' ids start with b-)
   if r is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null then
     kit := coalesce(public.section_ok('prep.kitchen'), false); bar := coalesce(public.section_ok('prep.bar'), false);
@@ -134,6 +135,8 @@ begin
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   if to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_section, true), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if nm = '' or length(coalesce(p_section, '')) not between 1 and 200 then return jsonb_build_object('error', 'bad'); end if;
+  -- anyone who can fill in the list can add an item; only the Owner can take one away
+  if not p_add and not coalesce(public.staff_role() = 'owner', false) then return jsonb_build_object('error', 'owner_only'); end if;
   select coalesce(extra -> p_section, '[]'::jsonb) into cur from public.prep_lists where id = 'eden' for update;
   cur := coalesce((select jsonb_agg(x) from jsonb_array_elements_text(cur) x where lower(x) <> lower(nm)), '[]'::jsonb);
   if p_add then cur := cur || to_jsonb(nm); end if;
@@ -148,6 +151,8 @@ begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   if p_key is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_key, false), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  -- only the Owner can take a line off the list (anyone can put lines back)
+  if p_on and not coalesce(public.staff_role() = 'owner', false) then return jsonb_build_object('error', 'owner_only'); end if;
   if p_key is null then   -- put lines back, on the list(s) this person has
     update public.prep_lists set removed = case when to_regprocedure('public.prep_list_ok(text,boolean)') is null then '{}'::jsonb
       else coalesce((select jsonb_object_agg(k, v) from jsonb_each(removed) x(k, v) where not coalesce(public.prep_list_ok(k, false), false)), '{}'::jsonb) end,
