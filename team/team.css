@@ -212,3 +212,10 @@
 .tm-confirm b{font-weight:500;color:var(--ivory)}
 .tm-confirm p{font-size:.88rem;line-height:1.5;color:var(--soft-dark)}
 .tm-confirm .link{justify-self:start}
+/* five tabs: stay on one line, and slide sideways on narrow phones */
+.tm-tabs a{white-space:nowrap}
+@media (max-width:640px){
+  .tm-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;min-width:0;margin:4px -16px 0;padding:0 10px;width:auto;max-width:calc(100% + 32px)}
+  .tm-tabs::-webkit-scrollbar{display:none}
+  .tm-tabs a{padding:10px 9px;letter-spacing:.16em;flex:none}
+}

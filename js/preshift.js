@@ -190,6 +190,7 @@
       head.appendChild(add); card.appendChild(pick);
     }
     card.appendChild(head); card.appendChild(msg); card.appendChild(body);
+    if (window.EdenResources) card.appendChild(h('a', { cls: 'ps-edu-more', href: '#resources', text: 'All resources →' }));
     loadEdu(body, msg);
     return card;
   }
@@ -207,7 +208,9 @@
           var url = urls[d.file_path];
           var open = url ? h('a', { cls: 'ps-edu-open', href: url, target: '_blank', rel: 'noopener' }, [h('span', { cls: 'ps-edu-ic', 'aria-hidden': 'true', text: 'PDF' }), h('span', { cls: 'ps-edu-tx' }, [h('b', { text: d.title || 'Untitled' }), h('small', { text: [kb(d.file_size), d.author ? 'added by ' + d.author : '', when(d.created_at)].filter(Boolean).join(' · ') })])])
             : h('div', { cls: 'ps-edu-open is-off' }, [h('span', { cls: 'ps-edu-ic', 'aria-hidden': 'true', text: 'PDF' }), h('span', { cls: 'ps-edu-tx' }, [h('b', { text: d.title || 'Untitled' }), h('small', { text: 'Couldn’t open this file right now.' })])]);
-          return h('li', { cls: 'ps-edu-i' }, [open, isMgr() ? h('button', { type: 'button', cls: 'ps-note-x ps-edu-x', text: 'Delete', 'aria-label': 'Delete ' + (d.title || 'this PDF'), on: { click: function () { delEdu(d, this, body, msg); } } }) : null]);
+          return h('li', { cls: 'ps-edu-i' }, [open, isMgr() ? h('span', { cls: 'rs-acts' }, [
+            window.EdenResources ? h('button', { type: 'button', cls: 'ps-note-x ps-edu-send', text: 'Send to resources', 'aria-label': 'Send ' + (d.title || 'this PDF') + ' to Resources', on: { click: function () { toResources(d, body, msg); } } }) : null,
+            h('button', { type: 'button', cls: 'ps-note-x ps-edu-x', text: 'Delete', 'aria-label': 'Delete ' + (d.title || 'this PDF'), on: { click: function () { delEdu(d, this, body, msg); } } })]) : null]);
         })));
       });
     }).catch(function () { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: 'Couldn’t load education.' })); });
@@ -240,6 +243,19 @@
       }).then(function () { next(i + 1); });
     };
     next(0);
+  }
+  // a PDF from tonight's Education, kept in Resources (with a title and a category) for the team to find later
+  function toResources(d, body, msg) {
+    window.EdenResources.sendFromPreshift(P.ctx, { title: d.title, file_path: d.file_path, file_size: d.file_size }, function (takeOff, v) {
+      var cat = window.EdenResources.CATNAME[v.category];
+      if (!takeOff) { msg.className = 'ps-edu-msg ok'; msg.textContent = 'Sent “' + v.title + '” to Resources (' + cat + ').'; return; }
+      P.ctx.sb.from('preshift_education').delete().eq('id', d.id).then(function (r) {
+        if (r.error) { msg.className = 'ps-edu-msg err'; msg.textContent = 'Sent to Resources (' + cat + '), but couldn’t take it off Pre-shift.'; return; }
+        P.ctx.sb.storage.from(BUCKET).remove([d.file_path]).then(function () {}, function () {});
+        msg.className = 'ps-edu-msg ok'; msg.textContent = 'Moved “' + v.title + '” to Resources (' + cat + ').';
+        loadEdu(body, msg);
+      });
+    });
   }
   function delEdu(d, btn, body, msg) {
     if (!confirm('Delete “' + (d.title || 'this PDF') + '” for everyone?')) return;

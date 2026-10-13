@@ -131,9 +131,9 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', eod: 'viewEod', email: 'viewEmail' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', eod: 'viewEod', email: 'viewEmail' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
-  var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
+  var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
     recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
@@ -216,6 +216,9 @@
     } else if (v === 'preshift') {
       status('');
       if (window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('viewPreshift'), status: status, role: role, name: staffName });
+    } else if (v === 'resources') {
+      status('');
+      if (window.EdenResources) window.EdenResources.show({ sb: sb, el: $('viewResources'), status: status, role: role, name: staffName });
     } else {
       status(''); renderHome();
     }

@@ -227,19 +227,22 @@
   /* ---------- pages: Schedule (with the board) and Recipes ---------- */
   function page() {
     if ($('app').hidden || !me) return;
-    var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : location.hash === '#preshift' ? 'preshift' : 'sched';
-    $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; $('preshiftView').hidden = pg !== 'preshift'; document.querySelector('.tm-main').hidden = pg !== 'sched';
+    var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : location.hash === '#preshift' ? 'preshift' : location.hash === '#resources' ? 'resources' : 'sched';
+    $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; $('preshiftView').hidden = pg !== 'preshift'; $('resourcesView').hidden = pg !== 'resources'; document.querySelector('.tm-main').hidden = pg !== 'sched';
     $('tabPreshift').setAttribute('aria-current', pg === 'preshift' ? 'page' : 'false');
+    $('tabResources').setAttribute('aria-current', pg === 'resources' ? 'page' : 'false');
     $('tabSched').setAttribute('aria-current', pg === 'sched' ? 'page' : 'false');
     $('tabRecipes').setAttribute('aria-current', pg === 'recipes' ? 'page' : 'false');
     $('tabCalendar').setAttribute('aria-current', pg === 'calendar' ? 'page' : 'false');
-    document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : 'Eden Team';
+    document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : 'Eden Team';
     var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
     if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
     // Pre-shift: everyone on the team reads it; the Owner and managers can add and delete education PDFs here too
     if (pg === 'preshift' && window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('preshiftView'), status: function () {}, name: (me.employee && me.employee.name) || '', api: '../', noNotes: true,
       role: me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee') });
+    var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
+    if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }
   window.addEventListener('hashchange', page);
