@@ -121,7 +121,12 @@
         go.disabled = true; msg.textContent = 'Saving…';
         sb.rpc('create_employee_login', { p_email: person.email, p_password: pw }).then(function (r) {
           var j = r.data || {};
-          if (r.error) { go.disabled = false; msg.textContent = /create_employee_login|function|schema cache/i.test(r.error.message || '') ? 'Not switched on yet: run supabase/staff-logins.sql in Supabase.' : 'Couldn’t do it: ' + (r.error.message || 'try again.'); return; }
+          if (r.error) {
+            go.disabled = false;
+            var em = String(r.error.message || ''), missing = /could not find the function|schema cache/i.test(em) || r.error.code === 'PGRST202';
+            msg.textContent = (missing ? 'Not switched on yet: run supabase/staff-logins.sql in Supabase. ' : 'Couldn’t do it. ') + 'Details: ' + (r.error.code ? r.error.code + ' · ' : '') + em;
+            return;
+          }
           if (!j.ok) { go.disabled = false; msg.textContent = j.message || 'Couldn’t do it.'; return; }
           var link = location.origin + '/team/';
           var note = 'Hi ' + String(person.name || '').split(' ')[0] + ', your Eden staff page login is ready. Go to ' + link + ' and sign in with ' + person.email + ' and the temporary password ' + pw + '. It will ask you to choose your own password.';
