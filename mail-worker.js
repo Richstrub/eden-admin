@@ -333,3 +333,6 @@ export async function mailRoute(req, env, path) {
   if (path === '/mail/api') return api(req, env);
   return null;
 }
+
+// shared with the Pre-shift reader (preshift-worker.js)
+export const mailInternals = { gmailFor, gj, unsealToken, missing };

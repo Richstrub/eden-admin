@@ -214,7 +214,8 @@
       status('');
       if (window.EdenEOD) window.EdenEOD.show({ sb: sb, el: $('viewEod'), status: status, role: role, name: staffName, uid: session && session.user && session.user.id, sub: sub });
     } else if (v === 'preshift') {
-      status(''); comingSoon(v);
+      status('');
+      if (window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('viewPreshift'), status: status, role: role, name: staffName });
     } else {
       status(''); renderHome();
     }

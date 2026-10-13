@@ -1653,3 +1653,52 @@ body.nt-open #app{visibility:hidden!important}
 #viewTodo .td-item{align-items:flex-start;padding:12px 14px}
 @media (max-width:760px){#viewTodo .td-in{padding:20px 16px 60px}}
 .td-who-chip.mine{background:#eef1ec;color:#3f5a43}
+/* ---------- Pre-shift ---------- */
+#viewPreshift{background:#fbfaf7}
+.ps-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.ps-head .eo-h{margin:0}
+.ps-check{height:38px;font-size:.84rem;padding:0 16px}
+.ps-src{font-size:.84rem;color:#857f75;margin:8px 0 16px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.ps-badge{display:inline-block;padding:2px 10px;border-radius:10px;background:#fbf3ea;color:#8a5226;font-size:.72rem;letter-spacing:.04em}
+.ps-warn{font-size:.86rem;color:#a3392b;background:#fdf3f1;border-radius:8px;padding:8px 12px;margin:8px 0}
+.ps-wait{display:grid;gap:4px;padding:26px 20px;border:1px dashed rgba(15,18,21,.18);border-radius:12px;text-align:center;color:#5d5952;margin-top:10px}
+.ps-wait b{font-family:var(--serif);font-weight:400;font-size:1.3rem;color:var(--ink)}
+.ps-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:8px}
+.ps-tile{display:grid;gap:2px;padding:14px 16px;background:#fbfaf7;border:1px solid rgba(15,18,21,.07);border-radius:12px}
+.ps-tile b{font-family:var(--serif);font-weight:400;font-size:2rem;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.ps-tile span{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#857f75}
+.ps-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:#8a5226;font-weight:500;margin:22px 0 10px}
+.ps-watch{list-style:none;display:grid;gap:8px}
+.ps-watch li{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 14px;border-radius:12px;background:#fbf6ef;border:1px solid rgba(176,112,63,.18)}
+.ps-t{font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink)}
+.ps-w{display:grid;gap:2px;min-width:0}
+.ps-w b{font-weight:500}
+.ps-w small{font-size:.84rem;color:#5d5952}
+.ps-tags{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.ps-tag{font-size:.7rem;padding:2px 9px;border-radius:9px;background:#fff;border:1px solid rgba(15,18,21,.12);white-space:nowrap}
+.ps-tag.ps-allergy{background:#fdf0ee;border-color:rgba(163,57,43,.35);color:#a3392b}
+.ps-tag.ps-vip{background:#1a1e22;border-color:#1a1e22;color:#f0c9a5}
+.ps-tag.ps-birthday,.ps-tag.ps-anniversary,.ps-tag.ps-celebration{background:#fbf3ea;border-color:rgba(176,112,63,.4);color:#8a5226}
+.ps-book{display:grid;gap:12px}
+.ps-hour{border:1px solid rgba(15,18,21,.08);border-radius:12px;overflow:hidden}
+.ps-hour-h{display:flex;justify-content:space-between;gap:10px;padding:8px 14px;background:#f3efe8;font-size:.84rem}
+.ps-hour-h span{color:#5d5952}
+.ps-hour ul{list-style:none}
+.ps-hour li{display:grid;grid-template-columns:64px 34px minmax(90px,.8fr) minmax(0,2fr);gap:10px;padding:9px 14px;border-top:1px solid rgba(15,18,21,.06);font-size:.92rem;align-items:baseline}
+.ps-size{display:inline-flex;justify-content:center;min-width:26px;padding:0 6px;border-radius:12px;background:#efe9df;font-size:.8rem;font-variant-numeric:tabular-nums}
+.ps-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ps-notes{color:#5d5952;font-size:.86rem;min-width:0}
+.ps-all{margin-top:20px;border-top:1px solid rgba(15,18,21,.08);padding-top:12px}
+.ps-all summary{cursor:pointer;font-size:.86rem;color:#8a5226}
+.ps-sec{margin-top:14px}
+.ps-sec h4{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:#857f75;font-weight:500;margin-bottom:6px}
+.ps-sec ul{list-style:none;display:grid;gap:4px}
+.ps-sec li{font-size:.92rem;color:#3b3f44;line-height:1.5;overflow-wrap:anywhere}
+.ps-next{margin-top:18px;font-size:.84rem;color:#857f75;text-align:center}
+@media (max-width:760px){
+  .ps-watch li{grid-template-columns:56px minmax(0,1fr)}
+  .ps-watch .ps-tags{grid-column:2;justify-content:flex-start}
+  .ps-hour li{grid-template-columns:56px 30px minmax(0,1fr)}
+  .ps-notes{grid-column:3}
+  .ps-tile b{font-size:1.7rem}
+}

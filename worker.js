@@ -13,6 +13,7 @@
  *   /admin/send       Staff email a guest from Catering & BEOs (checked against the database as that staff member).
  *   /inbound          Guests' email replies, delivered by Resend, saved into the inquiry's conversation.
  *   /mail/...         Business email: your Google Workspace mailboxes, read and changed in Gmail (mail-worker.js).
+ *   /preshift/refresh Pre-shift: reads today's OpenTable email (preshift-worker.js). Also runs every 20 minutes on its own.
  *
  * Settings (Cloudflare > Workers > eden-admin > Settings > Variables and Secrets). Nothing secret is in this file:
  *   INQUIRY_KEY         secret: from  select public.new_inquiry_key();  in Supabase. Without it the questionnaire
@@ -25,6 +26,7 @@
 // Eden's website, its Cloudflare address (including preview copies) and its GitHub Pages copy
 import BUILD_KEY from './inquiry-key.generated.js';   // INQUIRY_KEY from the Build settings, if saved there
 import { mailRoute } from './mail-worker.js';          // Business email (Gmail), see that file
+import { preshiftRoute, preshiftRefresh } from './preshift-worker.js';   // Pre-shift reservations from OpenTable
 
 const SITE_HOSTS = /(^|\.)edencny\.com$|(^|[.-])eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
 const BOTS = /bot|crawl|spider|slurp|preview|headless|lighthouse|pagespeed|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|curl|wget|python|axios|node-fetch|go-http|java\/|monitor|uptime|pingdom|scan/i;
@@ -407,7 +409,12 @@ export default {
     if (url.pathname === '/plan') return plan(req, env);
     if (url.pathname === '/admin/send') return adminSend(req, env);
     if (url.pathname === '/inbound') return inbound(req, env);
+    if (url.pathname === '/preshift/refresh') return preshiftRoute(req, env, inqKey(env));
     if (url.pathname.indexOf('/mail/') === 0) { const r = await mailRoute(req, env, url.pathname); if (r) return r; }
     return env.ASSETS.fetch(req);
+  },
+  // every 20 minutes (wrangler.jsonc "triggers"): look for today's OpenTable email for Pre-shift
+  async scheduled(evt, env, ctx) {
+    ctx.waitUntil(preshiftRefresh(env, inqKey(env), false).catch(() => null));
   }
 };

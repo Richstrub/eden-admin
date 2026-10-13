@@ -18,7 +18,11 @@
     "SITE_URL": "https://edencny.com/",
     "STAFF_URL": "https://edencny-staff.com/",
     "MAIL_FROM": "Eden Events <events@edencny.com>",
-    "NOTIFY_TO": "Tyler@edencny.com,Rich@edencny.com"
+    "NOTIFY_TO": "Tyler@edencny.com,Rich@edencny.com",
+    // Pre-shift reads OpenTable's emails from this connected mailbox
+    "OPENTABLE_MAILBOX": "rich@edencny.com"
   },
+  // every 20 minutes the worker looks for today's OpenTable email (Pre-shift)
+  "triggers": { "crons": ["*/20 * * * *"] },
   "keep_vars": true
 }
