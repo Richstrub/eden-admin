@@ -1981,16 +1981,16 @@ body.nt-open #app{visibility:hidden!important}
 .rc-clear{font:inherit;font-size:.82rem;color:#8a5226;background:none;border:0;padding:4px 0;cursor:pointer}
 .rc-clear[hidden]{display:none}
 /* tap an ingredient when you have it; tap a step when it's done */
-.rc-irow{cursor:pointer;transition:background .12s}
-.rc-irow td:first-child{position:relative;padding-left:38px}
-.rc-irow td:first-child::before{content:"";position:absolute;left:6px;top:50%;width:20px;height:20px;margin-top:-10px;border:1.5px solid rgba(15,18,21,.3);border-radius:50%;background:#fff;box-sizing:border-box}
-.rc-irow.is-got td:first-child::before{background:#2f6b3a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='10' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 5.5l3 3 6-7'/%3E%3C/svg%3E") no-repeat center;border-color:#2f6b3a}
-.rc-irow.is-got td{color:#9a958c}
-.rc-irow.is-got .rc-ing span{text-decoration:line-through;text-decoration-color:rgba(47,107,58,.5)}
-@media (hover:hover){.rc-irow:hover{background:#faf8f4}}
-.rc-steps li{cursor:pointer;border-radius:8px;transition:opacity .15s}
-.rc-steps li.is-done{opacity:.42}
-.rc-steps li.is-done::marker{content:"✓  ";color:#2f6b3a}
+.rc-app .rc-irow{cursor:pointer;transition:background .12s}
+.rc-app .rc-irow td:first-child{position:relative;padding-left:38px}
+.rc-app .rc-irow td:first-child::before{content:"";position:absolute;left:6px;top:50%;width:20px;height:20px;margin-top:-10px;border:1.5px solid rgba(15,18,21,.3);border-radius:50%;background:#fff;box-sizing:border-box}
+.rc-app .rc-irow.is-got td:first-child::before{background:#2f6b3a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='10' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 5.5l3 3 6-7'/%3E%3C/svg%3E") no-repeat center;border-color:#2f6b3a}
+.rc-app .rc-irow.is-got td{color:#9a958c}
+.rc-app .rc-irow.is-got .rc-ing span{text-decoration:line-through;text-decoration-color:rgba(47,107,58,.5)}
+@media (hover:hover){.rc-app .rc-irow:hover{background:#faf8f4}}
+.rc-app .rc-steps li{cursor:pointer;border-radius:8px;transition:opacity .15s}
+.rc-app .rc-steps li.is-done{opacity:.42}
+.rc-app .rc-steps li.is-done::marker{content:"✓  ";color:#2f6b3a}
 .rc-app .rc-ings{font-size:1.08rem}
 .rc-app .rc-ings td{padding:12px 8px}
 .rc-app .rc-steps{gap:6px;padding-left:26px}

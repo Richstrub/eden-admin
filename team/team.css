@@ -326,3 +326,57 @@
 }
 .tm-card .tm-days{align-items:start}
 @media (max-width:640px){.tm-grid{align-items:stretch}.tm-card{width:auto;align-self:stretch}}
+
+/* ================= navigation: icons + readable labels; a tab bar at the bottom on phones ================= */
+.tm-tabs{display:flex;align-items:center;gap:4px}
+.tm-tabs a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:10px;font-family:var(--sans);font-size:.9rem;letter-spacing:.01em;text-transform:none;color:rgba(243,238,229,.72);white-space:nowrap}
+.tm-tabs a[hidden]{display:none}
+.tm-ico{width:19px;height:19px;flex:none}
+.tm-tabs a[aria-current="page"]{background:var(--ivory);color:var(--ink)}
+.tm-tabs a[aria-current="page"] .tm-ico{color:var(--ember)}
+@media (hover:hover){.tm-tabs a:not([aria-current="page"]):hover{background:rgba(243,238,229,.08);color:var(--ivory)}}
+.tm-tabs a:focus-visible{outline:2px solid var(--ember-hot);outline-offset:2px}
+/* mid-size screens: tabs on their own row, all visible */
+@media (max-width:1100px) and (min-width:701px){
+  .tm-bar{flex-wrap:wrap;row-gap:10px;padding-bottom:10px}
+  .tm-tabs{order:5;flex-basis:100%;margin:0;padding:0;overflow:visible;justify-content:flex-start;flex-wrap:wrap}
+  .tm-tabs a{padding:9px 13px}
+}
+/* phones: brand and your initials at the top, the pages in a bar along the bottom */
+@media (max-width:700px){
+  .tm-bar{flex-wrap:nowrap;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px}
+  .tm-tabs{position:fixed;left:0;right:0;bottom:0;z-index:50;order:0;margin:0;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));gap:0;
+    display:flex;justify-content:space-around;overflow:visible;background:rgba(15,18,21,.97);border-top:1px solid rgba(243,238,229,.1);box-shadow:0 -8px 24px rgba(0,0,0,.18);max-width:none;width:auto;flex-basis:auto}
+  .tm-tabs a{flex:1 1 0;min-width:0;flex-direction:column;gap:4px;padding:7px 2px 6px;border-radius:10px;font-size:.68rem;letter-spacing:0;text-align:center;color:rgba(243,238,229,.6)}
+  .tm-tabs a span{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .tm-ico{width:23px;height:23px}
+  .tm-tabs a[aria-current="page"]{background:none;color:var(--ivory)}
+  .tm-tabs a[aria-current="page"] .tm-ico{color:var(--ember-hot)}
+  .tm-tabs a[aria-current="page"]::before{content:"";position:absolute;margin-top:-7px;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--ember-hot)}
+  .tm-tabs a{position:relative;align-items:center}
+  #app{padding-bottom:calc(70px + env(safe-area-inset-bottom,0px))}
+}
+@media print{.tm-tabs{display:none!important}}
+
+/* ================= friendlier navigation (Oct 2026) ================= */
+.tm-tabs a[hidden]{display:none!important}
+.tm-tabs a{display:inline-flex;align-items:center;gap:8px;font-size:.9rem;letter-spacing:0;text-transform:none;padding:9px 14px;border-radius:999px;color:rgba(243,238,229,.72);white-space:nowrap}
+.tm-tabs a[aria-current="page"]{background:var(--ivory);color:var(--ink)}
+.tm-tabs a[aria-current="page"] .tm-ic{color:var(--ember)}
+.tm-ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+@media (hover:hover){.tm-tabs a:not([aria-current="page"]):hover{background:rgba(243,238,229,.1);color:var(--ivory)}}
+/* tablets: labels stay, a little tighter */
+@media (max-width:1100px){.tm-tabs a{padding:9px 11px;gap:6px;font-size:.86rem}}
+/* phones: the pages stay at the top, every one fits on one row (icon over label), nothing to scroll */
+@media (max-width:700px){
+  .tm-bar{flex-wrap:wrap;row-gap:6px;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 6px}
+  #app{padding-bottom:0}
+  .tm-tabs{position:static;order:5;flex-basis:100%;width:auto;max-width:none;background:none;border:0;box-shadow:none;
+    display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;overflow:visible;margin:2px -10px 0;padding:0 4px}
+  .tm-tabs a[aria-current="page"]::before{content:none}
+  .tm-tabs a{flex-direction:column;gap:3px;padding:7px 2px 6px;border-radius:12px;font-size:.66rem;line-height:1.1;min-width:0;justify-content:center}
+  .tm-tabs a span{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .tm-ic{width:21px;height:21px}
+  .tm-tabs a[aria-current="page"]{background:rgba(243,238,229,.14);color:var(--ivory)}
+  .tm-tabs a[aria-current="page"] .tm-ic{color:var(--ember-hot)}
+}

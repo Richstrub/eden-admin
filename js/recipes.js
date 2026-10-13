@@ -313,9 +313,9 @@
       if (ing.head) { tb.appendChild(h('tr', { cls: 'rc-ihead' }, h('td', { colspan: '3', text: ing.item }))); return; }
       var s = scaled(ing, f);
       // tap an ingredient once it's gathered or weighed out
-      var tr = h('tr', { cls: 'rc-irow' + (ck.i[idx] ? ' is-got' : ''), role: 'checkbox', tabindex: '0', 'aria-checked': ck.i[idx] ? 'true' : 'false', title: 'Tap when you have it' });
+      var tr = isApp() ? h('tr', { cls: 'rc-irow' + (ck.i[idx] ? ' is-got' : ''), role: 'checkbox', tabindex: '0', 'aria-checked': ck.i[idx] ? 'true' : 'false', title: 'Tap when you have it' }) : h('tr');
       var flip = function () { ck.i[idx] = !ck.i[idx]; tr.classList.toggle('is-got', ck.i[idx]); tr.setAttribute('aria-checked', ck.i[idx] ? 'true' : 'false'); paintClear(); };
-      tr.addEventListener('click', flip); tr.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+      if (isApp()) { tr.addEventListener('click', flip); tr.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } }); }
       tb.appendChild(tr);
       [
         h('td', { cls: 'rc-amt', text: fmtAmount(s.n, s.unit) }),
@@ -325,10 +325,11 @@
     });
     var clear = h('button', { type: 'button', cls: 'rc-clear', text: 'Clear ticks', on: { click: function () { R.checks[x.id] = { i: {}, s: {} }; render(); } } });
     function paintClear() { var any = Object.keys(ck.i).some(function (k) { return ck.i[k]; }) || Object.keys(ck.s).some(function (k) { return ck.s[k]; }); clear.hidden = !any; }
-    box.appendChild(h('section', { cls: 'rc-sec' }, [h('div', { cls: 'rc-sech' }, [h('h3', { text: 'Ingredients' }), clear]), h('table', { cls: 'rc-ings' }, tb)]));
+    box.appendChild(h('section', { cls: 'rc-sec' }, [isApp() ? h('div', { cls: 'rc-sech' }, [h('h3', { text: 'Ingredients' }), clear]) : h('h3', { text: 'Ingredients' }), h('table', { cls: 'rc-ings' }, tb)]));
     var steps = String(x.method || '').split('\n').map(function (s) { return s.replace(/^\s*\d+[.)]\s*/, '').trim(); }).filter(Boolean);
     // tap a step when it's done
     if (steps.length) box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Method' }), h('ol', { cls: 'rc-steps' }, steps.map(function (st, si) {
+      if (!isApp()) return h('li', { text: st });
       var li = h('li', { cls: ck.s[si] ? 'is-done' : null, role: 'checkbox', tabindex: '0', 'aria-checked': ck.s[si] ? 'true' : 'false', text: st });
       var flip = function () { ck.s[si] = !ck.s[si]; li.classList.toggle('is-done', ck.s[si]); li.setAttribute('aria-checked', ck.s[si] ? 'true' : 'false'); paintClear(); };
       li.addEventListener('click', flip); li.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });

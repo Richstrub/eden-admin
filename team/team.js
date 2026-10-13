@@ -263,12 +263,12 @@
     document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : pg === 'prep' ? 'Prep List · Eden Team' : 'Eden Team';
     var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
-    if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, app: true, status: st($('recipesView')) });
+    if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
     // Pre-shift: everyone on the team reads it; the Owner and managers can add and delete education PDFs here too
     if (pg === 'preshift' && window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('preshiftView'), status: function () {}, name: (me.employee && me.employee.name) || '', api: '../', noNotes: true,
       role: me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee') });
     var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
-    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, app: true });
+    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }
