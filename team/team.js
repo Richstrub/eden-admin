@@ -71,6 +71,7 @@
     form.querySelector('.primary').textContent = m === 'up' ? 'Create account' : 'Sign in';
     form.password.setAttribute('autocomplete', m === 'up' ? 'new-password' : 'current-password');
     msg.textContent = '';
+    var cb = form.querySelector('.tm-confirm'); if (cb && m === 'up') cb.remove();
   }
   form.querySelectorAll('.tm-switch button').forEach(function (b) { b.addEventListener('click', function () { setMode(b.dataset.mode); }); });
   form.addEventListener('submit', function (e) {
@@ -80,26 +81,55 @@
     if (mode === 'up') {
       if (pw.length < 8) { msg.textContent = 'Use at least 8 characters for your password.'; return; }
       if (pw !== form.password2.value) { msg.textContent = 'The two passwords don’t match.'; return; }
-      msg.textContent = 'Creating your account…';
-      sb.auth.signUp({ email: email, password: pw }).then(function (r) {
-        if (r.error) {
-          var m = r.error.message || '';
-          msg.textContent = /rate limit|confirmation|sending/i.test(m) ? 'Sign-up is waiting on a setting: a manager needs to turn off \u201cConfirm email\u201d in Supabase, then you can try again.'
-            : /staff list|database error/i.test(m) ? 'That email isn\u2019t on Eden\u2019s staff list yet. Ask a manager to add it, then try again.'
-            : /already|registered|exists/i.test(m) ? 'There’s already an account for that email. Choose Sign in instead.'
-            : /password/i.test(m) ? m : 'Couldn’t create the account: ' + m;
-          return;
-        }
-        if (!r.data || !r.data.session) { msg.textContent = 'Account created. Check your email to confirm it, then sign in.'; setMode('in'); }
+      msg.textContent = 'Checking the staff list…';
+      // ask first, so we can say exactly what's wrong (an older database without the check just carries on)
+      sb.rpc('staff_signup_check', { p_email: email }).then(function (c) {
+        var k = (c && !c.error && c.data) || null;
+        if (k && !k.listed) { msg.textContent = ''; say('“' + email + '” isn’t on Eden’s staff list yet. Ask a manager to add it to your name (Schedule › Employees), check the spelling matches, then try again.'); return; }
+        if (k && k.account && k.confirmed) { setMode('in'); form.email.value = email; say('You already have an account. Sign in with your password, or tap “Forgot password?” to choose a new one.'); return; }
+        if (k && k.account && !k.confirmed) { checkEmail(email, true); return; }
+        msg.textContent = 'Creating your account…';
+        sb.auth.signUp({ email: email, password: pw, options: { emailRedirectTo: location.origin + location.pathname } }).then(function (r) {
+          if (r.error) {
+            var m = r.error.message || '';
+            if (/staff list|database error/i.test(m)) say('“' + email + '” isn’t on Eden’s staff list yet. Ask a manager to add it to your name, then try again.');
+            else if (/already|registered|exists/i.test(m)) { setMode('in'); form.email.value = email; say('You already have an account. Sign in, or tap “Forgot password?”.'); }
+            else if (/rate limit|sending|smtp|email/i.test(m)) say('The account couldn’t be created because the confirmation email couldn’t be sent right now. Try again in an hour, or ask a manager to help.');
+            else if (/password/i.test(m)) say(m);
+            else say('Couldn’t create the account: ' + m);
+            return;
+          }
+          if (!r.data || !r.data.session) checkEmail(email, false);   // signed in straight away when no confirmation is needed
+        });
       });
     } else {
       msg.textContent = 'Signing in…';
       sb.auth.signInWithPassword({ email: email, password: pw }).then(function (r) {
-        if (r.error) msg.textContent = /not confirmed/i.test(r.error.message || '') ? 'This account was never confirmed. Ask a manager to delete it in Supabase (Authentication \u2192 Users), then choose Create account again.'
-          : /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : 'That email and password didn\u2019t work. New here? Choose Create account.';
+        if (!r.error) return;
+        var m = r.error.message || '';
+        if (/not confirmed/i.test(m)) checkEmail(email, true);
+        else if (/rate|too many/i.test(m)) say('Too many attempts. Wait a few minutes, then try again.');
+        else say('That email and password didn’t work. First time here? Choose “Create account”. Forgot it? Tap “Forgot password?”.');
       });
     }
   });
+  function say(t) { msg.textContent = t; }
+  // "check your email" with a button to send the confirmation again
+  function checkEmail(email, again) {
+    msg.textContent = '';
+    var box = form.querySelector('.tm-confirm'); if (box) box.remove();
+    box = h('div', { cls: 'tm-confirm', role: 'status' }, [
+      h('b', { text: again ? 'Confirm your email first' : 'Almost done: check your email' }),
+      h('p', { text: 'We sent a link to ' + email + '. Open it on this phone or computer to finish, then sign in. It can take a few minutes; check Spam or Promotions too.' }),
+      h('button', { type: 'button', cls: 'link', text: 'Send the link again', on: { click: function () {
+        var b = this; b.disabled = true; b.textContent = 'Sending…';
+        sb.auth.resend({ type: 'signup', email: email, options: { emailRedirectTo: location.origin + location.pathname } }).then(function (r) {
+          b.disabled = false; b.textContent = r.error ? (/rate|seconds|too many/i.test(r.error.message || '') ? 'Please wait a minute, then try again' : 'Couldn’t send it. Ask a manager to help') : 'Sent. Check your email';
+        });
+      } } })]);
+    form.querySelector('.msg').after(box);
+    setMode('in'); form.email.value = email;
+  }
   document.querySelectorAll('[data-act="signout"]').forEach(function (b) { b.addEventListener('click', function () { sb.auth.signOut().then(function () { location.replace(location.pathname); }); }); });
 
   /* ---------- passwords: forgot (email link), change, and temporary passwords set by a manager ---------- */
