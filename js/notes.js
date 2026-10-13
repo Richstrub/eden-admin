@@ -704,7 +704,8 @@
     return '';
   }
   function assignSelect(t, cls) {
-    var opts = [h('option', { value: 'me', text: 'Me' + (C.name ? ' (' + C.name + ')' : '') }), h('option', { value: '', text: 'Not assigned (anyone)' })];
+    var opts = [h('option', { value: 'me', text: 'Just me' + (C.name ? ' (' + C.name + ')' : '') })];
+    if (t && !t.assigned_user && !t.assigned_to) opts.push(h('option', { value: '', text: 'Not assigned' }));
     if (t && t.assigned_user && !isMine(t) && !t.assigned_to) opts.push(h('option', { value: 'keep', text: t.assigned_name || 'Another manager' }));
     T.people.forEach(function (e) { if (e.id !== T.myEmp) opts.push(h('option', { value: e.id, text: e.name })); });
     var sel = h('select', { cls: cls || '', 'aria-label': 'Assign to' }, opts);
@@ -747,11 +748,11 @@
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addNew(); } });
     wrap.appendChild(h('div', { cls: 'td-add' }, [inp, due, who, h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: addNew } })]));
     if (T.assignOk) {
-      var F = [['all', 'Everything'], ['mine', 'Mine'], ['staff', 'Given to others'], ['open', 'Not assigned']];
+      var F = [['all', 'Everything'], ['mine', 'Mine'], ['staff', 'Given to others']];
       wrap.appendChild(h('div', { cls: 'td-filter', role: 'group', 'aria-label': 'Show' }, F.map(function (f) {
         return h('button', { type: 'button', 'aria-pressed': T.filter === f[0] ? 'true' : 'false', text: f[1], on: { click: function () { T.filter = f[0]; renderTodo(); } } });
       })));
-      if (who) wrap.appendChild(h('p', { cls: 'td-hint', text: 'New to-dos are yours unless you choose someone else. A to-do given to a staff member shows on their own staff page (Schedule tab), where they tick it off; you’ll see it ticked here.' }));
+      if (who) wrap.appendChild(h('p', { cls: 'td-hint', text: 'To-dos are private: only you and the person you give one to can see it. “Just me” to-dos are yours alone. A to-do given to a staff member also shows on their staff page (Schedule tab), where they tick it off; you’ll see it ticked here.' }));
     } else if (C.canAssignHint) wrap.appendChild(h('p', { cls: 'td-hint', text: 'To give to-dos to staff, run supabase/todo-assign.sql in Supabase, then reload.' }));
     var today = iso(new Date());
     var keep = function (t) { return T.filter === 'mine' ? isMine(t) : T.filter === 'open' ? !t.assigned_to && !t.assigned_user : T.filter === 'staff' ? (!!t.assigned_to || !!t.assigned_user) && !isMine(t) : true; };

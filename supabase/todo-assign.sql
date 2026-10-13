@@ -37,3 +37,31 @@ end $$;
 
 revoke all on function public.my_todos(), public.finish_my_todo(text, boolean) from public, anon;
 grant execute on function public.my_todos(), public.finish_my_todo(text, boolean) to authenticated;
+
+-- Who can see a to-do: only the person who wrote it and the person it's given to.
+-- A to-do you write for yourself (not given to anyone) is yours alone; nobody else sees it, Owner included.
+alter table public.todos add column if not exists created_user uuid references auth.users (id) on delete set null default auth.uid();
+-- older to-dos: work out who wrote them from the name saved with them; anything left over goes to the Owner
+update public.todos t set created_user = s.user_id from public.staff s
+  where t.created_user is null and t.created_by <> '' and lower(s.name) = lower(t.created_by);
+update public.todos t set created_user = u.id from public.employees e join auth.users u on lower(u.email) = lower(e.email)
+  where t.created_user is null and t.created_by <> '' and e.email <> '' and lower(e.name) = lower(t.created_by);
+update public.todos set created_user = (select user_id from public.staff where role = 'owner' order by created_at limit 1)
+  where created_user is null;
+-- "mine" for to-dos nobody was given: the person who wrote them
+update public.todos set assigned_user = created_user where assigned_user is null and assigned_to is null;
+
+drop policy if exists "team to-dos" on public.todos;
+drop policy if exists "your to-dos" on public.todos;
+create policy "your to-dos" on public.todos for select to authenticated
+  using (created_user = auth.uid() or assigned_user = auth.uid() or (assigned_to is not null and assigned_to = public.my_employee_id()));
+drop policy if exists "add your to-dos" on public.todos;
+create policy "add your to-dos" on public.todos for insert to authenticated
+  with check (public.can_todo() and created_user = auth.uid());
+drop policy if exists "change your to-dos" on public.todos;
+create policy "change your to-dos" on public.todos for update to authenticated
+  using (created_user = auth.uid() or assigned_user = auth.uid() or (assigned_to is not null and assigned_to = public.my_employee_id()))
+  with check (true);
+drop policy if exists "delete your to-dos" on public.todos;
+create policy "delete your to-dos" on public.todos for delete to authenticated
+  using (created_user = auth.uid());
