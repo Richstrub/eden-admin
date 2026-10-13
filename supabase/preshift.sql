@@ -1,4 +1,5 @@
--- Eden staff site: Pre-shift (reservations from OpenTable, menu changes, and notes from the Owner and managers).
+-- Eden staff site: Pre-shift (education PDFs, reservations from OpenTable, menu changes, and notes from the Owner and managers).
+-- Every employee can read it on the staff page; the Owner and managers add to it.
 -- Run AFTER supabase/inquiries.sql, supabase/team.sql and supabase/business-email.sql.
 -- Paste into Supabase > SQL Editor > New query, click Run. Safe to run more than once.
 --
@@ -22,8 +23,10 @@ alter table public.preshift_days enable row level security;
 revoke all on public.preshift_days from anon;
 grant select, insert, update, delete on public.preshift_days to authenticated;
 
+-- the Owner and managers read the saved day directly; everyone else gets it through preshift_today() below,
+-- which leaves out what guests spend
 drop policy if exists "team reads pre-shift" on public.preshift_days;
-create policy "team reads pre-shift" on public.preshift_days for select to authenticated using (public.is_team());
+create policy "team reads pre-shift" on public.preshift_days for select to authenticated using (public.can_schedule());
 drop policy if exists "owner and managers write pre-shift" on public.preshift_days;
 create policy "owner and managers write pre-shift" on public.preshift_days for all to authenticated
   using (public.access_level() in ('owner', 'manager')) with check (public.access_level() in ('owner', 'manager'));
@@ -135,3 +138,71 @@ end $$;
 revoke all on function public.preshift_notes_author() from public, anon, authenticated;
 drop trigger if exists preshift_notes_author on public.preshift_notes;
 create trigger preshift_notes_author before insert on public.preshift_notes for each row execute function public.preshift_notes_author();
+
+-- Today's pre-shift for anyone on the team. For employees (not the Owner or managers), what guests spend is left out.
+create or replace function public.preshift_today() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r public.preshift_days; res jsonb; mgr boolean := coalesce(public.can_schedule(), false);
+begin
+  if not coalesce(public.is_team(), false) then return null; end if;
+  select * into r from public.preshift_days where service_date = (now() at time zone 'America/New_York')::date;
+  if not found then return null; end if;
+  res := coalesce(r.reservations, '{}'::jsonb);
+  if not mgr then
+    res := res - 'text';
+    if jsonb_typeof(res -> 'list') = 'array' then
+      res := jsonb_set(res, '{list}', (select coalesce(jsonb_agg(case when jsonb_typeof(x -> 'guest') = 'object' then jsonb_set(x, '{guest}', (x -> 'guest') - 'spend') else x end), '[]'::jsonb)
+                                       from jsonb_array_elements(res -> 'list') x));
+    end if;
+    if jsonb_typeof(res -> 'sections') = 'array' then
+      res := jsonb_set(res, '{sections}', (select coalesce(jsonb_agg(case when jsonb_typeof(sx -> 'lines') = 'array' then jsonb_set(sx, '{lines}',
+               (select coalesce(jsonb_agg(to_jsonb(regexp_replace(l, ',?\s*\$\s?[0-9,]+(\.[0-9]+)?\s*(average|avg\.?)\s+spend[a-z ]*', '', 'gi'))), '[]'::jsonb)
+                from jsonb_array_elements_text(sx -> 'lines') l)) else sx end), '[]'::jsonb)
+             from jsonb_array_elements(res -> 'sections') sx));
+    end if;
+  end if;
+  return jsonb_build_object('service_date', r.service_date, 'source_subject', r.source_subject, 'source_received', r.source_received,
+    'source_forwarded', r.source_forwarded, 'reservations', res, 'updated_at', r.updated_at);
+end $$;
+revoke all on function public.preshift_today() from public, anon;
+grant execute on function public.preshift_today() to authenticated;
+
+-- Pre-shift section 1: Education. PDFs the Owner and managers upload for the team to read (wine notes, menu
+-- descriptions, service standards…). They stay until a manager deletes them. Everyone on the team can open them.
+-- The files live in a private storage bucket; links to open them last a few hours.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('preshift-education', 'preshift-education', false, 52428800, array['application/pdf'])
+on conflict (id) do update set public = false, file_size_limit = 52428800, allowed_mime_types = array['application/pdf'];
+
+drop policy if exists "team opens education pdfs" on storage.objects;
+create policy "team opens education pdfs" on storage.objects for select to authenticated
+  using (bucket_id = 'preshift-education' and public.is_team());
+drop policy if exists "managers add education pdfs" on storage.objects;
+create policy "managers add education pdfs" on storage.objects for insert to authenticated
+  with check (bucket_id = 'preshift-education' and public.can_schedule());
+drop policy if exists "managers delete education pdfs" on storage.objects;
+create policy "managers delete education pdfs" on storage.objects for delete to authenticated
+  using (bucket_id = 'preshift-education' and public.can_schedule());
+
+create table if not exists public.preshift_education (
+  id         text primary key,
+  title      text not null default '',
+  file_path  text not null,
+  file_size  bigint not null default 0,
+  author     text not null default '',
+  user_id    uuid default auth.uid() references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists preshift_education_new on public.preshift_education (created_at desc);
+alter table public.preshift_education enable row level security;
+revoke all on public.preshift_education from anon;
+grant select, insert, delete on public.preshift_education to authenticated;
+drop policy if exists "team reads education" on public.preshift_education;
+create policy "team reads education" on public.preshift_education for select to authenticated using (public.is_team());
+drop policy if exists "managers add education" on public.preshift_education;
+create policy "managers add education" on public.preshift_education for insert to authenticated
+  with check (public.can_schedule() and user_id = auth.uid());
+drop policy if exists "managers delete education" on public.preshift_education;
+create policy "managers delete education" on public.preshift_education for delete to authenticated using (public.can_schedule());
+drop trigger if exists preshift_education_author on public.preshift_education;
+create trigger preshift_education_author before insert on public.preshift_education for each row execute function public.preshift_notes_author();

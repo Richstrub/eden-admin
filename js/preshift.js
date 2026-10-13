@@ -1,9 +1,10 @@
 /* Eden staff site: Pre-shift meeting (everyone can read it).
  *
- * 1. Reservations: filled in automatically from OpenTable's email to rich@edencny.com (see preshift-worker.js).
+ * 1. Education: PDFs the Owner and managers upload (stored privately in Supabase Storage); everyone can open them.
+ * 2. Reservations: filled in automatically from OpenTable's email to rich@edencny.com (see preshift-worker.js).
  *    Today's pre-shift appears once that day's OpenTable email has arrived, and clears after midnight.
- * 2. Menu changes in the last 24 hours.
- * 3. Notes: sent by the Owner and managers from the Notes tab ("Send to pre-shift"), for one service day.
+ * 3. Menu changes in the last 24 hours.
+ * 4. Notes: sent by the Owner and managers from the Notes tab ("Send to pre-shift"), for one service day.
  */
 (function () {
   'use strict';
@@ -34,17 +35,22 @@
       if (isMgr() && Date.now() - (+P.checked || 0) > 3 * 60000) refresh(false);
     });
   }
+  // today's pre-shift; preshift_today() leaves out what guests spend for anyone who isn't the Owner or a manager
   function load() {
-    return P.ctx.sb.from('preshift_days').select('*').eq('service_date', today()).maybeSingle().then(function (r) {
-      P.missing = !!(r.error && /preshift_days|schema cache|does not exist/i.test(r.error.message || ''));
-      P.day = r.error ? null : r.data;
-    }, function () { P.day = null; });
+    var gone = function (e) { return !!(e && (e.code === 'PGRST202' || e.code === 'PGRST205' || e.code === '42P01' || e.code === '42883' || /schema cache|does not exist|could not find/i.test(e.message || ''))); };
+    return P.ctx.sb.rpc('preshift_today').then(function (r) {
+      if (!r.error) { P.missing = false; P.day = r.data || null; return; }
+      if (!gone(r.error)) { P.day = null; return; }
+      return P.ctx.sb.from('preshift_days').select('*').eq('service_date', today()).maybeSingle().then(function (t) {
+        P.missing = gone(t.error); P.day = t.error ? null : t.data;
+      });
+    }).catch(function () { P.day = null; });
   }
   function refresh(force, btn) {
     if (P.busy) return; P.busy = true; P.checked = String(Date.now());
     if (btn) { btn.disabled = true; btn.textContent = 'Checking OpenTable…'; }
     token().then(function (jwt) {
-      return fetch('preshift/refresh', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt }, body: JSON.stringify({ force: !!force }) });
+      return fetch((P.ctx.api || '') + 'preshift/refresh', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt }, body: JSON.stringify({ force: !!force }) });
     }).then(function (r) { return r.json().catch(function () { return {}; }); }).then(function (j) {
       P.busy = false; P.last = j;
       if (j.saved || force) return load().then(render);
@@ -66,17 +72,18 @@
     wrap.appendChild(h('h1', { cls: 'eo-title', text: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }));
     el.appendChild(wrap);
     if (P.missing) { wrap.appendChild(h('div', { cls: 'eo-card' }, [h('p', { text: P.ctx.role === 'owner' ? 'One step first: in Supabase, open SQL Editor > New query, paste in supabase/preshift.sql and click Run. Then reload this page.' : 'Pre-shift isn’t switched on yet.' })])); return; }
+    wrap.appendChild(educationCard());
     wrap.appendChild(reservations());
-    var mc = h('section', { cls: 'eo-card ps-menu', 'aria-labelledby': 'psMenuH' }, [h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psMenuH' }, [h('span', { cls: 'eo-n', text: '2' }), 'Menu changes']), h('span', { cls: 'ps-when', text: 'Last 24 hours' })]), h('p', { cls: 'ps-src', text: 'Loading…' })]);
+    var mc = h('section', { cls: 'eo-card ps-menu', 'aria-labelledby': 'psMenuH' }, [h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psMenuH' }, [h('span', { cls: 'eo-n', text: '3' }), 'Menu changes']), h('span', { cls: 'ps-when', text: 'Last 24 hours' })]), h('p', { cls: 'ps-src', text: 'Loading…' })]);
     wrap.appendChild(mc);
     menuChanges(mc);
     wrap.appendChild(notesCard());
   }
 
-  /* ---------- 1. Reservations ---------- */
+  /* ---------- 2. Reservations ---------- */
   function reservations() {
     var card = h('section', { cls: 'eo-card ps-res', 'aria-labelledby': 'psResH' });
-    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psResH' }, [h('span', { cls: 'eo-n', text: '1' }), 'Reservations'])]);
+    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psResH' }, [h('span', { cls: 'eo-n', text: '2' }), 'Reservations'])]);
     if (isMgr()) head.appendChild(h('button', { type: 'button', cls: 'eo-btn ps-check', text: 'Check OpenTable now', on: { click: function () { refresh(true, this); } } }));
     card.appendChild(head);
     var day = P.day, R = day && day.reservations;
@@ -89,8 +96,8 @@
     var digest = R.kind === 'digest';
     card.appendChild(h('p', { cls: 'ps-src' }, [
       day.source_forwarded ? h('span', { cls: 'ps-badge', text: 'Sample · forwarded email' }) : null,
-      digest ? 'OpenTable ' + (R.title || 'Pre-shift Digest') + (R.date ? ' for ' + R.date : '') + ', received ' + when(day.source_received) + '.'
-        : 'From OpenTable’s email' + (day.source_subject ? ' “' + day.source_subject.replace(/^\s*(fwd?|fw):\s*/i, '') + '”' : '') + ', received ' + when(day.source_received) + '.']));
+      digest ? 'OpenTable ' + (R.title || 'Pre-shift Digest') + (R.date ? ' for ' + R.date : '') + (day.source_received ? ', received ' + when(day.source_received) : '') + '.'
+        : 'From OpenTable’s email' + (day.source_subject ? ' “' + day.source_subject.replace(/^\s*(fwd?|fw):\s*/i, '') + '”' : '') + (day.source_received ? ', received ' + when(day.source_received) : '') + '.']));
     var list = R.list || [];
     var has = function (r, re) { return r.tags.some(function (t) { return re.test(t); }); };
     var CELEB = /birthday|anniversary|special occasion|date night|celebrat|engagement|proposal|graduation/i;
@@ -166,12 +173,91 @@
     return card;
   }
 
-  /* ---------- 3. Notes from the Owner and managers ---------- */
+  /* ---------- 1. Education: PDFs for the team ---------- */
+  var BUCKET = 'preshift-education', MAXB = 50 * 1024 * 1024;
+  function kb(n) { n = +n || 0; return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function eduGone(e) { return !!(e && (e.code === 'PGRST205' || e.code === '42P01' || /preshift_education|schema cache|does not exist|bucket not found/i.test(e.message || ''))); }
+  function rid() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+  function educationCard() {
+    var card = h('section', { cls: 'eo-card ps-edu', 'aria-labelledby': 'psEduH' });
+    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psEduH' }, [h('span', { cls: 'eo-n', text: '1' }), 'Education'])]);
+    var msg = h('p', { cls: 'ps-edu-msg', role: 'status' });
+    var body = h('div', { cls: 'ps-edu-b' }, [h('p', { cls: 'ps-src', text: 'Loading…' })]);
+    if (isMgr()) {
+      var pick = h('input', { type: 'file', accept: 'application/pdf,.pdf', multiple: true, hidden: true, 'aria-label': 'Choose PDF files' });
+      var add = h('button', { type: 'button', cls: 'eo-btn ps-check', text: 'Add PDF', on: { click: function () { pick.click(); } } });
+      pick.addEventListener('change', function () { var f = [].slice.call(pick.files || []); pick.value = ''; if (f.length) upload(f, add, msg, body); });
+      head.appendChild(add); card.appendChild(pick);
+    }
+    card.appendChild(head); card.appendChild(msg); card.appendChild(body);
+    loadEdu(body, msg);
+    return card;
+  }
+  function loadEdu(body, msg) {
+    var sb = P.ctx.sb;
+    return sb.from('preshift_education').select('id,title,file_path,file_size,author,created_at').order('created_at', { ascending: false }).then(function (r) {
+      if (r.error) { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: eduGone(r.error) ? (P.ctx.role === 'owner' ? 'Education switches on once supabase/preshift.sql is run again in Supabase (SQL Editor > New query > paste > Run).' : 'Education isn’t switched on yet.') : 'Couldn’t load education.' })); return; }
+      var rows = r.data || [];
+      if (!rows.length) { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: isMgr() ? 'Nothing here yet. Press “Add PDF” to share wine notes, menu descriptions or service standards with the team.' : 'Nothing to read yet.' })); return; }
+      // links that open each PDF (private files: each link works for a few hours)
+      return sb.storage.from(BUCKET).createSignedUrls(rows.map(function (x) { return x.file_path; }), 6 * 3600).then(function (u) {
+        var urls = {}; ((u && u.data) || []).forEach(function (x) { if (x && x.signedUrl) urls[x.path] = x.signedUrl; });
+        body.innerHTML = '';
+        body.appendChild(h('ul', { cls: 'ps-edu-list' }, rows.map(function (d) {
+          var url = urls[d.file_path];
+          var open = url ? h('a', { cls: 'ps-edu-open', href: url, target: '_blank', rel: 'noopener' }, [h('span', { cls: 'ps-edu-ic', 'aria-hidden': 'true', text: 'PDF' }), h('span', { cls: 'ps-edu-tx' }, [h('b', { text: d.title || 'Untitled' }), h('small', { text: [kb(d.file_size), d.author ? 'added by ' + d.author : '', when(d.created_at)].filter(Boolean).join(' · ') })])])
+            : h('div', { cls: 'ps-edu-open is-off' }, [h('span', { cls: 'ps-edu-ic', 'aria-hidden': 'true', text: 'PDF' }), h('span', { cls: 'ps-edu-tx' }, [h('b', { text: d.title || 'Untitled' }), h('small', { text: 'Couldn’t open this file right now.' })])]);
+          return h('li', { cls: 'ps-edu-i' }, [open, isMgr() ? h('button', { type: 'button', cls: 'ps-note-x ps-edu-x', text: 'Delete', 'aria-label': 'Delete ' + (d.title || 'this PDF'), on: { click: function () { delEdu(d, this, body, msg); } } }) : null]);
+        })));
+      });
+    }).catch(function () { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: 'Couldn’t load education.' })); });
+  }
+  function upload(files, btn, msg, body) {
+    var sb = P.ctx.sb, bad = [], done = 0, failed = [], setup = false, denied = false;
+    files = files.filter(function (f) { var ok = (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) && f.size > 0 && f.size <= MAXB; if (!ok) bad.push(f.name); return ok; });
+    if (!files.length) { msg.className = 'ps-edu-msg err'; msg.textContent = 'Only PDF files up to 50 MB can be added.'; return; }
+    btn.disabled = true; msg.className = 'ps-edu-msg';
+    var next = function (i) {
+      if (i >= files.length) {
+        btn.disabled = false;
+        var t = done ? 'Added ' + done + ' PDF' + (done === 1 ? '' : 's') + '.' : '';
+        if (failed.length) t += (t ? ' ' : '') + 'Couldn’t add: ' + failed.join(', ') + '.' + (setup ? ' Run supabase/preshift.sql in Supabase first.' : denied ? ' Only the Owner and managers can add PDFs.' : '');
+        if (bad.length) t += (t ? ' ' : '') + 'Skipped (not a PDF, or over 50 MB): ' + bad.join(', ') + '.';
+        msg.className = 'ps-edu-msg' + (failed.length || bad.length ? ' err' : ' ok'); msg.textContent = t;
+        return loadEdu(body, msg);
+      }
+      var f = files[i], id = rid(), path = id + '.pdf';
+      msg.textContent = 'Uploading ' + f.name + (files.length > 1 ? ' (' + (i + 1) + ' of ' + files.length + ')' : '') + '…';
+      sb.storage.from(BUCKET).upload(path, f, { contentType: 'application/pdf', upsert: false }).then(function (u) {
+        if (u.error) throw u.error;
+        return sb.from('preshift_education').insert({ id: id, title: f.name.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ').trim().slice(0, 200) || 'Untitled', file_path: path, file_size: f.size }).then(function (r) {
+          if (r.error) { sb.storage.from(BUCKET).remove([path]); throw r.error; }
+          done++;
+        });
+      }).catch(function (e) {
+        failed.push(f.name);
+        if (eduGone(e)) setup = true; else if (/row-level security|permission|unauthori[sz]ed|403/i.test((e && (e.message || e.error || e.statusCode)) + '')) denied = true;
+      }).then(function () { next(i + 1); });
+    };
+    next(0);
+  }
+  function delEdu(d, btn, body, msg) {
+    if (!confirm('Delete “' + (d.title || 'this PDF') + '” for everyone?')) return;
+    btn.disabled = true;
+    P.ctx.sb.from('preshift_education').delete().eq('id', d.id).then(function (r) {
+      if (r.error) { btn.disabled = false; msg.className = 'ps-edu-msg err'; msg.textContent = 'Couldn’t delete it. Try again.'; return; }
+      P.ctx.sb.storage.from(BUCKET).remove([d.file_path]).then(function () {}, function () {});
+      msg.className = 'ps-edu-msg ok'; msg.textContent = 'Deleted “' + (d.title || 'PDF') + '”.';
+      loadEdu(body, msg);
+    }, function () { btn.disabled = false; });
+  }
+
+  /* ---------- 4. Notes from the Owner and managers ---------- */
   function notesCard() {
     var card = h('section', { cls: 'eo-card ps-notes', 'aria-labelledby': 'psNotesH' });
-    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psNotesH' }, [h('span', { cls: 'eo-n', text: '3' }), 'Notes'])]);
-    var mgr = P.ctx.role === 'owner' || P.ctx.role === 'manager' || P.ctx.role === 'scheduler';
-    if (mgr && window.EdenNotes) head.appendChild(h('button', { type: 'button', cls: 'eo-btn ps-check', text: 'Write a note', on: { click: function () { window.EdenNotes.open(); } } }));
+    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psNotesH' }, [h('span', { cls: 'eo-n', text: '4' }), 'Notes'])]);
+    var mgr = isMgr();
+    if (mgr && window.EdenNotes && window.EdenNotes.open && !P.ctx.noNotes) head.appendChild(h('button', { type: 'button', cls: 'eo-btn ps-check', text: 'Write a note', on: { click: function () { window.EdenNotes.open(); } } }));
     card.appendChild(head);
     var body = h('div', { cls: 'ps-notes-b' }, [h('p', { cls: 'ps-src', text: 'Loading…' })]);
     card.appendChild(body);
@@ -203,7 +289,7 @@
     }, function () { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: 'Couldn’t load notes.' })); });
   }
 
-  /* ---------- 2. Menu changes in the last 24 hours (from the menu editor's history) ---------- */
+  /* ---------- 3. Menu changes in the last 24 hours (from the menu editor's history) ---------- */
   function key(n) { return String(n || '').trim().toLowerCase(); }
   function money(p) { p = String(p == null ? '' : p).trim(); return p ? (/^\d/.test(p) ? '$' + p : p) : ''; }
   // what changed in one menu section, as short lines

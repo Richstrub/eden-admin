@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/editor-base.css">
-<link rel="stylesheet" href="../css/staff.css">
+<link rel="stylesheet" href="../css/staff.css?v=20261012u">
 <link rel="stylesheet" href="team.css?v=20261012o">
 </head>
 <body class="team">
@@ -61,13 +61,14 @@
 <div class="tm" id="app" hidden>
   <header class="tm-bar">
     <div class="tm-brand">EDEN <span>Team</span></div>
-    <nav class="tm-tabs" aria-label="Pages"><a href="#" id="tabSched" aria-current="page">Schedule</a><a href="#calendar" id="tabCalendar">Calendar</a><a href="#recipes" id="tabRecipes">Recipes</a></nav>
+    <nav class="tm-tabs" aria-label="Pages"><a href="#" id="tabSched" aria-current="page">Schedule</a><a href="#preshift" id="tabPreshift">Pre-shift</a><a href="#calendar" id="tabCalendar">Calendar</a><a href="#recipes" id="tabRecipes">Recipes</a></nav>
     <div class="tm-who"><b id="whoName"></b><span id="whoRole"></span></div>
     <a class="tm-btn" id="mgrLink" href="../#home" hidden>Manager site</a>
     <button class="tm-btn" type="button" data-act="chpw">Password</button>
     <button class="tm-btn" type="button" data-act="signout">Sign out</button>
   </header>
 
+  <section class="tm-recipes tm-preshift" id="preshiftView" hidden></section>
   <section class="tm-recipes" id="recipesView" hidden></section>
   <section class="tm-recipes" id="calendarView" hidden></section>
   <main class="tm-main">
@@ -131,6 +132,7 @@
 <script src="../js/recipes.js"></script>
 <script src="../js/calendar.js"></script>
 <script src="../js/account.js?v=20261012r"></script>
-<script src="team.js?v=20261012q"></script>
+<script src="../js/preshift.js?v=20261012u"></script>
+<script src="team.js?v=20261012u"></script>
 </body>
 </html>
