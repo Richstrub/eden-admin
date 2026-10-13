@@ -208,15 +208,34 @@
           $('prepTodos').appendChild($('todoSec'));
           if (!location.hash && !opened) { history.replaceState(null, '', location.pathname + '#prep'); }
         }
+        // Team > Employees > Permissions: hide what this person's sections don't include (the database enforces it too)
+        return sb.rpc('my_sections').then(function (y) { SEC = y && !y.error && y.data && !y.data.error ? y.data : null; applySections(); }, function () {});
+      }, function () {}).then(function () {
         opened = true;
         page();
-      }, function () {});
+      });
       page();
     });
   }
 
   /* ---------- your to-dos (given to you by the Owner or a manager) ---------- */
-  var todos = [], canPrep = false, opened = false;
+  var todos = [], canPrep = false, opened = false, SEC = null;
+  var TAB_PG = { tabSched: 'sched', tabPreshift: 'preshift', tabResources: 'resources', tabPrep: 'prep', tabRecipes: 'recipes', tabCalendar: 'calendar' };
+  function applySections() {
+    if (!SEC) return;
+    var off = function (k) { return SEC[k] === false; };
+    $('tabPreshift').hidden = off('preshift'); $('tabResources').hidden = off('resources');
+    $('tabRecipes').hidden = off('recipes'); $('tabCalendar').hidden = off('calendar');
+    if (off('prep')) $('tabPrep').hidden = true;
+    document.querySelector('.tm-hero').hidden = off('schedule');
+    document.querySelector('.tm-colmain').hidden = off('schedule');
+    $('timeoffSec').hidden = !me.employee || off('timeoff');
+    $('board').hidden = off('board');
+    var cookTodos = $('prepTodos').contains($('todoSec'));
+    $('tabSched').hidden = off('schedule') && off('timeoff') && off('board') && (cookTodos || off('todos'));
+  }
+  // the first page this person may open
+  function firstPage() { var a = [].filter.call(document.querySelectorAll('.tm-tabs a'), function (x) { return !x.hidden; })[0]; return a ? TAB_PG[a.id] : 'sched'; }
   function loadTodos() {
     if (!me || !me.employee) { $('todoSec').hidden = true; return; }
     sb.rpc('my_todos').then(function (r) {
@@ -255,6 +274,9 @@
   function page() {
     if ($('app').hidden || !me) return;
     var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : location.hash === '#preshift' ? 'preshift' : location.hash === '#resources' ? 'resources' : location.hash === '#prep' && canPrep ? 'prep' : 'sched';
+    // a page this person's permissions don't include: open the first one they do have
+    var tabFor = { sched: 'tabSched', preshift: 'tabPreshift', resources: 'tabResources', prep: 'tabPrep', recipes: 'tabRecipes', calendar: 'tabCalendar' };
+    if (SEC && $(tabFor[pg]).hidden) { pg = firstPage(); var want = pg === 'sched' ? '' : '#' + pg; if (location.hash !== want) history.replaceState(null, '', location.pathname + want); }
     $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; $('preshiftView').hidden = pg !== 'preshift'; $('resourcesView').hidden = pg !== 'resources'; $('prepView').hidden = pg !== 'prep'; document.querySelector('.tm-main').hidden = pg !== 'sched';
     $('tabPreshift').setAttribute('aria-current', pg === 'preshift' ? 'page' : 'false');
     $('tabResources').setAttribute('aria-current', pg === 'resources' ? 'page' : 'false');

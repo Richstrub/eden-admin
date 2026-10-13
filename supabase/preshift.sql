@@ -145,6 +145,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare r public.preshift_days; res jsonb; mgr boolean := coalesce(public.can_schedule(), false);
 begin
   if not coalesce(public.is_team(), false) then return null; end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not public.section_ok('preshift') then return null; end if;   -- Team > Permissions
   select * into r from public.preshift_days where service_date = (now() at time zone 'America/New_York')::date;
   if not found then return null; end if;
   res := coalesce(r.reservations, '{}'::jsonb);

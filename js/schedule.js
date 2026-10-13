@@ -238,6 +238,13 @@
     else renderGrid();
   }
   function renderHead() {
+    if (S.mode === 'people') {
+      S.head.innerHTML = '';
+      var n = S.employees.filter(function (e) { return e.active !== false; }).length;
+      S.head.appendChild(h('div', { cls: 'sc-titlebar' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Team' }), h('h1', { cls: 'sc-week', text: 'Employees' }),
+        h('p', { cls: 'sc-barnote', text: n + ' on the schedule' + (isOwner() ? ' · ' : '') }, isOwner() ? [h('a', { href: '#employees/permissions', text: 'Permissions: what each person can see' })] : null)])]));
+      return;
+    }
     var st = pubState(), pubAt = S.row && S.row.published_at ? new Date(S.row.published_at) : null;
     var pill = st === 'published' ? h('span', { cls: 'sc-pill ok', text: 'Published' + (pubAt ? ' ' + pubAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '') })
       : st === 'changed' ? h('span', { cls: 'sc-pill warn', text: 'Changed since publishing' })
@@ -262,8 +269,7 @@
     var nShifts = shifts().length, pend = pendingCount();
     var tabs = h('div', { cls: 'sc-tabs', role: 'tablist' }, [
       h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'grid' ? 'true' : 'false', text: 'Schedule', on: { click: function () { S.tab = 'grid'; S.view === 'month' ? loadMonth() : render(); } } }),
-      S.hasTimeOff ? h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'timeoff' ? 'true' : 'false', on: { click: function () { S.tab = 'timeoff'; loadRequests().then(render); } } }, ['Time off', pend ? h('span', { cls: 'sc-count', text: String(pend) }) : null]) : null,
-      h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'people' ? 'true' : 'false', text: 'Employees (' + S.employees.filter(function (e) { return e.active !== false; }).length + ')', on: { click: function () { S.tab = 'people'; render(); } } })
+      S.hasTimeOff ? h('button', { type: 'button', role: 'tab', 'aria-selected': S.tab === 'timeoff' ? 'true' : 'false', on: { click: function () { S.tab = 'timeoff'; loadRequests().then(render); } } }, ['Time off', pend ? h('span', { cls: 'sc-count', text: String(pend) }) : null]) : null
     ]);
     if (S.tab !== 'grid' || monthMode) {
       S.head.appendChild(h('div', { cls: 'sc-bar' }, [tabs, monthMode ? h('p', { cls: 'sc-barnote', text: 'Tap a day to open that week for editing and publishing.' }) : null,
@@ -346,7 +352,7 @@
     if (!emps.length) {
       S.body.appendChild(h('div', { cls: 'ed-banner' }, [
         h('p', { text: 'Add your team first. Enter names and mobile numbers on the Employees tab, or import the employee spreadsheet.' }),
-        h('button', { type: 'button', cls: 'ed-btn', text: 'Add employees', on: { click: function () { S.tab = 'people'; render(); } } })
+        h('a', { cls: 'ed-btn', href: '#employees', text: 'Add employees' })
       ]));
       return;
     }
@@ -793,8 +799,12 @@
 
   /* ---------- public ---------- */
   window.EdenSchedule = {
+    // ctx.mode 'people': the Employees page (Team > Employees); otherwise the Schedule
     show: function (ctx) {
-      var first = !S.ctx; S.ctx = ctx; S.el = ctx.el;
+      var first = !S.ctx; S.ctx = ctx;
+      if (S.el !== ctx.el) { S.el = ctx.el; S.built = false; }
+      S.mode = ctx.mode === 'people' ? 'people' : 'schedule';
+      if (S.mode === 'people') S.tab = 'people'; else if (S.tab === 'people') S.tab = 'grid';
       if (first || S.missing) load(); else render();
     },
     summary: function (client) {

@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/editor-base.css">
-<link rel="stylesheet" href="css/staff.css?v=20261013p">
+<link rel="stylesheet" href="css/staff.css?v=20261013q">
 </head>
 <body>
 
@@ -82,6 +82,8 @@
       <div class="sb-group">
         <p class="sb-g">Team</p>
         <a href="#schedule" data-view="schedule" data-mgr>Schedule <span class="sb-badge" data-badge="schedule" hidden></span></a>
+        <a href="#employees" data-view="employees" data-mgr>Employees</a>
+        <a href="#employees/permissions" data-view="employees/permissions" data-owner hidden class="sb-sub">Permissions</a>
         <a href="team/" target="_blank" rel="noopener">Staff page &amp; board <span aria-hidden="true">&#8599;</span></a>
         <a href="#payroll" data-view="payroll" data-owner hidden>Payroll <span class="sb-badge" data-badge="payroll" hidden></span></a>
       </div>
@@ -143,6 +145,7 @@
   <section class="view" id="viewPreshift" hidden></section>
   <section class="view" id="viewResources" hidden></section>
   <section class="view" id="viewPromo" hidden></section>
+  <section class="view" id="viewEmployees" hidden><div id="empPeople"></div><div id="empPerms" hidden></div></section>
   <section class="view soonpage" id="viewEod" hidden></section>
   <section class="view soonpage" id="viewEmail" hidden></section>
   </div>
@@ -152,7 +155,7 @@
 <script src="js/move.js"></script>
 <script src="js/menu-seed.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
-<script src="js/schedule.js?v=20261013h"></script>
+<script src="js/schedule.js?v=20261013q"></script>
 <script src="js/prep.js?v=20261013f"></script>
 <script src="js/inventory.js"></script>
 <script src="js/notes.js?v=20261012w"></script>
@@ -168,8 +171,9 @@
 <script src="js/eod.js?v=20261012m"></script>
 <script src="js/resources.js?v=20261012y"></script>
 <script src="js/promo.js?v=20261013p"></script>
+<script src="js/perms.js?v=20261013q"></script>
 <script src="js/preshift.js?v=20261012x"></script>
 <script src="js/account.js?v=20261012r"></script>
-<script src="js/staff.js?v=20261013p"></script>
+<script src="js/staff.js?v=20261013q"></script>
 </body>
 </html>

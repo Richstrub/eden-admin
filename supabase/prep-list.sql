@@ -24,9 +24,14 @@ grant execute on function public.is_cook() to authenticated;
 
 -- who can see and fill in the Prep List: the Owner, managers, Kitchen logins and cooks
 create or replace function public.can_prep() returns boolean
-language sql stable security definer set search_path = public as $$
-  select coalesce(public.staff_role() in ('owner', 'manager', 'kitchen'), false) or coalesce(public.can_schedule(), false) or coalesce(public.is_cook(), false)
-$$;
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(public.staff_role() in ('owner', 'manager'), false) or coalesce(public.can_schedule(), false) then return true; end if;
+  if to_regprocedure('public.section_ok(text)') is not null then   -- Team > Permissions decides, once permissions.sql is run
+    return coalesce(public.is_team(), false) and coalesce(public.section_ok('prep'), false);
+  end if;
+  return coalesce(public.staff_role() = 'kitchen', false) or coalesce(public.is_cook(), false);
+end $$;
 revoke execute on function public.can_prep() from anon;
 grant execute on function public.can_prep() to authenticated;
 

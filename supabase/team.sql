@@ -46,6 +46,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare w public.schedule_weeks%rowtype; me uuid; res jsonb;
 begin
   if not public.is_team() then raise exception 'not on the staff list' using errcode = '42501'; end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not public.section_ok('schedule') then raise exception 'section_off' using errcode = '42501'; end if;   -- Team > Permissions
   me := public.my_employee_id();
   select * into w from public.schedule_weeks where week_start = p_week and status = 'published';
   if not found then

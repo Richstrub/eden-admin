@@ -122,7 +122,7 @@
         show('app'); entered = session.user.id;
         if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), canMail: canMail(), canRecipes: isMgr(), isOwner: role === 'owner' });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
-        route();
+        loadSections().then(route);
         refreshToday();
         mailCounts();
       });
@@ -131,13 +131,23 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
+  // Team > Employees > Permissions: sections switched off for this login (Kitchen and Front-of-house logins)
+  var SECT = null, SECT_OF = { preshift: 'preshift', resources: 'resources', recipes: 'recipes', calendar: 'calendar', prep: 'prep' };
+  function loadSections() {
+    if (isMgr()) { SECT = null; return Promise.resolve(); }
+    return sb.rpc('my_sections').then(function (r) {
+      SECT = r && !r.error && r.data ? r.data : null;
+      document.querySelectorAll('#app [data-view]').forEach(function (a) { var k = SECT_OF[a.getAttribute('data-view')]; if (k && SECT && SECT[k] === false) a.hidden = true; });
+      document.querySelectorAll('.sb-group').forEach(function (g) { if (!g.hasAttribute('data-owner')) g.hidden = ![].some.call(g.querySelectorAll('a'), function (a) { return !a.hidden; }); });
+    }, function () { SECT = null; });
+  }
   function canPrep() { return isMgr() || role === 'kitchen'; }
   function canMail() { return role === 'owner' || role === 'manager'; }
   function mailCtx() { return { sb: sb, el: $('viewEmail'), status: status, role: role, uid: session && session.user && session.user.id, name: staffName }; }
@@ -150,10 +160,11 @@
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
     if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
     if (v.indexOf('eod/') === 0) { sub = v.slice(4); v = 'eod'; if (!/^(past|download|r\/[0-9a-f-]{36})$/.test(sub) || (sub === 'download' && role !== 'owner')) sub = sub === 'download' ? 'past' : ''; }
+    if (v.indexOf('employees/') === 0) { sub = v.slice(10) === 'permissions' && role === 'owner' ? 'permissions' : ''; v = 'employees'; }
     if (v.indexOf('promo/') === 0) { sub = v.slice(6); v = 'promo'; if (!/^(list|e\/[0-9a-f-]{36})$/.test(sub)) sub = ''; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr())) { v = 'home'; sub = ''; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
     var want = '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
@@ -167,7 +178,7 @@
     var full = v + (sub ? '/' + sub : ''), exact = !!document.querySelector('#app [data-view="' + full + '"]');
     document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
-    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : '';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
     if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }
@@ -218,6 +229,11 @@
     } else if (v === 'preshift') {
       status('');
       if (window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('viewPreshift'), status: status, role: role, name: staffName });
+    } else if (v === 'employees') {
+      status('');
+      $('empPeople').hidden = sub === 'permissions'; $('empPerms').hidden = sub !== 'permissions';
+      if (sub === 'permissions') { if (window.EdenPerms) window.EdenPerms.show({ sb: sb, el: $('empPerms') }); }
+      else if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('empPeople'), status: status, role: role, user: session && session.user, mode: 'people' });
     } else if (v === 'promo') {
       status('');
       if (window.EdenPromo) window.EdenPromo.show({ sb: sb, el: $('viewPromo'), status: status, role: role, name: staffName, sub: sub });
