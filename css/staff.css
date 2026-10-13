@@ -1632,3 +1632,10 @@ body.nt-open #app{visibility:hidden!important}
 .eo-ta{resize:none!important}
 .eo-f.eo-num{align-content:end}
 .eo-in::placeholder{color:#b9b2a6}
+/* Today: to-dos in Needs you */
+.td-tick{flex:none;width:22px;height:22px;border-radius:50%;border:1.5px solid rgba(15,18,21,.35);background:#fff;cursor:pointer;position:relative;transition:background .15s,border-color .15s}
+.td-tick:hover{border-color:var(--ember)}
+.td-tick.on{background:var(--ember);border-color:var(--ember)}
+.td-tick.on::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.td-item.ticked .td-what b{text-decoration:line-through;color:#857f75}
+.td-item.td-todo.late .td-what span{color:#a3392b}

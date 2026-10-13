@@ -96,10 +96,22 @@
       items.push({ area: 'Payroll', title: 'Payroll for ' + weekRange(w.lastWk) + (d.pay ? ' is still a draft' : ' isn’t started'), sub: 'Check the hours, then finalize and download for the accountant', href: '#payroll', cta: 'Finish' });
       counts.payroll = d.pay ? 'Draft' : 'To do';
     }
-    // to-dos due today or overdue
+    // every open to-do: overdue first, then by due date, then the ones with no date
     if (d.todos) {
-      var due = d.todos.filter(function (t) { return !t.done && t.due && t.due <= w.today; });
-      if (due.length) items.push({ area: 'To-do', title: plural(due.length, 'to-do') + ' due', sub: due.slice(0, 3).map(function (t) { return t.title; }).join(' · '), href: '#todo', cta: 'Open' });
+      var open = d.todos.filter(function (t) { return !t.done && String(t.title || '').trim(); }).sort(function (a, b) {
+        var ka = a.due || '9999', kb = b.due || '9999'; return ka < kb ? -1 : ka > kb ? 1 : String(a.title).localeCompare(String(b.title));
+      });
+      var SHOW = 8;
+      open.slice(0, SHOW).forEach(function (t) {
+        var late = t.due && t.due < w.today, today = t.due === w.today;
+        items.push({ area: 'To-do', title: t.title, todo: t, hot: late || today, late: late,
+          sub: late ? 'Overdue · was due ' + parseDay(t.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+            : today ? 'Due today'
+            : t.due ? 'Due ' + parseDay(t.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+            : 'No due date',
+          href: '#todo', cta: 'Open' });
+      });
+      if (open.length > SHOW) items.push({ area: 'To-do', title: plural(open.length - SHOW, 'more to-do'), sub: 'The rest of your list', href: '#todo', cta: 'See all' });
     }
     counts.total = items.length;
     // tonight and the week ahead
@@ -142,8 +154,9 @@
     } else {
       var list = h('ul', { cls: 'td-list' });
       r.items.forEach(function (it) {
-        list.appendChild(h('li', { cls: 'td-item' + (it.hot ? ' hot' : '') }, [
-          h('span', { cls: 'td-area', text: it.area }),
+        var tick = it.todo ? h('button', { type: 'button', cls: 'td-tick', title: 'Mark done', 'aria-label': 'Mark done: ' + it.title, on: { click: function () { tickTodo(ctx, it.todo, this); } } }) : null;
+        list.appendChild(h('li', { cls: 'td-item' + (it.hot ? ' hot' : '') + (it.todo ? ' td-todo' : '') + (it.late ? ' late' : '') }, [
+          h('span', { cls: 'td-area', text: it.area }), tick,
           h('span', { cls: 'td-what' }, [h('b', { text: it.title }), h('span', { text: it.sub })]),
           h('a', { cls: 'td-go', href: it.href, text: it.cta, 'aria-label': it.cta + ': ' + it.title, on: { click: function (e) { e.preventDefault(); go(it.href); } } })
         ]));
@@ -182,6 +195,17 @@
     ]));
     grid.appendChild(side);
     el.appendChild(grid);
+  }
+
+  // tick a to-do off right here (the same as ticking it on the To-do page)
+  function tickTodo(ctx, t, btn) {
+    btn.disabled = true; btn.classList.add('on');
+    var row = btn.closest('.td-item'); if (row) row.classList.add('ticked');
+    ctx.sb.from('todos').update({ done: true, done_at: new Date().toISOString() }).eq('id', t.id).then(function (r) {
+      if (r && r.error) { btn.disabled = false; btn.classList.remove('on'); if (row) row.classList.remove('ticked'); if (ctx.status) ctx.status('Couldn’t mark it done. Try again.', 'err'); return; }
+      if (ctx.status) ctx.status('Done: ' + t.title, 'ok');
+      setTimeout(function () { window.EdenToday.show(ctx); }, 450);
+    });
   }
 
   window.EdenToday = {
