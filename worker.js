@@ -418,10 +418,13 @@ export default {
     if (url.pathname.indexOf('/promo/') === 0) { const r = await promoRoute(req, env, url.pathname, inqKey(env)); if (r) return r; }
     return env.ASSETS.fetch(req);
   },
-  // every 20 minutes (wrangler.jsonc "triggers"): look for today's OpenTable email for Pre-shift
+  // wrangler.jsonc "triggers" (every 5 minutes)
   async scheduled(evt, env, ctx) {
     // every 5 minutes: promotional emails that are due
-    if (evt && evt.cron === '*/5 * * * *') { ctx.waitUntil(promoRun(env, inqKey(env)).catch(() => null)); return; }
+    ctx.waitUntil(promoRun(env, inqKey(env)).catch(() => null));
+    // every 20 minutes (on the hour, :20 and :40): Pre-shift and the Prep List
+    const min = new Date(evt && evt.scheduledTime ? evt.scheduledTime : Date.now()).getUTCMinutes();
+    if (min % 20 >= 5) return;
     ctx.waitUntil(preshiftRefresh(env, inqKey(env), false).catch(() => null));
     // Prep List: the 8:00 pm reset for the next day (New York time), if nobody did it
     if (inqKey(env) && env.SUPABASE_URL) ctx.waitUntil(rpc(env, 'prep_auto_server', { p_key: inqKey(env) }).catch(() => null));

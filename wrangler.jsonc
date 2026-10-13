@@ -26,7 +26,7 @@
     "PROMO_REPLY_TO": "info@edencny.com"
   },
   // every 20 minutes the worker looks for today's OpenTable email (Pre-shift)
-  // and every 5 minutes it sends promotional emails that are due
-  "triggers": { "crons": ["*/20 * * * *", "*/5 * * * *"] },
+  // (the worker runs every 5 minutes: promotional emails that are due each time, Pre-shift and the Prep List every 20 minutes)
+  "triggers": { "crons": ["*/5 * * * *"] },
   "keep_vars": true
 }
