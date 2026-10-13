@@ -189,9 +189,10 @@
   function render() {
     var el = R.el; if (!el) return;
     el.innerHTML = '';
-    var wrap = h('div', { cls: 'rc-in' }); el.appendChild(wrap);
+    var app = isApp();
+    var wrap = h('div', { cls: 'rc-in' + (app ? ' rc-app' : '') }); el.appendChild(wrap);
     wrap.appendChild(h('div', { cls: 'rc-title' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & Bar' }), h('h1', { cls: 'sc-week', text: 'Recipes' })]),
+      h('div', null, [h('p', { cls: 'sc-eyebrow', text: app ? 'Kitchen' : 'Kitchen & Bar' }), h('h1', { cls: 'sc-week', text: 'Recipes' })]),
       canEdit() && !R.missing ? h('button', { type: 'button', cls: 'ed-btn', text: 'New recipe', on: { click: function () { startEdit(blank()); } } }) : null
     ]));
     wrap.appendChild(h('p', { cls: 'rc-status', role: 'status' }));
@@ -209,6 +210,7 @@
     body.appendChild(main);
     wrap.appendChild(body);
   }
+  function isApp() { return !!(R.ctx && R.ctx.app); }
   function categories() { var s = {}; R.list.forEach(function (x) { if (x.category) s[x.category] = 1; }); return Object.keys(s).sort(); }
   function sidebar() {
     var side = h('aside', { cls: 'rc-side' });
@@ -217,7 +219,11 @@
     var cats = categories();
     var sel = h('select', { 'aria-label': 'Category' }, [h('option', { value: '', text: 'All categories' })].concat(cats.map(function (c) { return h('option', { value: c, text: c }); })));
     sel.value = R.cat; sel.addEventListener('change', function () { R.cat = sel.value; paintList(); });
-    side.appendChild(h('div', { cls: 'rc-find' }, [q, cats.length ? sel : null]));
+    // on the staff page: category chips instead of a menu
+    var chips = isApp() && cats.length ? h('div', { cls: 'rc-chips', role: 'group', 'aria-label': 'Category' }, [''].concat(cats).map(function (c) {
+      return h('button', { type: 'button', cls: 'rc-chip', 'aria-pressed': R.cat === c ? 'true' : 'false', text: c || 'All', on: { click: function () { R.cat = c; chips.querySelectorAll('.rc-chip').forEach(function (b) { b.setAttribute('aria-pressed', b.textContent === (c || 'All') ? 'true' : 'false'); }); paintList(); } } });
+    })) : null;
+    side.appendChild(h('div', { cls: 'rc-find' }, [q, chips || (cats.length ? sel : null)]));
     var ul = h('div', { cls: 'rc-list' }); side.appendChild(ul);
     function paintList() {
       ul.innerHTML = '';
@@ -231,7 +237,7 @@
       items.forEach(function (x) {
         if ((x.category || '') !== lastCat) { lastCat = x.category || ''; ul.appendChild(h('div', { cls: 'rc-cat', text: lastCat || 'Other' })); }
         ul.appendChild(h('button', { type: 'button', cls: 'rc-item' + (R.cur && R.cur.id === x.id ? ' on' : ''), on: { click: function () { openRecipe(x); } } }, [
-          h('b', { text: x.name || 'Untitled' }), h('span', { text: x.yield_qty ? 'Makes ' + fmtAmount(x.yield_qty, normUnit(x.yield_unit)) + ' ' + (x.yield_unit || '') : '' })
+          h('b', { text: x.name || 'Untitled' }), h('span', { text: [x.yield_qty ? 'Makes ' + fmtAmount(x.yield_qty, normUnit(x.yield_unit)) + ' ' + (x.yield_unit || '') : '', isApp() ? x.time : ''].filter(Boolean).join(' · ') })
         ]));
       });
     }
@@ -241,7 +247,9 @@
   function openRecipe(x) {
     if (R.edit && R.dirty && !confirm('Leave without saving your changes?')) return;
     R.edit = null; R.dirty = false; R.cur = x; R.factor = 1; R.target = null; render();
-    var m = R.el.querySelector('.rc-main'); if (m && m.getBoundingClientRect().top < 0) m.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var m = R.el.querySelector('.rc-main');
+    if (isApp()) window.scrollTo({ top: 0 });
+    else if (m && m.getBoundingClientRect().top < 0) m.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /* ---------- viewer with scaling ---------- */
@@ -250,10 +258,26 @@
     var n = ing.qty * f, unit = normUnit(ing.unit);
     return R.smart ? smart(n, unit) : { n: n, unit: unit };
   }
+  // what's been gathered / done while cooking (this device, until the page is closed)
+  R.checks = {};
+  function checks(id) { return R.checks[id] = R.checks[id] || { i: {}, s: {} }; }
+  // keep the screen on while a recipe is open (phones and iPads that support it)
+  R.wake = null;
+  function wakeOn(on, btn) {
+    if (!('wakeLock' in navigator)) return;
+    if (!on) { if (R.wake) { R.wake.release().catch(function () {}); R.wake = null; } if (btn) btn.setAttribute('aria-pressed', 'false'); return; }
+    navigator.wakeLock.request('screen').then(function (l) { R.wake = l; if (btn) btn.setAttribute('aria-pressed', 'true'); l.addEventListener('release', function () { if (R.wake === l) { R.wake = null; var b = R.el && R.el.querySelector('.rc-wake'); if (b) b.setAttribute('aria-pressed', 'false'); } }); }, function () {});
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && R.wantWake && !R.wake && R.el && !R.el.hidden) wakeOn(true, R.el.querySelector('.rc-wake')); });
   function viewer(x) {
     var box = h('article', { cls: 'rc-card' });
     var f = R.factor;
     var yUnit = x.yield_unit || '';
+    var ck = checks(x.id);
+    if (isApp()) box.appendChild(h('div', { cls: 'rc-topbar' }, [
+      h('button', { type: 'button', cls: 'rc-back', on: { click: function () { R.cur = null; render(); window.scrollTo({ top: 0 }); } } }, [h('span', { 'aria-hidden': 'true', text: '‹ ' }), 'All recipes']),
+      'wakeLock' in navigator ? h('button', { type: 'button', cls: 'rc-wake', 'aria-pressed': R.wake ? 'true' : 'false', title: 'Keep the screen from going dark while you cook', text: 'Keep screen on', on: { click: function () { R.wantWake = !R.wake; wakeOn(!R.wake, this); } } }) : null
+    ]));
     box.appendChild(h('header', { cls: 'rc-head' }, [
       h('div', null, [
         x.category ? h('p', { cls: 'rc-catline', text: x.category }) : null,
@@ -261,7 +285,7 @@
         h('p', { cls: 'rc-meta', text: [x.yield_qty ? 'Base recipe makes ' + fmtAmount(x.yield_qty, normUnit(yUnit)) + ' ' + yUnit : '', x.time ? x.time : '', x.allergens ? 'Allergens: ' + x.allergens : ''].filter(Boolean).join(' · ') })
       ]),
       h('div', { cls: 'rc-acts' }, [
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } }),
+        isApp() ? null : h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } }),
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Duplicate', on: { click: function () { var c = JSON.parse(JSON.stringify(x)); c.id = uid(); c.name = (x.name || '') + ' (copy)'; c._new = true; startEdit(c); } } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn', text: 'Edit', on: { click: function () { startEdit(JSON.parse(JSON.stringify(x))); } } }) : null
       ])
@@ -273,30 +297,44 @@
     var custom = h('input', { type: 'text', inputmode: 'decimal', cls: 'rc-x', value: [0.5, 1, 2, 3, 4].indexOf(f) === -1 || R.target != null ? decStr(f, 3) : '', placeholder: 'e.g. 1.5', 'aria-label': 'Custom multiplier' });
     custom.addEventListener('change', function () { var v = parseQty(custom.value); if (v && v > 0) { R.factor = v; R.target = null; render(); } });
     sc.appendChild(h('label', { cls: 'rc-scl' }, [h('span', { text: 'Scale' }), mult]));
-    sc.appendChild(h('label', { cls: 'rc-scl' }, [h('span', { text: 'Or ×' }), custom]));
+    if (!isApp()) sc.appendChild(h('label', { cls: 'rc-scl' }, [h('span', { text: 'Or ×' }), custom]));
     if (x.yield_qty) {
       var tgt = h('input', { type: 'text', inputmode: 'decimal', cls: 'rc-x', value: R.target != null ? fmtAmount(R.target, normUnit(yUnit)) : '', placeholder: fmtAmount(x.yield_qty * f, normUnit(yUnit)), 'aria-label': 'Amount to make' });
       tgt.addEventListener('change', function () { var v = parseQty(tgt.value); if (v && v > 0) { R.target = v; R.factor = v / x.yield_qty; render(); } });
       sc.appendChild(h('label', { cls: 'rc-scl' }, [h('span', { text: 'Make' }), h('div', { cls: 'rc-make' }, [tgt, h('em', { text: yUnit })])]));
     }
     var sm = h('input', { type: 'checkbox' }); sm.checked = R.smart; sm.addEventListener('change', function () { R.smart = sm.checked; render(); });
-    sc.appendChild(h('label', { cls: 'sc-check rc-smart', title: 'Show amounts in the easiest unit to measure, e.g. 48 tsp as 1 cup' }, [sm, ' Smart units']));
+    if (!isApp()) sc.appendChild(h('label', { cls: 'sc-check rc-smart', title: 'Show amounts in the easiest unit to measure, e.g. 48 tsp as 1 cup' }, [sm, ' Smart units']));
     box.appendChild(sc);
-    box.appendChild(h('p', { cls: 'rc-yield', text: (Math.abs(f - 1) < 1e-9 ? 'Base recipe' : 'Scaled ' + decStr(f, 3) + '×') + (x.yield_qty ? ' · makes ' + fmtAmount(x.yield_qty * f, normUnit(yUnit)) + ' ' + yUnit : '') }));
+    box.appendChild(h('p', { cls: 'rc-yield' + (Math.abs(f - 1) < 1e-9 ? ' is-base' : ''), text: (Math.abs(f - 1) < 1e-9 ? 'Base recipe' : 'Scaled ' + decStr(f, 3) + '×') + (x.yield_qty ? ' · makes ' + fmtAmount(x.yield_qty * f, normUnit(yUnit)) + ' ' + yUnit : '') }));
     // ingredients
     var tb = h('tbody');
-    (x.ingredients || []).forEach(function (ing) {
+    (x.ingredients || []).forEach(function (ing, idx) {
       if (ing.head) { tb.appendChild(h('tr', { cls: 'rc-ihead' }, h('td', { colspan: '3', text: ing.item }))); return; }
       var s = scaled(ing, f);
-      tb.appendChild(h('tr', null, [
+      // tap an ingredient once it's gathered or weighed out
+      var tr = h('tr', { cls: 'rc-irow' + (ck.i[idx] ? ' is-got' : ''), role: 'checkbox', tabindex: '0', 'aria-checked': ck.i[idx] ? 'true' : 'false', title: 'Tap when you have it' });
+      var flip = function () { ck.i[idx] = !ck.i[idx]; tr.classList.toggle('is-got', ck.i[idx]); tr.setAttribute('aria-checked', ck.i[idx] ? 'true' : 'false'); paintClear(); };
+      tr.addEventListener('click', flip); tr.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+      tb.appendChild(tr);
+      [
         h('td', { cls: 'rc-amt', text: fmtAmount(s.n, s.unit) }),
         h('td', { cls: 'rc-unit', text: unitLabel(s.unit, s.n) }),
         h('td', { cls: 'rc-ing' }, [h('span', { text: ing.item || '' }), ing.note ? h('small', { text: ing.note }) : null])
-      ]));
+      ].forEach(function (td) { tr.appendChild(td); });
     });
-    box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Ingredients' }), h('table', { cls: 'rc-ings' }, tb)]));
+    var clear = h('button', { type: 'button', cls: 'rc-clear', text: 'Clear ticks', on: { click: function () { R.checks[x.id] = { i: {}, s: {} }; render(); } } });
+    function paintClear() { var any = Object.keys(ck.i).some(function (k) { return ck.i[k]; }) || Object.keys(ck.s).some(function (k) { return ck.s[k]; }); clear.hidden = !any; }
+    box.appendChild(h('section', { cls: 'rc-sec' }, [h('div', { cls: 'rc-sech' }, [h('h3', { text: 'Ingredients' }), clear]), h('table', { cls: 'rc-ings' }, tb)]));
     var steps = String(x.method || '').split('\n').map(function (s) { return s.replace(/^\s*\d+[.)]\s*/, '').trim(); }).filter(Boolean);
-    if (steps.length) box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Method' }), h('ol', { cls: 'rc-steps' }, steps.map(function (s) { return h('li', { text: s }); }))]));
+    // tap a step when it's done
+    if (steps.length) box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Method' }), h('ol', { cls: 'rc-steps' }, steps.map(function (st, si) {
+      var li = h('li', { cls: ck.s[si] ? 'is-done' : null, role: 'checkbox', tabindex: '0', 'aria-checked': ck.s[si] ? 'true' : 'false', text: st });
+      var flip = function () { ck.s[si] = !ck.s[si]; li.classList.toggle('is-done', ck.s[si]); li.setAttribute('aria-checked', ck.s[si] ? 'true' : 'false'); paintClear(); };
+      li.addEventListener('click', flip); li.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+      return li;
+    }))]));
+    paintClear();
     if ((x.notes || '').trim()) box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Notes' }), h('p', { cls: 'rc-notes', text: x.notes })]));
     if (Math.abs(f - 1) > 1e-9) box.appendChild(h('p', { cls: 'rc-fine', text: 'Times, pan sizes and seasoning don’t always scale evenly. Taste and adjust.' }));
     if (x.updated_at) box.appendChild(h('p', { cls: 'rc-fine', text: 'Last updated ' + new Date(x.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + (x.updated_by ? ' by ' + x.updated_by : '') }));

@@ -197,13 +197,24 @@
       loadMyOff().then(loadView);
       loadTodos();
       // the Prep List tab: cooks, managers and the kitchen (supabase/prep-list.sql)
-      sb.rpc('can_prep').then(function (x) { canPrep = !!(x && !x.error && x.data); $('tabPrep').hidden = !canPrep; if (location.hash === '#prep') page(); }, function () {});
+      sb.rpc('can_prep').then(function (x) {
+        canPrep = !!(x && !x.error && x.data); $('tabPrep').hidden = !canPrep;
+        // cooks (and Kitchen logins): Prep List and Recipes come first, and the page opens on the Prep List
+        var mgr = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
+        if (canPrep && !mgr) {
+          var nav = $('tabPrep').parentNode; nav.insertBefore($('tabRecipes'), nav.firstChild); nav.insertBefore($('tabPrep'), nav.firstChild);
+          document.body.classList.add('is-cook');
+          if (!location.hash && !opened) { history.replaceState(null, '', location.pathname + '#prep'); }
+        }
+        opened = true;
+        page();
+      }, function () {});
       page();
     });
   }
 
   /* ---------- your to-dos (given to you by the Owner or a manager) ---------- */
-  var todos = [], canPrep = false;
+  var todos = [], canPrep = false, opened = false;
   function loadTodos() {
     if (!me || !me.employee) { $('todoSec').hidden = true; return; }
     sb.rpc('my_todos').then(function (r) {
@@ -252,12 +263,12 @@
     document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : pg === 'prep' ? 'Prep List · Eden Team' : 'Eden Team';
     var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
-    if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
+    if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, app: true, status: st($('recipesView')) });
     // Pre-shift: everyone on the team reads it; the Owner and managers can add and delete education PDFs here too
     if (pg === 'preshift' && window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('preshiftView'), status: function () {}, name: (me.employee && me.employee.name) || '', api: '../', noNotes: true,
       role: me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee') });
     var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
-    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
+    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, app: true });
     if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }

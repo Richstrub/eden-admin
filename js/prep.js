@@ -114,7 +114,8 @@
   function paintEntries() {
     if (!P.el) return;
     var a = document.activeElement;
-    P.el.querySelectorAll('tr[data-k]').forEach(function (tr) {
+    P.el.querySelectorAll('[data-k]').forEach(function (tr) {
+      var pp = tr.querySelector('.pa-prep'); if (pp) paintPrep(pp, entry(tr.getAttribute('data-k')).prep || '');
       var e = entry(tr.getAttribute('data-k'));
       tr.classList.toggle('is-done', !!e.done);
       var b = tr.querySelector('.pp-box'); if (b) b.setAttribute('aria-checked', e.done ? 'true' : 'false');
@@ -123,7 +124,7 @@
       if (sel && sel !== a) { var pv = e.prep || ''; if (pv && !sel.querySelector('option[value="' + pv.replace(/"/g, '') + '"]')) sel.appendChild(h('option', { value: pv, text: pv })); sel.value = pv; paintSel(sel); }
       var ib = tr.querySelector('.pp-inibtn'); if (ib) ib.textContent = e.ini || '';
     });
-    paintCount();
+    if (P.ctx && P.ctx.app) appCount(); else paintCount();
   }
   function paintCount() {
     var c = P.el && P.el.querySelector('.pp-count'); if (!c) return;
@@ -339,8 +340,144 @@
     return { el: box, weight: n + 3.5 };
   }
 
+  /* ---------- the cooks' screen (staff page): a clean checklist, made for phones and iPads ---------- */
+  P.filter = 'all'; P.q = ''; P.editing = false;
+  function appItems(secs) {
+    // every line, in order, grouped by section and dish (same lines and keys as the printable list)
+    return secs.map(function (sec) {
+      var groups = [];
+      sec.dishes.forEach(function (dish) {
+        var items = [];
+        dish.parts.forEach(function (p, i) {
+          var key = 'd:' + sec.id + ':' + keyOf(dish.name) + ':' + keyOf(p); if (P.st.removed[key]) return;
+          var main = i < (dish.mainN || 0);
+          items.push({ k: key, label: p, sub: main && dish.notes[keyOf(p)] ? cap(dish.notes[keyOf(p)]) : '' });
+        });
+        if (items.length) groups.push({ name: dish.basic ? '' : dish.name, src: dish.src || '', items: items });
+      });
+      var ex = (P.st.extra[sec.id] || []).map(function (name) { return { k: 'x:' + sec.id + ':' + keyOf(name), label: name, sub: '', extra: name }; });
+      if (ex.length) groups.push({ name: sec.basic ? '' : 'Also', src: '', items: ex });
+      return { sec: sec, groups: groups };
+    });
+  }
+  function appCount() {
+    var all = P.appKeys || [], d = 0; all.forEach(function (k) { if (entry(k).done) d++; });
+    var t = P.el && P.el.querySelector('.pa-progt'), b = P.el && P.el.querySelector('.pa-prog i');
+    if (t) t.textContent = d + ' of ' + all.length + ' done';
+    if (b) b.style.width = (all.length ? Math.round(d / all.length * 100) : 0) + '%';
+    if (P.el) P.el.querySelectorAll('.pa-sec').forEach(function (sec) {
+      var ks = (sec.getAttribute('data-keys') || '').split('\n').filter(Boolean), n = 0; ks.forEach(function (k) { if (entry(k).done) n++; });
+      var c = sec.querySelector('.pa-sec-n'); if (c) c.textContent = n + '/' + ks.length;
+      sec.classList.toggle('is-all', ks.length > 0 && n === ks.length);
+    });
+  }
+  function seg(cls, label, opts, cur, pick) {
+    return h('div', { cls: 'pa-seg ' + cls, role: 'group', 'aria-label': label }, opts.map(function (o) {
+      return h('button', { type: 'button', 'aria-pressed': o[0] === cur ? 'true' : 'false', text: o[1], on: { click: function () { pick(o[0]); } } });
+    }));
+  }
+  function appItem(it, secId) {
+    var k = it.k, e = entry(k);
+    var chk = h('button', { type: 'button', cls: 'pp-box pa-check', role: 'checkbox', 'aria-checked': e.done ? 'true' : 'false', 'aria-label': 'Done: ' + it.label });
+    var oh = h('input', { type: 'text', cls: 'pa-oh', 'data-f': 'onhand', value: e.onhand || '', placeholder: 'On hand', 'aria-label': 'On hand: ' + it.label, maxlength: '40', autocomplete: 'off', spellcheck: 'false', enterkeyhint: 'done' });
+    oh.addEventListener('input', function () { setField(k, 'onhand', oh.value, true); });
+    oh.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') oh.blur(); });
+    var prep = h('div', { cls: 'pa-prep', role: 'group', 'aria-label': 'Prep: ' + it.label }, [['Do', 'Do'], ['X', 'X']].map(function (o) {
+      return h('button', { type: 'button', 'data-v': o[0], 'aria-pressed': e.prep === o[0] ? 'true' : 'false', text: o[1], on: { click: function () {
+        var nv = entry(k).prep === o[0] ? '' : o[0]; setField(k, 'prep', nv); paintPrep(prep, nv);
+      } } });
+    }));
+    var ini = iniBtn(k, it.label); ini.classList.add('pa-ini');
+    var row = h('div', { cls: 'pa-item' + (e.done ? ' is-done' : ''), 'data-k': k }, [
+      chk,
+      h('div', { cls: 'pa-name' }, [h('b', { text: it.label }), it.sub ? h('span', { text: it.sub }) : null, it.extra ? h('span', { text: 'Added' }) : null]),
+      h('div', { cls: 'pa-ctl' }, [oh, prep, ini]),
+      P.editing ? h('button', { type: 'button', cls: 'pa-x', 'aria-label': 'Take ' + it.label + ' off the list', text: '✕', on: { click: function () { if (it.extra) delExtra(secId, it.extra); else hideLine(k); } } }) : null
+    ]);
+    chk.addEventListener('click', function () {
+      var on = !entry(k).done;
+      setField(k, 'done', on);
+      if (on && !(entry(k).ini || '').trim() && P.st.me) { ini.textContent = initials(P.st.me); setField(k, 'ini', ini.textContent); }
+      chk.setAttribute('aria-checked', on ? 'true' : 'false'); row.classList.toggle('is-done', on); appCount();
+    });
+    return row;
+  }
+  function paintPrep(box, v) { box.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-v') === v ? 'true' : 'false'); }); }
+  function renderApp() {
+    var el = P.el; el.innerHTML = '';
+    var wrap = h('div', { cls: 'pa' }); el.appendChild(wrap);
+    var menu = getMenu();
+    if (!menu || !P.st) { wrap.appendChild(h('p', { cls: 'pa-empty', text: 'Loading the prep list…' })); return; }
+    if (P.denied) { wrap.appendChild(h('p', { cls: 'pa-empty', text: 'The Prep List is for the kitchen: the Owner, managers and cooks.' })); return; }
+    var data = appItems(sections(menu));
+    P.appKeys = []; data.forEach(function (d) { d.groups.forEach(function (g) { g.items.forEach(function (it) { P.appKeys.push(it.k); }); }); });
+    var resetInfo = P.st.reset_at ? (P.st.reset_auto ? 'Reset automatically ' : 'Reset by ' + (P.st.reset_by || 'a manager') + ' ') + new Date(P.st.reset_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    // top: the day, and how far along
+    wrap.appendChild(h('header', { cls: 'pa-top' }, [
+      h('div', { cls: 'pa-title' }, [h('p', { cls: 'pa-eyebrow', text: P.bar ? 'Bar' : 'Kitchen' }), h('h1', { text: P.bar ? 'Bar Prep' : 'Prep List' }),
+        h('p', { cls: 'pa-for', text: 'For ' + longDay(P.st.for_date) })]),
+      P.st.can_reset ? h('button', { type: 'button', cls: 'pa-reset', text: 'Reset for next day', on: { click: resetList } }) : null
+    ]));
+    wrap.appendChild(h('div', { cls: 'pa-progress' }, [h('div', { cls: 'pa-prog', 'aria-hidden': 'true' }, h('i')), h('span', { cls: 'pa-progt' })]));
+    wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));
+    if (P.db === false && P.ctx.role === 'owner') wrap.appendChild(h('p', { cls: 'pp-setup', text: 'To share the Prep List, run supabase/prep-list.sql in Supabase, then reload.' }));
+    // controls
+    var q = h('input', { type: 'search', cls: 'pa-q', placeholder: 'Find an item', value: P.q, 'aria-label': 'Find an item', autocomplete: 'off' });
+    q.addEventListener('input', function () { P.q = q.value; paintBody(); });
+    wrap.appendChild(h('div', { cls: 'pa-ctls' }, [
+      h('div', { cls: 'pa-qwrap' }, q),
+      seg('pa-show', 'Show', [['all', 'All'], ['todo', 'To do'], ['done', 'Done']], P.filter, function (v) { P.filter = v; renderApp(); }),
+      seg('pa-list', 'List', [['k', 'Kitchen'], ['b', 'Bar']], P.bar ? 'b' : 'k', function (v) { P.bar = v === 'b'; renderApp(); }),
+      h('button', { type: 'button', cls: 'pa-edit', 'aria-pressed': P.editing ? 'true' : 'false', text: P.editing ? 'Done editing' : 'Edit list', on: { click: function () { P.editing = !P.editing; renderApp(); } } })
+    ]));
+    // jump to a section
+    if (data.length > 1) wrap.appendChild(h('nav', { cls: 'pa-jump', 'aria-label': 'Sections' }, data.filter(function (d) { return d.groups.length || P.editing; }).map(function (d) {
+      return h('button', { type: 'button', text: d.sec.title, on: { click: function () { var t = wrap.querySelector('[data-sec="' + d.sec.id + '"]'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } } });
+    })));
+    var body = h('div', { cls: 'pa-body' }); wrap.appendChild(body);
+    function paintBody() {
+      body.innerHTML = '';
+      var words = fold(P.q).split(/\s+/).filter(Boolean), shownN = 0;
+      data.forEach(function (d) {
+        var keys = [], groups = [];
+        d.groups.forEach(function (g) {
+          g.items.forEach(function (it) { keys.push(it.k); });
+          var its = g.items.filter(function (it) {
+            var e = entry(it.k);
+            if (P.filter === 'todo' && e.done) return false;
+            if (P.filter === 'done' && !e.done) return false;
+            var hay = fold(it.label + ' ' + g.name + ' ' + (it.sub || ''));
+            return words.every(function (w) { return hay.indexOf(w) !== -1; });
+          });
+          if (its.length) groups.push({ g: g, items: its });
+        });
+        if (!groups.length && !P.editing) return;
+        var sec = h('section', { cls: 'pa-sec', 'data-sec': d.sec.id, 'data-keys': keys.join('\n') }, [
+          h('header', { cls: 'pa-sec-h' }, [h('h2', { text: d.sec.title }), h('span', { cls: 'pa-sec-n' })])
+        ]);
+        groups.forEach(function (gr) {
+          if (gr.g.name) sec.appendChild(h('div', { cls: 'pa-dish' }, [h('b', { text: gr.g.name }), gr.g.src ? h('span', { text: gr.g.src }) : null]));
+          gr.items.forEach(function (it) { sec.appendChild(appItem(it, d.sec.id)); shownN++; });
+        });
+        if (P.editing) {
+          var inp = h('input', { type: 'text', placeholder: 'Add an item to ' + d.sec.title, 'aria-label': 'Add an item to ' + d.sec.title });
+          var go = function () { var v = cap(inp.value); if (v) addExtra(d.sec.id, v); };
+          inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+          sec.appendChild(h('div', { cls: 'pa-add' }, [inp, h('button', { type: 'button', text: 'Add', on: { click: go } })]));
+        }
+        body.appendChild(sec);
+      });
+      if (!shownN && !P.editing) body.appendChild(h('p', { cls: 'pa-empty', text: P.q ? 'Nothing matches “' + P.q.trim() + '”.' : P.filter === 'todo' ? 'Everything’s done. Nice work.' : P.filter === 'done' ? 'Nothing ticked off yet.' : (P.bar ? 'No cocktails with ingredients on the menu yet.' : 'No dishes on the Kitchen menu yet.') }));
+      if (resetInfo) body.appendChild(h('p', { cls: 'pa-foot', text: resetInfo + ' · resets for the next day at 8:00 pm' }));
+      appCount();
+    }
+    paintBody();
+  }
+  function fold(x) { return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
   function render() {
     var el = P.el; if (!el) return;
+    if (P.ctx && P.ctx.app) { renderApp(); return; }
     var menu = getMenu();
     el.innerHTML = '';
     var wrap = h('div', { cls: 'pp-in' });
