@@ -167,7 +167,7 @@
       .catch(function (err) {
         if (err && err.code === '23505') { status('That email is already used by another employee.', 'err'); return; }
         if (err && /only the owner/i.test(err.message || '')) { status('Only the Owner can change permissions.', 'err'); return; }
-        if (err && (err.code === '23514' || /employees_access_check/i.test(err.message || ''))) { status(e.access === 'server' ? 'The Server permission switches on once supabase/servers.sql is run in Supabase (SQL Editor → New query → paste → Run).' : 'The Cook permission switches on once supabase/prep-list.sql is run in Supabase (SQL Editor → New query → paste → Run).', 'err'); return; }
+        if (err && (err.code === '23514' || /employees_access_check/i.test(err.message || ''))) { status(e.access === 'server' ? 'The Server permission switches on once supabase/server.sql is run in Supabase (SQL Editor → New query → paste → Run).' : 'The Cook permission switches on once supabase/prep-list.sql is run in Supabase (SQL Editor → New query → paste → Run).', 'err'); return; }
         status(isPerm(err) ? 'Your account can\u2019t change employees.' : 'Couldn\u2019t save the employee. Check your connection.', 'err');
       });
   }
