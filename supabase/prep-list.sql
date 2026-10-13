@@ -52,7 +52,7 @@ alter table public.prep_lists enable row level security;
 revoke all on public.prep_lists from anon, authenticated;
 grant select on public.prep_lists to authenticated;
 drop policy if exists "prep team reads" on public.prep_lists;
-create policy "prep team reads" on public.prep_lists for select to authenticated using (coalesce(public.can_prep(), false));
+create policy "prep team reads" on public.prep_lists for select to authenticated using (coalesce(public.can_schedule(), false));   -- everyone else reads it through prep_get()
 -- all changes go through the functions below
 
 create or replace function public.prep_me() returns text
@@ -80,9 +80,23 @@ end $$;
 revoke all on function public.prep_auto() from public, anon, authenticated;
 
 create or replace function public.prep_row() returns jsonb
-language sql stable security definer set search_path = public as $$
-  select to_jsonb(p) - 'id' || jsonb_build_object('can_reset', coalesce(public.can_schedule(), false), 'me', public.prep_me()) from public.prep_lists p where id = 'eden'
-$$;
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb; kit boolean := true; bar boolean := true;
+begin
+  select to_jsonb(p) - 'id' || jsonb_build_object('can_reset', coalesce(public.can_schedule(), false), 'me', public.prep_me()) into r from public.prep_lists p where id = 'eden';
+  -- Team > Permissions: only the kitchen list, or only the bar list (bar sections' ids start with b-)
+  if r is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null then
+    kit := coalesce(public.section_ok('prep.kitchen'), false); bar := coalesce(public.section_ok('prep.bar'), false);
+    if not (kit and bar) then
+      r := r || jsonb_build_object(
+        'entries', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'entries', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, false)), '{}'::jsonb),
+        'removed', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'removed', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, false)), '{}'::jsonb),
+        'extra', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'extra', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, true)), '{}'::jsonb));
+    end if;
+    r := r || jsonb_build_object('lists', jsonb_build_object('kitchen', kit, 'bar', bar));
+  end if;
+  return r;
+end $$;
 revoke all on function public.prep_row() from public, anon, authenticated;
 
 -- the list as it is now
@@ -101,6 +115,7 @@ declare cur jsonb; v jsonb;
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
+  if to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_key, false), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if p_field not in ('done', 'onhand', 'prep', 'ini') or length(coalesce(p_key, '')) not between 1 and 400 then return jsonb_build_object('error', 'bad'); end if;
   perform public.prep_auto();
   v := case when p_field = 'done' then to_jsonb(coalesce(p_value, '') in ('true', '1', 'yes')) else to_jsonb(left(coalesce(p_value, ''), case when p_field = 'ini' then 6 else 40 end)) end;
@@ -117,6 +132,7 @@ declare cur jsonb; nm text := left(trim(coalesce(p_name, '')), 120);
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
+  if to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_section, true), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if nm = '' or length(coalesce(p_section, '')) not between 1 and 200 then return jsonb_build_object('error', 'bad'); end if;
   select coalesce(extra -> p_section, '[]'::jsonb) into cur from public.prep_lists where id = 'eden' for update;
   cur := coalesce((select jsonb_agg(x) from jsonb_array_elements_text(cur) x where lower(x) <> lower(nm)), '[]'::jsonb);
@@ -131,7 +147,11 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
-  if p_key is null then update public.prep_lists set removed = '{}'::jsonb, updated_at = now() where id = 'eden';
+  if p_key is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_key, false), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if p_key is null then   -- put lines back, on the list(s) this person has
+    update public.prep_lists set removed = case when to_regprocedure('public.prep_list_ok(text,boolean)') is null then '{}'::jsonb
+      else coalesce((select jsonb_object_agg(k, v) from jsonb_each(removed) x(k, v) where not coalesce(public.prep_list_ok(k, false), false)), '{}'::jsonb) end,
+      updated_at = now() where id = 'eden';
   elsif p_on then update public.prep_lists set removed = jsonb_set(removed, array[p_key], '1'::jsonb, true), updated_at = now() where id = 'eden';
   else update public.prep_lists set removed = removed - p_key, updated_at = now() where id = 'eden'; end if;
   return public.prep_row();

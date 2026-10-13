@@ -12,8 +12,8 @@
 --   board (reading the message board)   board.post (posting on it)
 --   preshift (the Pre-shift tab)        preshift.education, preshift.reservations, preshift.menu, preshift.notes
 --   resources                           recipes        calendar
---   prep (seeing the Prep List)         prep.edit (filling it in)
--- Out of the box everything is on, except the Prep List (cooks only). The Owner and managers always have everything.
+--   prep (seeing the Prep List)         prep.kitchen (the kitchen list), prep.bar (the bar list), prep.edit (filling it in)
+-- Out of the box everything is on, except the Prep List: cooks get only the kitchen list, bartenders only the bar list. The Owner and managers always have everything.
 -- Kitchen logins count as cooks and Front-of-house logins as servers. This is enforced by the database, not just hidden.
 
 -- The Bartender class (set on the Employees page, under Access). Same as an employee unless Permissions says otherwise.
@@ -45,9 +45,9 @@ create table if not exists public.section_people (
 alter table public.section_rules drop constraint if exists section_rules_level_check;
 alter table public.section_rules add constraint section_rules_level_check check (level in ('employee', 'cook', 'server', 'bartender'));
 alter table public.section_rules drop constraint if exists section_rules_section_check;
-alter table public.section_rules add constraint section_rules_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.edit', 'recipes', 'calendar'));
+alter table public.section_rules add constraint section_rules_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar'));
 alter table public.section_people drop constraint if exists section_people_section_check;
-alter table public.section_people add constraint section_people_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.edit', 'recipes', 'calendar'));
+alter table public.section_people add constraint section_people_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar'));
 alter table public.section_rules enable row level security;
 alter table public.section_people enable row level security;
 revoke all on public.section_rules, public.section_people from anon;
@@ -77,7 +77,10 @@ begin
   return coalesce(
     (select p.allowed from public.section_people p where p.employee_id = public.my_employee_id() and p.section = p_section),
     (select r.allowed from public.section_rules r where r.level = public.my_level() and r.section = p_section),
-    case when p_section = 'prep' then public.my_level() = 'cook' else true end);
+    case p_section when 'prep' then public.my_level() in ('cook', 'bartender')
+                   when 'prep.kitchen' then public.my_level() <> 'bartender'
+                   when 'prep.bar' then public.my_level() <> 'cook'
+                   else true end);
 end $$;
 revoke all on function public.my_level(), public.section_ok(text) from public, anon;
 grant execute on function public.my_level(), public.section_ok(text) to authenticated;
@@ -86,7 +89,7 @@ grant execute on function public.my_level(), public.section_ok(text) to authenti
 create or replace function public.my_sections() returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_object_agg(k, public.section_ok(k)) || jsonb_build_object('level', public.my_level())
-  from unnest(array['schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.edit', 'recipes', 'calendar']) k
+  from unnest(array['schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar']) k
 $$;
 revoke all on function public.my_sections() from public, anon;
 grant execute on function public.my_sections() to authenticated;
@@ -106,9 +109,47 @@ revoke execute on function public.can_prep() from anon;
 grant execute on function public.can_prep() to authenticated;
 
 
--- Prep List (filling it in)
+-- Prep List: which list a line belongs to. Bar sections' ids start with b- (a line's key is kind:section:item)
+create or replace function public.prep_list_ok(p_key text, p_section boolean) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(public.section_ok(case when (case when p_section then coalesce(p_key, '') else split_part(coalesce(p_key, ''), ':', 2) end) like 'b-%'
+                                         then 'prep.bar' else 'prep.kitchen' end), false)
+$$;
+revoke all on function public.prep_list_ok(text, boolean) from public, anon;
+grant execute on function public.prep_list_ok(text, boolean) to authenticated;
+
+-- Prep List (which lists, filling it in)
 do $guard$ begin
   if to_regclass('public.prep_lists') is not null then
+    execute $q$
+drop policy if exists "prep team reads" on public.prep_lists
+    $q$;
+    execute $q$
+create policy "prep team reads" on public.prep_lists for select to authenticated using (coalesce(public.can_schedule(), false))
+    $q$;
+    execute $q$
+create or replace function public.prep_row() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb; kit boolean := true; bar boolean := true;
+begin
+  select to_jsonb(p) - 'id' || jsonb_build_object('can_reset', coalesce(public.can_schedule(), false), 'me', public.prep_me()) into r from public.prep_lists p where id = 'eden';
+  -- Team > Permissions: only the kitchen list, or only the bar list (bar sections' ids start with b-)
+  if r is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null then
+    kit := coalesce(public.section_ok('prep.kitchen'), false); bar := coalesce(public.section_ok('prep.bar'), false);
+    if not (kit and bar) then
+      r := r || jsonb_build_object(
+        'entries', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'entries', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, false)), '{}'::jsonb),
+        'removed', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'removed', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, false)), '{}'::jsonb),
+        'extra', coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(r -> 'extra', '{}'::jsonb)) x(k, v) where public.prep_list_ok(k, true)), '{}'::jsonb));
+    end if;
+    r := r || jsonb_build_object('lists', jsonb_build_object('kitchen', kit, 'bar', bar));
+  end if;
+  return r;
+end $$
+    $q$;
+    execute $q$
+revoke all on function public.prep_row() from public, anon, authenticated
+    $q$;
     execute $q$
 create or replace function public.prep_set(p_key text, p_field text, p_value text) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -116,6 +157,7 @@ declare cur jsonb; v jsonb;
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
+  if to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_key, false), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if p_field not in ('done', 'onhand', 'prep', 'ini') or length(coalesce(p_key, '')) not between 1 and 400 then return jsonb_build_object('error', 'bad'); end if;
   perform public.prep_auto();
   v := case when p_field = 'done' then to_jsonb(coalesce(p_value, '') in ('true', '1', 'yes')) else to_jsonb(left(coalesce(p_value, ''), case when p_field = 'ini' then 6 else 40 end)) end;
@@ -132,6 +174,7 @@ declare cur jsonb; nm text := left(trim(coalesce(p_name, '')), 120);
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
+  if to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_section, true), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if nm = '' or length(coalesce(p_section, '')) not between 1 and 200 then return jsonb_build_object('error', 'bad'); end if;
   select coalesce(extra -> p_section, '[]'::jsonb) into cur from public.prep_lists where id = 'eden' for update;
   cur := coalesce((select jsonb_agg(x) from jsonb_array_elements_text(cur) x where lower(x) <> lower(nm)), '[]'::jsonb);
@@ -146,7 +189,11 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
-  if p_key is null then update public.prep_lists set removed = '{}'::jsonb, updated_at = now() where id = 'eden';
+  if p_key is not null and to_regprocedure('public.prep_list_ok(text,boolean)') is not null and not coalesce(public.prep_list_ok(p_key, false), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if p_key is null then   -- put lines back, on the list(s) this person has
+    update public.prep_lists set removed = case when to_regprocedure('public.prep_list_ok(text,boolean)') is null then '{}'::jsonb
+      else coalesce((select jsonb_object_agg(k, v) from jsonb_each(removed) x(k, v) where not coalesce(public.prep_list_ok(k, false), false)), '{}'::jsonb) end,
+      updated_at = now() where id = 'eden';
   elsif p_on then update public.prep_lists set removed = jsonb_set(removed, array[p_key], '1'::jsonb, true), updated_at = now() where id = 'eden';
   else update public.prep_lists set removed = removed - p_key, updated_at = now() where id = 'eden'; end if;
   return public.prep_row();
@@ -165,7 +212,7 @@ begin
   return public.prep_row();
 end $$
     $q$;
-  else raise notice 'Skipped Prep List (filling it in): run its SQL file first, then run this one again.';
+  else raise notice 'Skipped Prep List (which lists, filling it in): run its SQL file first, then run this one again.';
   end if;
 end $guard$;
 

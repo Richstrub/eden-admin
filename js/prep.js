@@ -484,6 +484,11 @@
     el.appendChild(wrap);
     if (!menu || !P.st) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'Loading the prep list…' })); return; }
     if (P.denied) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'The Prep List is for the kitchen: the Owner, managers and cooks.' })); return; }
+    // Team > Employees > Permissions: the kitchen list, the bar list, or both
+    var L = P.st.lists || P.ctx.lists || { kitchen: true, bar: true };
+    if (!L.kitchen && !L.bar) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'Neither prep list is switched on for you. Ask a manager.' })); return; }
+    if (!L.kitchen) P.bar = true; else if (!L.bar) P.bar = false;
+    var both = L.kitchen && L.bar;
     var secs = sections(menu);
 
     // controls (screen only)
@@ -498,7 +503,7 @@
           h('button', { type: 'button', 'aria-pressed': P.mode === 'dish' ? 'true' : 'false', text: 'By dish', on: { click: function () { P.mode = 'dish'; render(); } } }),
           h('button', { type: 'button', 'aria-pressed': P.mode === 'combined' ? 'true' : 'false', text: 'Combined', on: { click: function () { P.mode = 'combined'; render(); } } })
         ]),
-        h('div', { cls: 'sc-viewtog pp-bartog', role: 'group', 'aria-label': 'List' }, [
+        !both ? null : h('div', { cls: 'sc-viewtog pp-bartog', role: 'group', 'aria-label': 'List' }, [
           h('button', { type: 'button', cls: 'pp-barbtn', 'aria-pressed': P.bar ? 'true' : 'false', title: P.bar ? 'Back to the kitchen prep list' : 'Show the bar prep list', text: 'Bar prep', on: { click: function () { P.bar = !P.bar; render(); } } })
         ]),
         removedN ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Restore ' + removedN + ' removed line' + (removedN === 1 ? '' : 's'), on: { click: restoreAll } }) : null,

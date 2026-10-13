@@ -227,6 +227,8 @@
     $('tabPreshift').hidden = off('preshift'); $('tabResources').hidden = off('resources');
     $('tabRecipes').hidden = off('recipes'); $('tabCalendar').hidden = off('calendar');
     if (off('prep')) $('tabPrep').hidden = true;
+    // bartenders (only the bar list): the tab says Bar Prep
+    var pl = $('tabPrep').querySelector('span'); if (pl) pl.textContent = off('prep.kitchen') && !off('prep.bar') ? 'Bar Prep' : 'Prep List';
     document.querySelector('.tm-hero').hidden = off('schedule');
     document.querySelector('.tm-colmain').hidden = off('schedule');
     $('timeoffSec').hidden = !me.employee || off('timeoff');

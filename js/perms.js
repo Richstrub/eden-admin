@@ -24,8 +24,10 @@
         { k: 'preshift.menu', name: 'Menu changes', desc: 'What changed on the menu in the last 24 hours.', does: 'see menu changes in Pre-shift' },
         { k: 'preshift.notes', name: 'Pre-shift notes', desc: 'Notes you and managers send from the Notes tab.', does: 'read pre-shift notes' }] },
     { k: 'resources', name: 'Resources', icon: 'book', desc: 'Food, beverage and hospitality PDFs they can search and read.', does: 'open Resources' },
-    { k: 'prep', name: 'Prep List', icon: 'list', desc: 'The kitchen’s shared prep list. Out of the box, only cooks get it.', does: 'see the Prep List',
-      subs: [{ k: 'prep.edit', name: 'Fill it in', desc: 'Tick lines, fill in On hand, choose Do or X, sign with their initials, and add or remove lines. When this is off, the list is read only.', does: 'fill in the Prep List', off: 'They can still read it.' }] },
+    { k: 'prep', name: 'Prep List', icon: 'list', desc: 'The shared prep lists. Out of the box, cooks get the kitchen list and bartenders the bar list.', does: 'see the Prep List',
+      subs: [
+        { k: 'prep.kitchen', name: 'Kitchen prep list', desc: 'The food prep list, built from the Kitchen menu.', does: 'see the kitchen prep list' },
+        { k: 'prep.bar', name: 'Bar prep list', desc: 'The bar prep list, built from the cocktail menu.', does: 'see the bar prep list' },{ k: 'prep.edit', name: 'Fill it in', desc: 'Tick lines, fill in On hand, choose Do or X, sign with their initials, and add or remove lines. When this is off, the list is read only.', does: 'fill in the Prep List', off: 'They can still read it.' }] },
     { k: 'recipes', name: 'Recipes', icon: 'pot', desc: 'The recipe book. Only you and managers can change recipes.', does: 'read the recipe book' },
     { k: 'calendar', name: 'Calendar', icon: 'flag', desc: 'Upcoming events and private parties.', does: 'see the event calendar' }
   ];
@@ -59,7 +61,8 @@
   try { X.view = localStorage.getItem('eden.perms.view') === 'person' ? 'person' : 'groups'; } catch (e) {}
 
   // the rules
-  function dflt(level, k) { return k === 'prep' ? level === 'cook' : true; }
+  // out of the box: everything on, except the Prep List (cooks get the kitchen list, bartenders the bar list)
+  function dflt(level, k) { return k === 'prep' ? level === 'cook' || level === 'bartender' : k === 'prep.kitchen' ? level !== 'bartender' : k === 'prep.bar' ? level !== 'cook' : true; }
   function rule(level, k) { var key = level + '|' + k; return key in X.rules ? X.rules[key] : dflt(level, k); }
   function groupHas(level, k) { var it = ITEM[k]; return it.parent ? rule(level, it.parent.k) && rule(level, k) : rule(level, k); }
   function levelOf(e) { return LV[e.access] ? e.access : 'employee'; }
@@ -216,12 +219,12 @@
   }
   function resetGroup(level) {
     var G = LV[level].many;
-    if (!confirm(G + ': back to the usual settings?\n\nEverything is on' + (level === 'cook' ? ', including the Prep List' : ' except the Prep List') + '. Exceptions you made for one person stay.')) return;
+    if (!confirm(G + ': back to the usual settings?\n\n' + (level === 'cook' ? 'Everything is on, with the kitchen prep list only' : level === 'bartender' ? 'Everything is on, with the bar prep list only' : 'Everything is on except the Prep List') + '. Exceptions you made for one person stay.')) return;
     var saved = {}; Object.keys(X.rules).forEach(function (key) { if (key.indexOf(level + '|') === 0) saved[key] = X.rules[key]; });
     X.ctx.sb.from('section_rules').delete().eq('level', level).then(function (r) {
       if (r.error) { X.note = { bad: true, text: 'Couldn’t reset. Try again.' }; render(); return; }
       Object.keys(saved).forEach(function (key) { delete X.rules[key]; });
-      var text = G + ' are back to the usual settings: everything on' + (level === 'cook' ? '' : ' except the Prep List') + '.';
+      var text = G + ' are back to the usual settings: everything on' + (level === 'cook' ? ', with the kitchen prep list only' : level === 'bartender' ? ', with the bar prep list only' : ' except the Prep List') + '.';
       logIt(text, function () {
         var rows = Object.keys(saved).map(function (key) { return { level: level, section: key.split('|')[1], allowed: saved[key] }; });
         if (!rows.length) return Promise.resolve(true);
