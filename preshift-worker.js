@@ -11,6 +11,7 @@ import { mailInternals } from './mail-worker.js';
 
 const { gmailFor, gj, unsealToken, missing } = mailInternals;
 const SEARCH = 'opentable in:inbox newer_than:3d';
+const READER = 'v2';   // bump when opentable-parse.js changes, so today's email is read again with the new reader
 const sbBase = env => String(env.SUPABASE_URL || '').replace(/\/$/, '');
 function json(obj, status) { return new Response(JSON.stringify(obj), { status: status || 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
 function etDate(d) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
@@ -61,11 +62,11 @@ export async function preshiftRefresh(env, key, force) {
     const msg = await gj(g, 'messages/' + m.id + '?format=full');
     const when = new Date(Number(msg.internalDate) || 0);
     if (etDate(when) !== today) continue;                       // only an email that arrived today fills today's pre-shift
-    if (msg.id === st.email_id && !force) return { ok: true, unchanged: true, today };
+    if (msg.id + '@' + READER === st.email_id && !force) return { ok: true, unchanged: true, today };
     const b = bodies(msg.payload), subject = header(msg, 'subject');
     const parsed = parseOpenTable({ html: b.html, text: b.text, subject });
     await rpc(env, 'preshift_save_server', { p_key: key, p_date: today, p_row: {
-      email_id: msg.id, subject: parsed.subject, received: when.toISOString(), forwarded: /^\s*(fwd?|fw):/i.test(subject), reservations: parsed } });
+      email_id: msg.id + '@' + READER, subject: parsed.subject, received: when.toISOString(), forwarded: /^\s*(fwd?|fw):/i.test(subject), reservations: parsed } });
     return { ok: true, saved: true, today, reservations: parsed.list.length };
   }
   return { ok: true, none: true, today };

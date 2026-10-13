@@ -82,43 +82,71 @@
         h('span', { text: 'Tonight’s reservations fill in here by themselves as soon as OpenTable’s email reaches rich@edencny.com.' })]));
       return card;
     }
+    var digest = R.kind === 'digest';
     card.appendChild(h('p', { cls: 'ps-src' }, [
       day.source_forwarded ? h('span', { cls: 'ps-badge', text: 'Sample · forwarded email' }) : null,
-      'From OpenTable’s email' + (day.source_subject ? ' “' + day.source_subject.replace(/^\s*(fwd?|fw):\s*/i, '') + '”' : '') + ', received ' + when(day.source_received) + '.']));
+      digest ? 'OpenTable ' + (R.title || 'Pre-shift Digest') + (R.date ? ' for ' + R.date : '') + ', received ' + when(day.source_received) + '.'
+        : 'From OpenTable’s email' + (day.source_subject ? ' “' + day.source_subject.replace(/^\s*(fwd?|fw):\s*/i, '') + '”' : '') + ', received ' + when(day.source_received) + '.']));
     var list = R.list || [];
+    var has = function (r, re) { return r.tags.some(function (t) { return re.test(t); }); };
+    var CELEB = /birthday|anniversary|special occasion|date night|celebrat|engagement|proposal|graduation/i;
     // the numbers
     var tiles = [];
     (R.stats || []).forEach(function (s) { tiles.push([s.value, s.label]); });
-    var have = function (w) { return tiles.some(function (t) { return new RegExp(w, 'i').test(t[1]); }); };
+    var haveT = function (w) { return tiles.some(function (t) { return new RegExp(w, 'i').test(t[1]); }); };
     if (list.length) {
-      if (!have('reserv|booking|parties')) tiles.unshift([String(list.length), list.length === 1 ? 'Reservation' : 'Reservations']);
-      if (!have('cover|guest')) tiles.unshift([String(R.covers || 0), 'Covers']);
-      if (R.large) tiles.push([String(R.large), 'Parties of 8+']);
-      var fl = function (tag) { return list.filter(function (r) { return r.tags.indexOf(tag) !== -1; }).length; };
-      if (fl('Allergy')) tiles.push([String(fl('Allergy')), 'Allergies / dietary']);
-      if (fl('Birthday') + fl('Anniversary') + fl('Celebration')) tiles.push([String(fl('Birthday') + fl('Anniversary') + fl('Celebration')), 'Celebrations']);
-      if (fl('VIP')) tiles.push([String(fl('VIP')), 'VIPs']);
+      if (!haveT('reserv|booking|parties')) tiles.unshift([String(list.length), list.length === 1 ? 'Reservation' : 'Reservations']);
+      if (!haveT('cover|guest')) tiles.unshift([String(R.covers || 0), 'Covers']);
+      var n = function (f) { return list.filter(f).length; };
+      var c = n(function (r) { return has(r, CELEB); }); if (c) tiles.push([String(c), 'Celebrations']);
+      c = n(function (r) { return has(r, /allerg|dietary/i); }); if (c) tiles.push([String(c), 'Allergies / dietary']);
+      c = n(function (r) { return has(r, /vip/i); }); if (c) tiles.push([String(c), 'VIPs']);
+      c = n(function (r) { return has(r, /returning|regular/i); }); if (c) tiles.push([String(c), 'Returning guests']);
+      c = n(function (r) { return r.size >= 6; }); if (c) tiles.push([String(c), 'Parties of 6+']);
+      c = n(function (r) { return !!r.notes; }); if (c) tiles.push([String(c), 'With notes']);
     }
     if (tiles.length) card.appendChild(h('div', { cls: 'ps-tiles' }, tiles.slice(0, 8).map(function (t) { return h('div', { cls: 'ps-tile' }, [h('b', { text: t[0] }), h('span', { text: t[1] })]); })));
-    // heads-up for the team
-    var watch = list.filter(function (r) { return r.tags.length || r.size >= 8; });
+    var tagEls = function (r) {
+      var t = r.tags.slice(); if (r.size >= 6 && !t.some(function (x) { return /large/i.test(x); })) t.unshift(r.size >= 8 ? 'Large party' : 'Party of ' + r.size);
+      return t.map(function (x) { return h('span', { cls: 'ps-tag ps-' + x.toLowerCase().replace(/\W+/g, '-') + (CELEB.test(x) ? ' ps-celebrate' : ''), text: x }); });
+    };
+    var guestLine = function (r) {
+      var g = r.guest || {}; var bits = [];
+      if (g.visits) bits.push(g.visits + (g.visits === 1 ? ' visit' : ' visits') + ' last year');
+      if (g.last) bits.push('last visit ' + g.last);
+      if (g.spend && isMgr()) bits.push('$' + Math.round(+g.spend) + ' a cover');
+      return bits.length ? bits.join(' · ') : '';
+    };
+    // heads-up for the team: anything tagged, noted, or a bigger table
+    var watch = list.slice().sort(function (a, b) { return a.time.localeCompare(b.time); }).filter(function (r) { return r.tags.some(function (t) { return !/returning/i.test(t); }) || r.notes || r.size >= 6; });
     if (watch.length) {
-      card.appendChild(h('h3', { cls: 'ps-sub', text: 'Heads-up tonight' }));
+      card.appendChild(h('h3', { cls: 'ps-sub', text: 'Heads-up tonight · ' + watch.length }));
       card.appendChild(h('ul', { cls: 'ps-watch' }, watch.map(function (r) {
-        return h('li', [h('span', { cls: 'ps-t', text: t12(r.time) }), h('span', { cls: 'ps-w' }, [h('b', { text: (r.name || 'Party') + ' · ' + r.size }), r.notes ? h('small', { text: r.notes }) : null]),
-          h('span', { cls: 'ps-tags' }, (r.size >= 8 && r.tags.indexOf('Large party') === -1 ? ['Large party'] : []).concat(r.tags).map(function (t) { return h('span', { cls: 'ps-tag ps-' + t.toLowerCase().replace(/\W+/g, '-'), text: t }); }))]);
+        return h('li', [h('span', { cls: 'ps-t', text: t12(r.time) }),
+          h('span', { cls: 'ps-w' }, [h('b', { text: (r.name || 'Party') + ' · ' + r.size + (r.table ? ' · table ' + r.table : '') }),
+            r.notes ? h('small', { text: r.notes }) : null, guestLine(r) ? h('small', { cls: 'ps-guest', text: guestLine(r) }) : null]),
+          h('span', { cls: 'ps-tags' }, tagEls(r))]);
       })));
     }
-    // the book, by the hour
+    // the book, hour by hour (OpenTable's own hour blocks when it has them)
     if (list.length) {
       card.appendChild(h('h3', { cls: 'ps-sub', text: 'The book' }));
-      var byHour = {};
-      list.forEach(function (r) { var k = r.time.slice(0, 2); (byHour[k] = byHour[k] || []).push(r); });
+      var groups = [], byKey = {};
+      list.slice().sort(function (a, b) { return a.time.localeCompare(b.time); }).forEach(function (r) {
+        var k = r.time.slice(0, 2);
+        if (!byKey[k]) { byKey[k] = { key: k, rows: [] }; groups.push(byKey[k]); }
+        byKey[k].rows.push(r);
+      });
       var book = h('div', { cls: 'ps-book' });
-      Object.keys(byHour).sort().forEach(function (k) {
-        var rows = byHour[k], cov = rows.reduce(function (n, r) { return n + r.size; }, 0);
-        book.appendChild(h('div', { cls: 'ps-hour' }, [h('div', { cls: 'ps-hour-h' }, [h('b', { text: t12(k + ':00') }), h('span', { text: rows.length + ' res · ' + cov + ' covers' })]),
-          h('ul', rows.map(function (r) { return h('li', [h('span', { cls: 'ps-t', text: t12(r.time) }), h('span', { cls: 'ps-size', text: String(r.size) }), h('span', { cls: 'ps-name', text: r.name || '' }), h('span', { cls: 'ps-notes', text: [r.tags.join(', '), r.notes].filter(Boolean).join(' — ') })]); }))]));
+      groups.forEach(function (g) {
+        var cov = g.rows.reduce(function (n, r) { return n + r.size; }, 0);
+        var H = +g.key, lbl = t12(g.key + ':00') + ' – ' + t12(String((H + 1) % 24).padStart(2, '0') + ':00');
+        book.appendChild(h('div', { cls: 'ps-hour' }, [h('div', { cls: 'ps-hour-h' }, [h('b', { text: lbl }), h('span', { text: g.rows.length + (g.rows.length === 1 ? ' reservation · ' : ' reservations · ') + cov + ' covers' })]),
+          h('ul', g.rows.map(function (r) {
+            return h('li', [h('span', { cls: 'ps-t', text: t12(r.time) }), h('span', { cls: 'ps-size', title: 'Party size', text: String(r.size) }),
+              h('span', { cls: 'ps-name' }, [r.name || '', r.table ? h('small', { cls: 'ps-table', text: 'Table ' + r.table }) : null]),
+              h('span', { cls: 'ps-notes' }, [r.tags.length ? h('span', { cls: 'ps-tags ps-inline' }, tagEls({ tags: r.tags, size: 0 })) : null, r.notes ? h('span', { text: r.notes }) : null])]);
+          }))]));
       });
       card.appendChild(book);
     }
