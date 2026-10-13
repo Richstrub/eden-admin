@@ -72,12 +72,16 @@
     wrap.appendChild(h('h1', { cls: 'eo-title', text: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }));
     el.appendChild(wrap);
     if (P.missing) { wrap.appendChild(h('div', { cls: 'eo-card' }, [h('p', { text: P.ctx.role === 'owner' ? 'One step first: in Supabase, open SQL Editor > New query, paste in supabase/preshift.sql and click Run. Then reload this page.' : 'Pre-shift isn’t switched on yet.' })])); return; }
-    wrap.appendChild(educationCard());
-    wrap.appendChild(reservations());
+    var on = function (k) { var s = P.ctx.sec; return !s || s['preshift.' + k] !== false; };
+    if (!on('education') && !on('reservations') && !on('menu') && !on('notes')) { wrap.appendChild(h('div', { cls: 'eo-card' }, [h('p', { cls: 'ps-src', text: 'Nothing in Pre-shift is switched on for you.' })])); return; }
+    if (on('education')) wrap.appendChild(educationCard());
+    if (on('reservations')) wrap.appendChild(reservations());
+    if (on('menu')) {
     var mc = h('section', { cls: 'eo-card ps-menu', 'aria-labelledby': 'psMenuH' }, [h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psMenuH' }, [h('span', { cls: 'eo-n', text: '3' }), 'Menu changes']), h('span', { cls: 'ps-when', text: 'Last 24 hours' })]), h('p', { cls: 'ps-src', text: 'Loading…' })]);
     wrap.appendChild(mc);
     menuChanges(mc);
-    wrap.appendChild(notesCard());
+    }
+    if (on('notes')) wrap.appendChild(notesCard());
   }
 
   /* ---------- 2. Reservations ---------- */

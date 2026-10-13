@@ -100,6 +100,7 @@ language plpgsql security definer set search_path = public as $$
 declare cur jsonb; v jsonb;
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   if p_field not in ('done', 'onhand', 'prep', 'ini') or length(coalesce(p_key, '')) not between 1 and 400 then return jsonb_build_object('error', 'bad'); end if;
   perform public.prep_auto();
   v := case when p_field = 'done' then to_jsonb(coalesce(p_value, '') in ('true', '1', 'yes')) else to_jsonb(left(coalesce(p_value, ''), case when p_field = 'ini' then 6 else 40 end)) end;
@@ -115,6 +116,7 @@ language plpgsql security definer set search_path = public as $$
 declare cur jsonb; nm text := left(trim(coalesce(p_name, '')), 120);
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   if nm = '' or length(coalesce(p_section, '')) not between 1 and 200 then return jsonb_build_object('error', 'bad'); end if;
   select coalesce(extra -> p_section, '[]'::jsonb) into cur from public.prep_lists where id = 'eden' for update;
   cur := coalesce((select jsonb_agg(x) from jsonb_array_elements_text(cur) x where lower(x) <> lower(nm)), '[]'::jsonb);
@@ -128,6 +130,7 @@ create or replace function public.prep_hide(p_key text, p_on boolean) returns js
 language plpgsql security definer set search_path = public as $$
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   if p_key is null then update public.prep_lists set removed = '{}'::jsonb, updated_at = now() where id = 'eden';
   elsif p_on then update public.prep_lists set removed = jsonb_set(removed, array[p_key], '1'::jsonb, true), updated_at = now() where id = 'eden';
   else update public.prep_lists set removed = removed - p_key, updated_at = now() where id = 'eden'; end if;
@@ -151,6 +154,7 @@ create or replace function public.prep_import(p_extra jsonb, p_removed jsonb) re
 language plpgsql security definer set search_path = public as $$
 begin
   if not coalesce(public.can_prep(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regprocedure('public.section_ok(text)') is not null and not coalesce(public.section_ok('prep.edit'), false) then return jsonb_build_object('error', 'view_only'); end if;   -- Team > Permissions
   update public.prep_lists set
     extra = case when extra = '{}'::jsonb and jsonb_typeof(p_extra) = 'object' then p_extra else extra end,
     removed = case when removed = '{}'::jsonb and jsonb_typeof(p_removed) = 'object' then p_removed else removed end,

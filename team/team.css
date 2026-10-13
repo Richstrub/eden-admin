@@ -387,3 +387,5 @@
 .tm-prep-todos #todoSec{max-width:720px}
 .tm-prep-todos + #prepBody .pp-in{padding-top:22px}
 @media (max-width:760px){.tm-prep-todos{padding:18px 16px 0}.tm-prep-todos #todoSec{max-width:none}}
+.tm-ro{margin:8px 0;padding:8px 12px;border-radius:8px;background:#f3efe6;color:#5a5346;font-size:.86rem}
+.tm-tick:disabled{cursor:default;opacity:.55}

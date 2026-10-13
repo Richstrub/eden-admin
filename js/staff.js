@@ -228,7 +228,7 @@
       if (window.EdenEOD) window.EdenEOD.show({ sb: sb, el: $('viewEod'), status: status, role: role, name: staffName, uid: session && session.user && session.user.id, sub: sub });
     } else if (v === 'preshift') {
       status('');
-      if (window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('viewPreshift'), status: status, role: role, name: staffName });
+      if (window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('viewPreshift'), status: status, role: role, name: staffName, sec: SECT });
     } else if (v === 'employees') {
       status('');
       $('empPeople').hidden = sub === 'permissions'; $('empPerms').hidden = sub !== 'permissions';
@@ -299,7 +299,7 @@
     if (!window.EdenPrep) return;
     // managers set up as employees don't load the website data here, so the prep list reads the menu itself
     if (role === 'scheduler') { window.EdenPrep.show({ el: $('viewPrep'), status: status, sb: sb, role: role, name: staffName }); return; }
-    window.EdenPrep.show({ el: $('viewPrep'), status: status, sb: sb, role: role, name: staffName, getMenu: function () {
+    window.EdenPrep.show({ el: $('viewPrep'), status: status, sb: sb, role: role, name: staffName, viewOnly: !!SECT && SECT['prep.edit'] === false, getMenu: function () {
       if (!store.loaded) return null;
       return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] };
     } });

@@ -536,7 +536,15 @@
     var notes = h('section', { cls: 'pp-notes' }, [h('header', { cls: 'pp-sec-h' }, [h('h2', { text: 'Notes & 86’d' })]), h('div', { cls: 'pp-lines' })]);
     (colEls[light] || body).appendChild(notes);
     wrap.appendChild(sheet);
+    if (P.ctx.viewOnly) viewOnly(wrap);
     paintCount();
+  }
+  // Team > Employees > Permissions: "Fill in the Prep List" is off for this person, so the list is to read only
+  function viewOnly(wrap) {
+    wrap.classList.add('pp-ro');
+    wrap.querySelectorAll('.pp-sheet input, .pp-sheet select, .pp-sheet button, .pp-ctl .ed-btn.small').forEach(function (x) { x.disabled = true; });
+    var msg = wrap.querySelector('.pp-msg');
+    wrap.insertBefore(h('p', { cls: 'pp-roinfo', text: 'View only: you can read the Prep List, but not fill it in.' }), msg);
   }
 
   /* ---------- printing: one landscape 11 x 8.5 page ----------

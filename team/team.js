@@ -231,6 +231,9 @@
     document.querySelector('.tm-colmain').hidden = off('schedule');
     $('timeoffSec').hidden = !me.employee || off('timeoff');
     $('board').hidden = off('board');
+    $('postForm').hidden = off('board.post');
+    if (todos.length) renderTodos();   // tick boxes follow “Tick them off”
+    if (off('board.post') && !$('boardRo')) $('postForm').insertAdjacentHTML('afterend', '<p class="tm-ro" id="boardRo">You can read the board, but posting is switched off for you.</p>');
     var cookTodos = $('prepTodos').contains($('todoSec'));
     $('tabSched').hidden = off('schedule') && off('timeoff') && off('board') && (cookTodos || off('todos'));
   }
@@ -252,7 +255,9 @@
     var today = iso(new Date());
     open.concat(done).forEach(function (t) {
       var late = !t.done && t.due && t.due < today, now = !t.done && t.due === today;
+      var ro = SEC && SEC['todos.done'] === false;
       var cb = h('button', { type: 'button', cls: 'tm-tick' + (t.done ? ' on' : ''), 'aria-pressed': t.done ? 'true' : 'false', 'aria-label': (t.done ? 'Done: ' : 'Mark done: ') + t.title,
+        disabled: ro, title: ro ? 'Ticking off to-dos is switched off for you' : null,
         on: { click: function () { tick(t, !t.done, cb); } } });
       ul.appendChild(h('li', { cls: 'tm-todo' + (t.done ? ' done' : '') + (late ? ' late' : '') }, [cb, h('div', { cls: 'tm-todo-m' }, [
         h('b', { text: t.title }),
@@ -289,11 +294,11 @@
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
     if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
     // Pre-shift: everyone on the team reads it; the Owner and managers can add and delete education PDFs here too
-    if (pg === 'preshift' && window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('preshiftView'), status: function () {}, name: (me.employee && me.employee.name) || '', api: '../', noNotes: true,
+    if (pg === 'preshift' && window.EdenPreshift) window.EdenPreshift.show({ sb: sb, el: $('preshiftView'), status: function () {}, name: (me.employee && me.employee.name) || '', api: '../', noNotes: true, sec: SEC,
       role: me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee') });
     var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
     // cooks: no Print button or how-to text at the top of the Prep List
-    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepBody'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, cook: !admin });
+    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepBody'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, cook: !admin, viewOnly: !admin && !!SEC && SEC['prep.edit'] === false });
     if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }

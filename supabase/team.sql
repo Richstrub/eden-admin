@@ -43,10 +43,11 @@ $$;
 -- 3. The published schedule for a week: coworkers' names and positions, without any contact details
 create or replace function public.team_schedule(p_week date) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
-declare w public.schedule_weeks%rowtype; me uuid; res jsonb;
+declare w public.schedule_weeks%rowtype; me uuid; res jsonb; everyone boolean := true;
 begin
   if not public.is_team() then raise exception 'not on the staff list' using errcode = '42501'; end if;
   if to_regprocedure('public.section_ok(text)') is not null and not public.section_ok('schedule') then raise exception 'section_off' using errcode = '42501'; end if;   -- Team > Permissions
+  if to_regprocedure('public.section_ok(text)') is not null then everyone := coalesce(public.section_ok('schedule.team'), false); end if;
   me := public.my_employee_id();
   select * into w from public.schedule_weeks where week_start = p_week and status = 'published';
   if not found then
@@ -64,7 +65,8 @@ begin
       order by (s ->> 'day')::int, s ->> 'start'), '[]'::jsonb)
     into res
   from jsonb_array_elements(coalesce(w.published, '[]'::jsonb)) s
-  left join public.employees e on e.id::text = s ->> 'emp';
+  left join public.employees e on e.id::text = s ->> 'emp'
+  where everyone or (me is not null and (s ->> 'emp') = me::text);
   return jsonb_build_object('week_start', p_week, 'published', true, 'published_at', w.published_at, 'shifts', res);
 end $$;
 

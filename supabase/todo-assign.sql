@@ -30,7 +30,7 @@ $$;
 create or replace function public.finish_my_todo(p_id text, p_done boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if to_regprocedure('public.section_ok(text)') is not null and not public.section_ok('todos') then return jsonb_build_object('ok', false); end if;   -- Team > Permissions
+  if to_regprocedure('public.section_ok(text)') is not null and not public.section_ok('todos.done') then return jsonb_build_object('ok', false); end if;   -- Team > Permissions
   update public.todos set done = p_done, done_at = case when p_done then now() end
   where id = p_id and assigned_to is not null and assigned_to = public.my_employee_id();
   return jsonb_build_object('ok', found);
