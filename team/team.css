@@ -219,3 +219,110 @@
   .tm-tabs::-webkit-scrollbar{display:none}
   .tm-tabs a{padding:10px 9px;letter-spacing:.16em;flex:none}
 }
+
+/* ================= cleaner staff page (Oct 2026) ================= */
+/* header: brand · pages · your initials (account menu) */
+.tm-bar{gap:18px;padding:calc(12px + env(safe-area-inset-top,0px)) 24px 12px}
+.tm-tabs{margin-left:14px;gap:4px;align-items:center}
+.tm-tabs a{border:0;border-radius:999px;padding:9px 14px;font-size:.62rem;letter-spacing:.2em;color:rgba(243,238,229,.62);transition:background .15s,color .15s}
+.tm-tabs a[aria-current="page"]{background:rgba(243,238,229,.12);color:var(--ivory)}
+@media (hover:hover){.tm-tabs a:hover{color:var(--ivory)}}
+.tm-me{position:relative;margin-left:auto;flex:none}
+.tm-avatar{width:38px;height:38px;border-radius:50%;border:0;background:var(--ember);color:#fff;font-family:var(--sans);font-size:.8rem;font-weight:500;letter-spacing:.04em;cursor:pointer;display:grid;place-items:center;box-shadow:0 0 0 2px rgba(243,238,229,.12)}
+.tm-avatar[aria-expanded="true"],.tm-avatar:focus-visible{box-shadow:0 0 0 2px var(--ivory);outline:none}
+.tm-menu{position:absolute;right:0;top:calc(100% + 10px);z-index:40;min-width:230px;padding:6px;background:#fff;color:var(--ink);border-radius:14px;box-shadow:0 20px 45px rgba(0,0,0,.28)}
+.tm-menu .tm-who{display:block!important;text-align:left;padding:10px 12px 12px;margin-bottom:4px;border-bottom:1px solid var(--line);color:var(--stone);font-size:.8rem}
+.tm-menu .tm-who b{display:block;color:var(--ink);font-size:.98rem;font-weight:500;margin-bottom:2px}
+.tm-mi{display:flex;justify-content:space-between;align-items:center;width:100%;padding:11px 12px;border:0;border-radius:9px;background:none;font:inherit;font-size:.92rem;color:var(--ink);text-decoration:none;text-align:left;cursor:pointer}
+.tm-mi[hidden]{display:none}
+.tm-mi:hover,.tm-mi:focus-visible{background:#f6f2ea;outline:none}
+.tm-mi[data-act="signout"]{color:#a3392b}
+
+/* page top: greeting, week, and the controls on one line */
+.tm-main{max-width:1200px;padding:34px 28px 80px}
+.tm-hero{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px 24px;margin-bottom:24px}
+.tm-hero-t{display:grid;gap:6px}
+.tm-hero h1{font-size:clamp(2rem,4.4vw,2.8rem);line-height:1.05}
+.tm-weeknav{margin:0;gap:10px;align-items:center}
+.tm-viewtog,.tm-step{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:#fff;overflow:hidden;margin:0}
+.tm-viewtog button{padding:10px 16px;font-size:.6rem}
+.tm-step .tm-btn,.tm-main .tm-step .tm-btn{border:0;border-radius:0;background:none;padding:10px 15px;font-size:.6rem}
+.tm-step .tm-btn + .tm-btn{border-left:1px solid var(--line)}
+.tm-step .tm-btn:disabled{opacity:.35}
+
+/* two columns: the schedule, then your things */
+.tm-grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:22px;align-items:start}
+.tm-colmain,.tm-side{display:grid;gap:22px;min-width:0}
+.tm-card{margin:0;padding:20px 22px 22px;background:#fff;border:1px solid rgba(15,18,21,.08);border-radius:16px;box-shadow:0 1px 2px rgba(15,18,21,.03)}
+.tm-card[hidden]{display:none}
+.tm-card .tm-h{font-family:var(--serif);font-weight:400;font-size:1.45rem;letter-spacing:0;text-transform:none;color:var(--ink);border:0;padding:0;margin:0 0 14px}
+.tm-card .tm-empty{padding:2px 0;font-size:.92rem}
+
+/* inner pieces sit softly inside the cards */
+.tm-card .tm-mine,.tm-card .tm-days{grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.tm-card .tm-shift{background:#fbfaf7;border:1px solid rgba(15,18,21,.07);border-left:3px solid var(--ember);border-radius:12px;padding:14px}
+.tm-card .tm-shift.today{background:#fff;border-color:var(--ember)}
+.tm-card .tm-dcol{border:1px solid rgba(15,18,21,.08);border-radius:12px;overflow:hidden}
+.tm-card .tm-dcol.today{border-color:var(--ember)}
+.tm-card .tm-dhead{background:#f7f4ee;border-bottom-color:rgba(15,18,21,.06)}
+.tm-card .tm-cal{max-width:none;border-radius:12px;overflow:hidden;border:1px solid var(--line);border-right:0;border-bottom:0}
+.tm-card .tm-mlist,.tm-card .tm-detail{max-width:none}
+.tm-card .tm-mrow{border-radius:10px;background:#fbfaf7;border-color:rgba(15,18,21,.07)}
+.tm-card .tm-tl-scroll{border-radius:12px}
+.tm-card .tm-offnote{border-radius:10px}
+.tm-todos,.tm-posts,.tm-reqs,.tm-post{max-width:none}
+.tm-card .tm-todo,.tm-card .tm-note,.tm-card .tm-req{background:#fbfaf7;border:1px solid rgba(15,18,21,.07);border-radius:12px}
+.tm-card .tm-todo{border-left:3px solid var(--ember)}
+.tm-card .tm-todo.late{border-left-color:#a3392b}
+.tm-card .tm-note.mine,.tm-card .tm-req.pending{border-left:3px solid var(--ember)}
+.tm-card .tm-pill{border-radius:999px}
+.tm-msg:empty{display:none}
+
+/* message board */
+.tm-post textarea{border-radius:12px;min-height:76px;background:#fbfaf7;border-color:rgba(15,18,21,.1)}
+.tm-post textarea:focus{background:#fff}
+.tm-post-f .tm-btn{border-radius:999px;padding:9px 18px}
+.tm-posts{margin-top:12px}
+
+/* time off: requests first, the form folds away */
+.tm-fold{margin-top:12px}
+.tm-fold > summary{list-style:none;display:inline-flex;cursor:pointer;border-radius:999px;padding:10px 18px}
+.tm-fold > summary::-webkit-details-marker{display:none}
+.tm-fold[open] > summary{background:none;color:var(--ink);border-color:var(--line)}
+.tm-card .tm-toform{max-width:none;padding:14px 0 0;background:none;border:0}
+.tm-card .tm-toform .tm-btn{border-radius:999px;padding:10px 18px}
+.tm-card .tm-toform input[type=date],.tm-card .tm-toform input[type=time],.tm-card .tm-toform input[type=text]{border-radius:10px}
+.tm-card .tm-small2{margin:10px 0 0}
+.tm-reqs .tm-empty{font-size:.9rem;color:var(--stone)}
+
+/* tablets: pages on their own row under the header */
+@media (max-width:980px){
+  .tm-grid{grid-template-columns:minmax(0,1fr)}
+  .tm-side{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+}
+@media (max-width:900px){
+  .tm-bar{flex-wrap:wrap;row-gap:8px;padding-bottom:6px}
+  .tm-tabs{order:5;flex-basis:100%;width:auto;margin:0 -24px;padding:0 16px 2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:none}
+  .tm-tabs::-webkit-scrollbar{display:none}
+  .tm-tabs a{flex:none;padding:9px 13px;letter-spacing:.16em}
+}
+/* phones: one column, your to-dos first */
+@media (max-width:640px){
+  .tm-bar{padding:calc(10px + env(safe-area-inset-top,0px)) 16px 6px}
+  .tm-tabs{margin:0 -16px;padding:0 10px 2px}
+  .tm-avatar{width:36px;height:36px}
+  .tm-main{padding:22px 14px 60px}
+  .tm-hero{align-items:flex-start;flex-direction:column;margin-bottom:18px}
+  .tm-weeknav{width:100%;justify-content:space-between}
+  .tm-viewtog button{padding:10px 13px}
+  .tm-step .tm-btn,.tm-main .tm-step .tm-btn{padding:10px 12px}
+  .tm-grid,.tm-colmain,.tm-side{display:flex;flex-direction:column;gap:14px}
+  .tm-grid{display:flex}
+  .tm-colmain,.tm-side{display:contents}
+  #todoSec{order:1}.tm-colmain > .tm-card:first-child{order:2}.tm-colmain > .tm-card:nth-child(2){order:3}#board{order:4}#timeoffSec{order:5}
+  .tm-card{padding:16px 16px 18px;border-radius:14px}
+  .tm-card .tm-h{font-size:1.3rem;margin-bottom:12px}
+  .tm-card .tm-mine,.tm-card .tm-days{grid-template-columns:minmax(0,1fr)}
+}
+.tm-card .tm-days{align-items:start}
+@media (max-width:640px){.tm-grid{align-items:stretch}.tm-card{width:auto;align-self:stretch}}

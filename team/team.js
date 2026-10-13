@@ -144,6 +144,16 @@
   });
   if (/^#create\b/.test(location.hash)) setMode('up');   // the staff site's "Create your account" link
   window.EdenAccount.choose(sb, $('newpw').querySelector('form'), function () { recovering = false; history.replaceState(null, '', location.pathname); enter(); });
+  // the account menu (your initials, top right): name, Manager site, Change password, Sign out
+  function meMenu(open) {
+    var m = $('meMenu'), b = $('meBtn'); if (open == null) open = m.hidden;
+    m.hidden = !open; b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { var f = m.querySelector('a:not([hidden]), button'); if (f) f.focus(); }
+  }
+  $('meBtn').addEventListener('click', function (e) { e.stopPropagation(); meMenu(); });
+  document.addEventListener('click', function (e) { if (!$('meMenu').hidden && !e.target.closest('.tm-me')) meMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('meMenu').hidden) { meMenu(false); $('meBtn').focus(); } });
+  $('meMenu').addEventListener('click', function (e) { if (e.target.closest('.tm-mi')) meMenu(false); });
   document.querySelectorAll('[data-act="chpw"]').forEach(function (b) { b.addEventListener('click', function () { window.EdenAccount.change(sb); }); });
 
   sb.auth.onAuthStateChange(function (event, s) {
@@ -174,6 +184,8 @@
       }
       var name = (me.employee && me.employee.name) || (session.user && session.user.email) || '';
       $('whoName').textContent = name;
+      $('meBtn').textContent = String(name).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('') || '•';
+      $('meBtn').setAttribute('aria-label', 'Your account: ' + name);
       $('whoRole').textContent = (me.employee && me.employee.position) || ROLE_NAMES[me.role] || '';
       $('mgrLink').hidden = !(me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager');
       if (me.access === 'manager' && !me.role) $('whoRole').textContent = ((me.employee && me.employee.position) || 'Manager');
@@ -490,6 +502,7 @@
       btn.disabled = false;
       if (r.error) { msgEl.textContent = 'Couldn\u2019t send the request. Check your connection and try again.'; return; }
       msgEl.textContent = 'Request sent. You\u2019ll see here when a manager approves it.'; f.reason.value = '';
+      setTimeout(function () { var fold = $('toFold'); if (fold) fold.open = false; msgEl.textContent = ''; }, 2500);
       loadMyOff().then(loadView);
     });
   });

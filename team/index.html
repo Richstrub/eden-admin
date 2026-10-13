@@ -16,7 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/editor-base.css">
 <link rel="stylesheet" href="../css/staff.css?v=20261013a">
-<link rel="stylesheet" href="team.css?v=20261012x">
+<link rel="stylesheet" href="team.css?v=20261013b">
 </head>
 <body class="team">
 
@@ -62,10 +62,15 @@
   <header class="tm-bar">
     <div class="tm-brand">EDEN <span>Team</span></div>
     <nav class="tm-tabs" aria-label="Pages"><a href="#" id="tabSched" aria-current="page">Schedule</a><a href="#preshift" id="tabPreshift">Pre-shift</a><a href="#resources" id="tabResources">Resources</a><a href="#prep" id="tabPrep" hidden>Prep List</a><a href="#calendar" id="tabCalendar">Calendar</a><a href="#recipes" id="tabRecipes">Recipes</a></nav>
-    <div class="tm-who"><b id="whoName"></b><span id="whoRole"></span></div>
-    <a class="tm-btn" id="mgrLink" href="../#home" hidden>Manager site</a>
-    <button class="tm-btn" type="button" data-act="chpw">Password</button>
-    <button class="tm-btn" type="button" data-act="signout">Sign out</button>
+    <div class="tm-me">
+      <button type="button" class="tm-avatar" id="meBtn" aria-haspopup="true" aria-expanded="false" aria-controls="meMenu" aria-label="Your account"></button>
+      <div class="tm-menu" id="meMenu" hidden>
+        <div class="tm-who"><b id="whoName"></b><span id="whoRole"></span></div>
+        <a class="tm-mi" id="mgrLink" href="../#home" hidden>Manager site <span aria-hidden="true">&#8599;</span></a>
+        <button class="tm-mi" type="button" data-act="chpw">Change password</button>
+        <button class="tm-mi" type="button" data-act="signout">Sign out</button>
+      </div>
+    </div>
   </header>
 
   <section class="tm-recipes tm-preshift" id="preshiftView" hidden></section>
@@ -75,47 +80,58 @@
   <section class="tm-recipes" id="calendarView" hidden></section>
   <main class="tm-main">
     <section class="tm-hero">
-      <p class="tm-eyebrow" id="hello"></p>
-      <h1 id="weekTitle"></h1>
+      <div class="tm-hero-t">
+        <p class="tm-eyebrow" id="hello"></p>
+        <h1 id="weekTitle"></h1>
+      </div>
       <div class="tm-weeknav">
         <div class="tm-viewtog" role="group" aria-label="View"><button type="button" id="viewDay" aria-pressed="false">Day</button><button type="button" id="viewWeek" aria-pressed="true">Week</button><button type="button" id="viewMonth" aria-pressed="false">Month</button></div>
-        <button type="button" class="tm-btn" id="prevWeek" aria-label="Previous week">&larr;</button>
-        <button type="button" class="tm-btn" id="thisWeek">This week</button>
-        <button type="button" class="tm-btn" id="nextWeek" aria-label="Next week">&rarr;</button>
+        <div class="tm-step" role="group" aria-label="Move">
+          <button type="button" class="tm-btn" id="prevWeek" aria-label="Previous week">&larr;</button>
+          <button type="button" class="tm-btn" id="thisWeek">This week</button>
+          <button type="button" class="tm-btn" id="nextWeek" aria-label="Next week">&rarr;</button>
+        </div>
       </div>
     </section>
 
-    <section class="tm-sec" id="todoSec" hidden>
+    <div class="tm-grid">
+    <div class="tm-colmain">
+    <section class="tm-sec tm-card">
+      <h2 class="tm-h">Your shifts</h2>
+      <div id="myShifts"></div>
+    </section>
+
+    <section class="tm-sec tm-card">
+      <h2 class="tm-h" id="teamH">Who&rsquo;s working</h2>
+      <div id="teamDays"></div>
+    </section>
+    </div>
+
+    <aside class="tm-side">
+    <section class="tm-sec tm-card" id="todoSec" hidden>
       <h2 class="tm-h">Your to-dos</h2>
       <ul class="tm-todos" id="myTodos"></ul>
       <p class="tm-msg" id="todoMsg" role="status"></p>
     </section>
 
-    <section class="tm-sec">
-      <h2 class="tm-h">Your shifts</h2>
-      <div id="myShifts"></div>
-    </section>
-
-    <section class="tm-sec">
-      <h2 class="tm-h" id="teamH">Who&rsquo;s working</h2>
-      <div id="teamDays"></div>
-    </section>
-
-    <section class="tm-sec" id="timeoffSec" hidden>
+    <section class="tm-sec tm-card" id="timeoffSec" hidden>
       <h2 class="tm-h">Time off</h2>
+      <ul class="tm-reqs" id="toList"></ul>
+      <details class="tm-fold" id="toFold">
+      <summary class="tm-btn primary tm-fold-btn">Request time off</summary>
       <form id="toForm" class="tm-toform" novalidate>
         <div class="tm-row2"><label>From<input type="date" name="from" required></label><label>Through<input type="date" name="to" required></label></div>
         <label class="tm-check"><input type="checkbox" name="allday" checked> All day</label>
         <div class="tm-row2" id="toTimes" hidden><label>Off from<input type="time" name="st" step="900"></label><label>Until<input type="time" name="et" step="900"></label></div>
         <label>Reason <span class="tm-hint">(optional, only managers see it)</span><input type="text" name="reason" maxlength="500"></label>
         <p class="tm-msg" id="toMsg" role="status"></p>
-        <button class="tm-btn primary" type="submit">Request time off</button>
+        <button class="tm-btn primary" type="submit">Send request</button>
       </form>
-      <p class="tm-small2">A manager has to approve a request before it goes on the schedule.</p>
-      <ul class="tm-reqs" id="toList"></ul>
+      <p class="tm-small2">A manager approves a request before it goes on the schedule.</p>
+      </details>
     </section>
 
-    <section class="tm-sec tm-board" id="board">
+    <section class="tm-sec tm-card tm-board" id="board">
       <h2 class="tm-h">Message board</h2>
       <form id="postForm" class="tm-post" novalidate>
         <label class="tm-sr" for="postBody">Write a note</label>
@@ -125,6 +141,8 @@
       <p class="tm-msg" id="boardMsg" role="status"></p>
       <ul class="tm-posts" id="posts"></ul>
     </section>
+    </aside>
+    </div>
   </main>
 </div>
 
@@ -137,6 +155,6 @@
 <script src="../js/resources.js?v=20261012y"></script>
 <script src="../js/prep.js?v=20261013a"></script>
 <script src="../js/preshift.js?v=20261012x"></script>
-<script src="team.js?v=20261012z"></script>
+<script src="team.js?v=20261013b"></script>
 </body>
 </html>
