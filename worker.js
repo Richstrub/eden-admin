@@ -14,6 +14,7 @@
  *   /inbound          Guests' email replies, delivered by Resend, saved into the inquiry's conversation.
  *   /mail/...         Business email: your Google Workspace mailboxes, read and changed in Gmail (mail-worker.js).
  *   /preshift/refresh Pre-shift: reads today's OpenTable email (preshift-worker.js). Also runs every 20 minutes on its own.
+ *   /promo/...        Promotional emails: website sign-ups, unsubscribe links, test sends and sending (promo-worker.js).
  *
  * Settings (Cloudflare > Workers > eden-admin > Settings > Variables and Secrets). Nothing secret is in this file:
  *   INQUIRY_KEY         secret: from  select public.new_inquiry_key();  in Supabase. Without it the questionnaire
@@ -27,6 +28,7 @@
 import BUILD_KEY from './inquiry-key.generated.js';   // INQUIRY_KEY from the Build settings, if saved there
 import { mailRoute } from './mail-worker.js';          // Business email (Gmail), see that file
 import { preshiftRoute, preshiftRefresh } from './preshift-worker.js';   // Pre-shift reservations from OpenTable
+import { promoRoute, promoRun, promoEvent } from './promo-worker.js';     // Promotional emails (Resend)
 
 const SITE_HOSTS = /(^|\.)edencny\.com$|(^|[.-])eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
 const BOTS = /bot|crawl|spider|slurp|preview|headless|lighthouse|pagespeed|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|curl|wget|python|axios|node-fetch|go-http|java\/|monitor|uptime|pingdom|scan/i;
@@ -381,6 +383,8 @@ async function inbound(req, env) {
   const raw = await req.text();
   if (!(await verifySvix(env, req, raw))) return json({ error: 'signature' }, 401);
   let evt; try { evt = JSON.parse(raw); } catch (e) { return json({ error: 'bad' }, 400); }
+  // results of promotional emails (delivered, opened, clicked, bounced, complained) come in on the same webhook
+  if (evt && /^email\.(delivered|opened|clicked|bounced|complained)$/.test(evt.type || '')) { try { return json(await promoEvent(env, inqKey(env), evt)); } catch (e) { return json({ error: 'server' }, 500); } }
   if (!evt || evt.type !== 'email.received' || !evt.data) return json({ ok: true, ignored: true });
   const d = evt.data, emailId = String(d.email_id || d.id || '');
   const toList = [].concat(d.to || []).map(String);
@@ -411,10 +415,13 @@ export default {
     if (url.pathname === '/inbound') return inbound(req, env);
     if (url.pathname === '/preshift/refresh') return preshiftRoute(req, env, inqKey(env));
     if (url.pathname.indexOf('/mail/') === 0) { const r = await mailRoute(req, env, url.pathname); if (r) return r; }
+    if (url.pathname.indexOf('/promo/') === 0) { const r = await promoRoute(req, env, url.pathname, inqKey(env)); if (r) return r; }
     return env.ASSETS.fetch(req);
   },
   // every 20 minutes (wrangler.jsonc "triggers"): look for today's OpenTable email for Pre-shift
   async scheduled(evt, env, ctx) {
+    // every 5 minutes: promotional emails that are due
+    if (evt && evt.cron === '*/5 * * * *') { ctx.waitUntil(promoRun(env, inqKey(env)).catch(() => null)); return; }
     ctx.waitUntil(preshiftRefresh(env, inqKey(env), false).catch(() => null));
     // Prep List: the 8:00 pm reset for the next day (New York time), if nobody did it
     if (inqKey(env) && env.SUPABASE_URL) ctx.waitUntil(rpc(env, 'prep_auto_server', { p_key: inqKey(env) }).catch(() => null));

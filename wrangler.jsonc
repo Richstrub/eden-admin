@@ -20,9 +20,13 @@
     "MAIL_FROM": "Eden Events <events@edencny.com>",
     "NOTIFY_TO": "Tyler@edencny.com,Rich@edencny.com",
     // Pre-shift reads OpenTable's emails from this connected mailbox
-    "OPENTABLE_MAILBOX": "rich@edencny.com"
+    "OPENTABLE_MAILBOX": "rich@edencny.com",
+    // Promotional emails come from this address; guests' replies go to PROMO_REPLY_TO
+    "PROMO_FROM": "Eden <info@edencny.com>",
+    "PROMO_REPLY_TO": "info@edencny.com"
   },
   // every 20 minutes the worker looks for today's OpenTable email (Pre-shift)
-  "triggers": { "crons": ["*/20 * * * *"] },
+  // and every 5 minutes it sends promotional emails that are due
+  "triggers": { "crons": ["*/20 * * * *", "*/5 * * * *"] },
   "keep_vars": true
 }
