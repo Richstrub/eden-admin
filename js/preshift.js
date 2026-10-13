@@ -66,7 +66,10 @@
     el.appendChild(wrap);
     if (P.missing) { wrap.appendChild(h('div', { cls: 'eo-card' }, [h('p', { text: P.ctx.role === 'owner' ? 'One step first: in Supabase, open SQL Editor > New query, paste in supabase/preshift.sql and click Run. Then reload this page.' : 'Pre-shift isn’t switched on yet.' })])); return; }
     wrap.appendChild(reservations());
-    wrap.appendChild(h('p', { cls: 'ps-next', text: 'More pre-shift sections (specials, 86’d items, wine, notes from managers) are coming next.' }));
+    var mc = h('section', { cls: 'eo-card ps-menu', 'aria-labelledby': 'psMenuH' }, [h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psMenuH' }, [h('span', { cls: 'eo-n', text: '2' }), 'Menu changes']), h('span', { cls: 'ps-when', text: 'Last 24 hours' })]), h('p', { cls: 'ps-src', text: 'Loading…' })]);
+    wrap.appendChild(mc);
+    menuChanges(mc);
+    wrap.appendChild(h('p', { cls: 'ps-next', text: 'More pre-shift sections (specials, wine, notes from managers) are coming next.' }));
   }
 
   /* ---------- 1. Reservations ---------- */
@@ -160,6 +163,54 @@
       card.appendChild(det);
     }
     return card;
+  }
+
+  /* ---------- 2. Menu changes in the last 24 hours (from the menu editor's history) ---------- */
+  function key(n) { return String(n || '').trim().toLowerCase(); }
+  function money(p) { p = String(p == null ? '' : p).trim(); return p ? (/^\d/.test(p) ? '$' + p : p) : ''; }
+  // what changed in one menu section, as short lines
+  function diffSection(c) {
+    var b = c.before || null, a = c.after || null, out = [];
+    var bi = (b && b.items) || [], ai = (a && a.items) || [];
+    if (!b && a) { ai.forEach(function (it) { if (it && it.name) out.push({ kind: 'new', name: it.name, text: [it.desc, money(it.price)].filter(Boolean).join(' · ') }); }); return { title: a.title || 'New section', isNew: true, lines: out }; }
+    if (b && !a) return { title: b.title || 'A section', removed: true, lines: [{ kind: 'removed', name: 'Whole section taken off the menu', text: bi.map(function (x) { return x.name; }).filter(Boolean).join(', ') }] };
+    var bm = {}; bi.forEach(function (it) { if (it && it.name) bm[key(it.name)] = it; });
+    var am = {}; ai.forEach(function (it) { if (it && it.name) am[key(it.name)] = it; });
+    ai.forEach(function (it) {
+      if (!it || !it.name) return;
+      var was = bm[key(it.name)];
+      if (!was) { out.push({ kind: it.hidden ? 'hidden' : 'new', name: it.name, text: [it.desc, money(it.price)].filter(Boolean).join(' · ') }); return; }
+      if (!was.hidden && it.hidden) out.push({ kind: 'hidden', name: it.name, text: 'Off the menu for now' });
+      if (was.hidden && !it.hidden) out.push({ kind: 'back', name: it.name, text: 'Back on the menu' });
+      if (String(was.price || '') !== String(it.price || '')) out.push({ kind: 'price', name: it.name, text: (money(was.price) || 'no price') + ' → ' + (money(it.price) || 'no price') });
+      if (String(was.desc || '') !== String(it.desc || '')) out.push({ kind: 'desc', name: it.name, text: it.desc || '(no description)' });
+      if (String(was.src || '') !== String(it.src || '') && it.src) out.push({ kind: 'desc', name: it.name, text: 'Now from ' + it.src });
+      if (String(was.pair || '') !== String(it.pair || '')) out.push({ kind: 'pair', name: it.name, text: it.pair ? 'Pair with ' + it.pair + (it.pairPrice ? ' (' + money(it.pairPrice) + ')' : '') : 'No pairing now' });
+    });
+    bi.forEach(function (it) { if (it && it.name && !am[key(it.name)]) out.push({ kind: 'removed', name: it.name, text: 'Taken off the menu' }); });
+    var title = (a && a.title) || (b && b.title) || 'Menu';
+    if (b && a && b.title && a.title && b.title !== a.title) out.unshift({ kind: 'desc', name: 'Section renamed', text: b.title + ' → ' + a.title });
+    if (a && b && String(a.note || '') !== String(b.note || '') && a.note) out.push({ kind: 'desc', name: 'Section note', text: a.note });
+    return { title: title, lines: out };
+  }
+  var KIND = { new: 'New', removed: 'Removed', hidden: '86’d', back: 'Back on', price: 'Price', desc: 'Changed', pair: 'Pairing' };
+  function menuChanges(card) {
+    var body = card.querySelector('.ps-src');
+    P.ctx.sb.rpc('menu_changes', { p_hours: 24 }).then(function (r) {
+      if (r.error) { body.textContent = /menu_changes|function|schema cache/i.test(r.error.message || '') ? (P.ctx.role === 'owner' ? 'Run supabase/preshift.sql in Supabase again to switch this on (it needs History, supabase/history.sql).' : 'Not switched on yet.') : 'Couldn’t load menu changes.'; return; }
+      var secs = (r.data || []).map(function (c) { var d = diffSection(c); d.who = c.who; d.at = c.at; return d; }).filter(function (d) { return d.lines.length; });
+      if (!secs.length) { body.textContent = 'No menu changes in the last 24 hours.'; return; }
+      body.remove();
+      var n = 0; secs.forEach(function (d) { n += d.lines.length; });
+      card.querySelector('.ps-when').textContent = n + (n === 1 ? ' change' : ' changes') + ' · last 24 hours';
+      secs.forEach(function (d) {
+        card.appendChild(h('div', { cls: 'ps-mc' }, [
+          h('div', { cls: 'ps-mc-h' }, [h('b', { text: d.title }), h('span', { text: (d.isNew ? 'New section · ' : d.removed ? 'Removed · ' : '') + (d.who ? d.who + ', ' : '') + when(d.at) })]),
+          h('ul', d.lines.map(function (l) {
+            return h('li', [h('span', { cls: 'ps-k ps-k-' + l.kind, text: KIND[l.kind] || 'Changed' }), h('span', { cls: 'ps-mc-t' }, [h('b', { text: l.name }), l.text ? h('span', { text: l.text }) : null])]);
+          }))]));
+      });
+    }, function () { body.textContent = 'Couldn’t load menu changes.'; });
   }
 
   window.EdenPreshift = { show: show };

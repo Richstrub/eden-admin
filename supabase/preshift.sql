@@ -67,3 +67,28 @@ end $$;
 
 revoke all on function public.mail_token_server(text, text), public.preshift_save_server(text, date, jsonb), public.preshift_status_server(text) from public, authenticated;
 grant execute on function public.mail_token_server(text, text), public.preshift_save_server(text, date, jsonb), public.preshift_status_server(text) to anon;
+
+-- Pre-shift section 2: menu changes in the last day (from Analytics > History, which records every menu edit).
+-- Everyone on the team can see what changed on the menu; History itself stays Owner-only.
+create or replace function public.menu_changes(p_hours int default 24) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with l as (
+    select * from public.activity_log
+    where tbl = 'site_docs' and row_key like 'site/menu/groups/%'
+      and at > now() - make_interval(hours => greatest(1, least(coalesce(p_hours, 24), 168)))
+  ), g as (
+    select row_key,
+      (array_agg(old_row order by at asc))[1] as first_old,
+      (array_agg(new_row order by at desc))[1] as last_new,
+      (array_agg(action order by at asc))[1] as first_action,
+      (array_agg(action order by at desc))[1] as last_action,
+      (array_agg(who order by at desc))[1] as who,
+      max(at) as at
+    from l group by row_key
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('key', row_key, 'before', first_old -> 'data', 'after', last_new -> 'data',
+           'first', first_action, 'last', last_action, 'who', who, 'at', at) order by at desc), '[]'::jsonb)
+  from g where public.is_team()
+$$;
+revoke all on function public.menu_changes(int) from public, anon;
+grant execute on function public.menu_changes(int) to authenticated;

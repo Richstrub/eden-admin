@@ -1709,3 +1709,18 @@ body.nt-open #app{visibility:hidden!important}
 .ps-tag.ps-returning{background:#eef1ec;border-color:rgba(63,90,67,.25);color:#3f5a43}
 .ps-tag.ps-accessibility{background:#eef3f8;border-color:rgba(60,90,130,.3);color:#3c5a82}
 .ps-name{white-space:normal}
+.ps-when{font-size:.78rem;color:#857f75}
+.ps-mc{border:1px solid rgba(15,18,21,.08);border-radius:12px;overflow:hidden;margin-top:12px}
+.ps-mc-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 14px;background:#f3efe8;font-size:.86rem}
+.ps-mc-h b{font-weight:500}
+.ps-mc-h span{color:#857f75;font-size:.78rem}
+.ps-mc ul{list-style:none}
+.ps-mc li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:12px;align-items:baseline;padding:10px 14px;border-top:1px solid rgba(15,18,21,.06)}
+.ps-mc-t{display:grid;gap:2px;min-width:0}
+.ps-mc-t b{font-weight:500}
+.ps-mc-t span{font-size:.86rem;color:#5d5952}
+.ps-k{justify-self:start;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:9px;background:#efe9df;color:#5d5952;white-space:nowrap}
+.ps-k-new,.ps-k-back{background:#eef4ec;color:#3f6b43}
+.ps-k-removed,.ps-k-hidden{background:#fdf0ee;color:#a3392b}
+.ps-k-price{background:#fbf3ea;color:#8a5226}
+.ps-k-pair{background:#f1eef6;color:#5b4b7a}
