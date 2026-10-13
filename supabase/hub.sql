@@ -68,7 +68,72 @@ $$;
 revoke all on function public.hub_ok() from public, anon;
 grant execute on function public.hub_ok() to authenticated;
 
--- 5. Make the Hub's login (do this once, after adding the user in Authentication > Users):
+-- 5. What the Hub shows, in one read-only call: today's pre-shift (no guest spend), pre-shift notes, menu changes,
+--    the kitchen prep list (not the bar list) and the calendar for the next two weeks. Only the Hub login, the Owner
+--    and managers get anything back. Each part is skipped (null) until its own SQL file has been run.
+create or replace function public.hub_board() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  today date := (now() at time zone 'America/New_York')::date;
+  out jsonb := jsonb_build_object('today', today);
+  r record; res jsonb;
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then
+    return jsonb_build_object('error', 'not_allowed');
+  end if;
+
+  -- pre-shift: tonight's reservations, without guest spend or the raw email
+  if to_regclass('public.preshift_days') is not null then
+    select * into r from public.preshift_days where service_date = today;
+    if found then
+      res := coalesce(r.reservations, '{}'::jsonb) - 'text' - 'sections';
+      if jsonb_typeof(res -> 'list') = 'array' then
+        res := jsonb_set(res, '{list}', (select coalesce(jsonb_agg(case when jsonb_typeof(x -> 'guest') = 'object' then jsonb_set(x, '{guest}', (x -> 'guest') - 'spend') else x end), '[]'::jsonb)
+                                         from jsonb_array_elements(res -> 'list') x));
+      end if;
+      out := out || jsonb_build_object('preshift', jsonb_build_object('reservations', res, 'received', r.source_received, 'updated_at', r.updated_at));
+    end if;
+  end if;
+
+  -- pre-shift notes for today (words only)
+  if to_regclass('public.preshift_notes') is not null then
+    out := out || jsonb_build_object('notes', (select coalesce(jsonb_agg(jsonb_build_object('body', n.body, 'author', n.author, 'at', n.created_at) order by n.created_at), '[]'::jsonb)
+                                               from public.preshift_notes n where n.service_date = today));
+  end if;
+
+  -- menu changes in the last 24 hours (which sections changed)
+  if to_regclass('public.activity_log') is not null then
+    out := out || jsonb_build_object('menu', (select coalesce(jsonb_agg(jsonb_build_object('title', t.title, 'at', t.at) order by t.at desc), '[]'::jsonb) from (
+      select coalesce((array_agg(l.new_row -> 'data' ->> 'title' order by l.at desc))[1], (array_agg(l.old_row -> 'data' ->> 'title' order by l.at desc))[1], 'A menu section') as title, max(l.at) as at
+      from public.activity_log l
+      where l.tbl = 'site_docs' and l.row_key like 'site/menu/groups/%' and l.at > now() - interval '24 hours'
+      group by l.row_key) t));
+  end if;
+
+  -- the kitchen prep list (bar sections' ids start with b-)
+  if to_regclass('public.prep_lists') is not null then
+    select * into r from public.prep_lists where id = 'eden';
+    if found then
+      out := out || jsonb_build_object('prep', jsonb_build_object(
+        'for_date', r.for_date, 'reset_at', r.reset_at, 'updated_at', r.updated_at,
+        'entries', coalesce((select jsonb_object_agg(k, v) from jsonb_each(r.entries) x(k, v) where split_part(k, ':', 2) not like 'b-%'), '{}'::jsonb),
+        'removed', coalesce((select jsonb_object_agg(k, v) from jsonb_each(r.removed) x(k, v) where split_part(k, ':', 2) not like 'b-%'), '{}'::jsonb),
+        'extra', coalesce((select jsonb_object_agg(k, v) from jsonb_each(r.extra) x(k, v) where k not like 'b-%'), '{}'::jsonb)));
+    end if;
+  end if;
+
+  -- the calendar: today and the next 13 days (no notes)
+  if to_regclass('public.events') is not null then
+    out := out || jsonb_build_object('events', (select coalesce(jsonb_agg(jsonb_build_object('title', e.title, 'type', e.type, 'date', e.date, 'all_day', e.all_day,
+        'start', e.start, 'end', e."end", 'room', e.room, 'guests', e.guests) order by e.date, e.start), '[]'::jsonb)
+      from public.events e where e.date between today and today + 13));
+  end if;
+  return out;
+end $$;
+revoke all on function public.hub_board() from public, anon;
+grant execute on function public.hub_board() to authenticated;
+
+-- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
 -- insert into public.staff (user_id, name, role)
 -- select id, 'Hub', 'hub' from auth.users where email = 'hub@edencny.com'

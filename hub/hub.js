@@ -1,18 +1,47 @@
-/* Eden Hub: the touch screen in the restaurant (edencny-staff.com/hub/).
- * Signs in once with the Hub's own login (role 'hub', supabase/hub.sql) and stays signed in. The Owner and managers
- * can open it too. For now it's a sample page that proves the screen, the login and touch all work; the real
- * panels (reservations, events, a shared ordering list…) come later.
+/* Eden Hub: the touch screen in the restaurant (edencny-staff.com/hub/), made for the Hearth's 27-inch portrait screen.
+ * Shows the time and day, the weather in Syracuse, today's pre-shift (reservations without guest spend, pre-shift
+ * notes, menu changes), the kitchen prep list with a bar for how much is done, and the calendar for two weeks.
+ * Signs in once with the Hub's own login (role 'hub', supabase/hub.sql) and stays signed in; everything it shows
+ * comes from one read-only call, hub_board(). The Owner and managers can open it too.
  * Made for a kiosk browser: no zooming or long-press menus, the screen kept awake, a reload at 4 am to pick up
- * updates, and settings (full screen, reload, sign out) hidden behind a 3-second press on the logo.
+ * updates, and settings (full screen, reload, sign out) behind a 3-second press on the EDEN logo.
  */
 (function () {
   'use strict';
   var CFG = window.EDEN_STAFF_CONFIG || {};
   var $ = function (id) { return document.getElementById(id); };
   var sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.key, { auth: { persistSession: true, autoRefreshToken: true } });
-  var session = null, entered = false;
+  var session = null, entered = false, started = false;
+  var WX = { lat: 43.0481, lon: -76.1474 };   // 118 E. Genesee St., Syracuse
+  var BOARD_MS = 60 * 1000, MENU_MS = 30 * 60 * 1000, WX_MS = 20 * 60 * 1000;
 
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (Array.isArray(attrs) || typeof attrs === 'string') { kids = attrs; attrs = null; }
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k]; if (v == null || v === false) return;
+      if (k === 'text') e.textContent = v; else if (k === 'cls') e.className = v; else e.setAttribute(k, v === true ? '' : v);
+    });
+    [].concat(kids || []).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
   function show(id) { ['loading', 'signin', 'noaccess', 'app'].forEach(function (x) { $(x).hidden = x !== id; }); }
+  function t12(hhmm) {
+    var m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); if (!m) return hhmm || '';
+    var H = +m[1], ap = H >= 12 ? 'pm' : 'am'; H = H % 12 || 12;
+    return H + (m[2] === '00' ? '' : ':' + m[2]) + ' ' + ap;
+  }
+  function isoDay(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function dayLabel(iso, today) {
+    if (iso === today) return 'Today';
+    var t = new Date(today + 'T12:00:00'); t.setDate(t.getDate() + 1);
+    if (iso === isoDay(t)) return 'Tomorrow';
+    return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  function ago(ts) {
+    if (!ts) return ''; var m = Math.round((Date.now() - new Date(ts)) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
 
   /* ---------- signing in ---------- */
   sb.auth.onAuthStateChange(function (event, s) {
@@ -45,22 +74,23 @@
         $('noaccessMsg').textContent = 'You’re signed in as ' + ((session.user && session.user.email) || 'someone') + ', which can’t open the Hub. Sign out and use the Hub login.';
         show('noaccess'); return;
       }
-      $('chkLogin').textContent = r.data.hub ? 'Signed in with the Hub login' : 'Signed in as ' + session.user.email + ' (Owner or manager preview)';
-      $('chkLogin').classList.add('ok');
-      $('sheetWho').textContent = 'Signed in as ' + session.user.email + '.';
+      $('sheetWho').textContent = 'Signed in as ' + session.user.email + (r.data.hub ? ' (the Hub login).' : ' (Owner or manager preview).');
       show('app'); start();
     }, function () { entered = false; setTimeout(function () { if (session) enter(); }, 20000); });
   }
   $('noaccessOut').addEventListener('click', function () { sb.auth.signOut(); });
 
-  /* ---------- the clock and the connection ---------- */
-  var started = false;
   function start() {
     if (started) return; started = true;
     tick(); setInterval(tick, 1000);
-    net(); window.addEventListener('online', net); window.addEventListener('offline', net);
-    wake(); renderOrder();
+    net(); window.addEventListener('online', function () { net(); board(); weather(); }); window.addEventListener('offline', net);
+    wake();
+    loadMenu().then(board);
+    setInterval(board, BOARD_MS); setInterval(loadMenu, MENU_MS);
+    weather(); setInterval(weather, WX_MS);
   }
+
+  /* ---------- clock ---------- */
   function tick() {
     var d = new Date();
     $('clock').textContent = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -70,17 +100,180 @@
   }
   function net() {
     var on = navigator.onLine;
-    $('netDot').classList.toggle('off', !on); $('netText').textContent = on ? 'Online' : 'No internet';
+    $('netDot').classList.toggle('off', !on); $('netText').textContent = on ? 'Online' : 'No internet: showing the last update';
+  }
+
+  /* ---------- everything from Eden: pre-shift, prep, calendar ---------- */
+  var MENU = null, LAST = null;
+  function loadMenu() {
+    if (!window.EdenPrep || !window.EdenPrep.fetchMenu) return Promise.resolve();
+    return window.EdenPrep.fetchMenu(sb).then(function (m) { MENU = m; if (LAST) paintPrep(LAST); });
+  }
+  function board() {
+    if (document.hidden) return;
+    sb.rpc('hub_board').then(function (r) {
+      if (r.error || !r.data || r.data.error) {
+        if (r.error && /hub_board|function/i.test(r.error.message || '')) $('preBody').replaceChildren(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' }));
+        return;
+      }
+      LAST = r.data;
+      paintPreshift(r.data); paintPrep(r.data); paintCal(r.data);
+      $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }, function () {});
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && started) board(); });
+
+  var CELEB = /birthday|anniversary|special occasion|date night|celebrat|engagement|proposal|graduation/i;
+  function paintPreshift(d) {
+    var box = $('preBody'), P = d.preshift, R = P && P.reservations, list = (R && R.list) || [];
+    box.replaceChildren();
+    $('preWhen').textContent = P && P.received ? 'OpenTable, ' + ago(P.received) : '';
+    // the numbers
+    if (R) {
+      var tiles = [];
+      var covers = R.covers || list.reduce(function (n, r) { return n + (r.size || 0); }, 0);
+      tiles.push([String(covers), 'Covers']);
+      tiles.push([String(list.length || (R.stats || []).length ? list.length : 0), list.length === 1 ? 'Reservation' : 'Reservations']);
+      var n = function (f) { return list.filter(f).length; }, tags = function (r) { return r.tags || []; };
+      var c;
+      c = n(function (r) { return tags(r).some(function (t) { return CELEB.test(t); }); }); if (c) tiles.push([String(c), 'Celebrations']);
+      c = n(function (r) { return tags(r).some(function (t) { return /allerg|dietary/i.test(t); }); }); if (c) tiles.push([String(c), 'Allergies']);
+      c = n(function (r) { return tags(r).some(function (t) { return /vip/i.test(t); }); }); if (c) tiles.push([String(c), 'VIPs']);
+      c = n(function (r) { return (r.size || 0) >= 6; }); if (c) tiles.push([String(c), 'Parties of 6+']);
+      if (!list.length) (R.stats || []).slice(0, 4).forEach(function (s) { tiles.push([s.value, s.label]); });
+      box.appendChild(h('div', { cls: 'hb-tiles' }, tiles.slice(0, 6).map(function (t) { return h('div', { cls: 'hb-tile' }, [h('b', { text: t[0] }), h('span', { text: t[1] })]); })));
+      // heads-up: tagged, noted or big tables, in time order
+      var watch = list.slice().sort(function (a, b) { return String(a.time).localeCompare(String(b.time)); })
+        .filter(function (r) { return tags(r).some(function (t) { return !/returning/i.test(t); }) || r.notes || (r.size || 0) >= 6; });
+      if (watch.length) {
+        box.appendChild(h('h3', { cls: 'hb-sub', text: 'Heads-up tonight' }));
+        box.appendChild(h('ul', { cls: 'hb-watch' }, watch.slice(0, 8).map(function (r) {
+          return h('li', [h('span', { cls: 'hb-t', text: t12(r.time) }),
+            h('span', { cls: 'hb-w' }, [h('b', { text: (r.name || 'Party') + ' · ' + r.size }), r.notes ? h('small', { text: r.notes }) : null]),
+            h('span', { cls: 'hb-tags' }, tags(r).filter(function (t) { return !/returning/i.test(t); }).slice(0, 3).map(function (t) { return h('span', { cls: 'hb-chip' + (CELEB.test(t) ? ' gold' : /allerg|dietary/i.test(t) ? ' red' : ''), text: t }); }))]);
+        })));
+        if (watch.length > 8) box.appendChild(h('p', { cls: 'hb-muted', text: '+ ' + (watch.length - 8) + ' more on the staff page’s Pre-shift.' }));
+      }
+    } else {
+      box.appendChild(h('p', { cls: 'hb-wait', text: 'Tonight’s reservations appear here once OpenTable’s email arrives.' }));
+    }
+    // notes from the Owner and managers
+    var notes = (d.notes || []).filter(function (x) { return x.body && x.body.trim(); });
+    if (notes.length) {
+      box.appendChild(h('h3', { cls: 'hb-sub', text: 'Notes' }));
+      box.appendChild(h('ul', { cls: 'hb-notes' }, notes.map(function (x) { return h('li', [h('p', { text: x.body }), x.author ? h('small', { text: '— ' + x.author }) : null]); })));
+    }
+    // menu changes
+    var menu = d.menu || [];
+    if (menu.length) {
+      box.appendChild(h('h3', { cls: 'hb-sub', text: 'Menu changes, last 24 hours' }));
+      box.appendChild(h('div', { cls: 'hb-chips' }, menu.slice(0, 8).map(function (m) { return h('span', { cls: 'hb-chip', text: m.title }); })));
+    }
+  }
+
+  function paintPrep(d) {
+    var box = $('prepBody'), st = d.prep;
+    if (!st) { box.replaceChildren(h('p', { cls: 'hb-muted', text: 'The prep list isn’t set up yet.' })); setBar(0, 0); return; }
+    $('prepFor').textContent = st.for_date ? 'For ' + new Date(st.for_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : '';
+    if (!MENU || !window.EdenPrep || !window.EdenPrep.kitchenLines) { box.replaceChildren(h('p', { cls: 'hb-muted', text: 'Loading the menu…' })); return; }
+    var lines = window.EdenPrep.kitchenLines(MENU, st);
+    var done = lines.filter(function (l) { return l.done; }).length;
+    setBar(done, lines.length);
+    // what's left, by section (done lines drop off)
+    var left = lines.filter(function (l) { return !l.done; });
+    box.replaceChildren();
+    if (!lines.length) { box.appendChild(h('p', { cls: 'hb-muted', text: 'No dishes on the Kitchen menu yet.' })); return; }
+    if (!left.length) { box.appendChild(h('p', { cls: 'hb-alldone', text: 'Everything’s prepped. Nice work.' })); return; }
+    var groups = [], by = {}, cols = h('div', { cls: 'hb-pcols' }), keep = box.scrollTop;
+    left.forEach(function (l) { if (!by[l.section]) { by[l.section] = []; groups.push(l.section); } by[l.section].push(l); });
+    box.appendChild(cols);
+    groups.forEach(function (g) {
+      cols.appendChild(h('div', { cls: 'hb-pgroup' }, [h('h4', { text: g + ' · ' + by[g].length }),
+        h('ul', by[g].map(function (l) { return h('li', [h('span', { cls: 'hb-box', 'aria-hidden': 'true' }), h('span', { text: l.label }), l.dish ? h('small', { text: l.dish }) : null]); }))]));
+    });
+    box.scrollTop = keep;   // a refresh doesn't jump the list back to the top
+  }
+  function setBar(done, total) {
+    var pct = total ? Math.round(done / total * 100) : 0;
+    $('prepFill').style.width = pct + '%';
+    $('prepFill').classList.toggle('full', total > 0 && done === total);
+    $('prepBar').setAttribute('aria-valuenow', String(pct));
+    $('prepPct').textContent = total ? pct + '%' : '–';
+    $('prepSub').textContent = total ? done + ' of ' + total + ' done · ' + (total - done) + ' to go' : '';
+  }
+
+  var TYPE = { private: 'Private event', supper: 'Supper Club', catering: 'Catering', meeting: 'Meeting', closed: 'Closed', other: '' };
+  function paintCal(d) {
+    var ul = $('calBody'), ev = d.events;
+    ul.replaceChildren();
+    if (!ev) { ul.appendChild(h('li', { cls: 'hb-muted', text: 'The calendar isn’t set up yet.' })); return; }
+    if (!ev.length) { ul.appendChild(h('li', { cls: 'hb-muted', text: 'Nothing on the calendar for the next two weeks.' })); return; }
+    ev.slice(0, 10).forEach(function (e) {
+      var time = e.all_day ? 'All day' : e.start ? t12(e.start) + (e.end ? ' – ' + t12(e.end) : '') : '';
+      var meta = [TYPE[e.type] != null ? TYPE[e.type] : e.type, e.guests ? e.guests + ' guests' : '', e.room].filter(Boolean).join(' · ');
+      ul.appendChild(h('li', { cls: 'hb-ev' + (e.date === d.today ? ' today' : '') + (e.type === 'closed' ? ' closed' : '') }, [
+        h('span', { cls: 'hb-ev-d' }, [h('b', { text: dayLabel(e.date, d.today) }), h('small', { text: time })]),
+        h('span', { cls: 'hb-ev-t' }, [h('b', { text: e.title }), meta ? h('small', { text: meta }) : null])]));
+    });
+    if (ev.length > 10) ul.appendChild(h('li', { cls: 'hb-muted', text: '+ ' + (ev.length - 10) + ' more in the Calendar.' }));
+  }
+
+  /* ---------- weather (Open-Meteo, no key needed) ---------- */
+  var WMO = [[[0], 'Clear', 'sun'], [[1], 'Mostly clear', 'sun'], [[2], 'Partly cloudy', 'part'], [[3], 'Cloudy', 'cloud'], [[45, 48], 'Fog', 'fog'],
+    [[51, 53, 55, 56, 57], 'Drizzle', 'rain'], [[61, 63, 80, 81], 'Rain', 'rain'], [[65, 82], 'Heavy rain', 'rain'], [[66, 67], 'Freezing rain', 'rain'],
+    [[71, 73, 77, 85], 'Snow', 'snow'], [[75, 86], 'Heavy snow', 'snow'], [[95, 96, 99], 'Thunderstorms', 'storm']];
+  function wmo(code) { for (var i = 0; i < WMO.length; i++) if (WMO[i][0].indexOf(code) !== -1) return WMO[i]; return [[], '', 'cloud']; }
+  var ICON = {
+    sun: '<circle cx="24" cy="24" r="9"/><path d="M24 5v6M24 37v6M5 24h6M37 24h6M10.6 10.6l4.2 4.2M33.2 33.2l4.2 4.2M10.6 37.4l4.2-4.2M33.2 14.8l4.2-4.2"/>',
+    part: '<circle cx="18" cy="18" r="7"/><path d="M18 5v3M5 18h3M8.8 8.8l2.1 2.1M27.2 8.8l-2.1 2.1"/><path d="M16 38h20a7 7 0 0 0 0-14 10 10 0 0 0-19 3 6 6 0 0 0-1 11z"/>',
+    cloud: '<path d="M13 37h23a8 8 0 0 0 0-16 11 11 0 0 0-21 3 7 7 0 0 0-2 13z"/>',
+    rain: '<path d="M13 30h23a8 8 0 0 0 0-16 11 11 0 0 0-21 3 7 7 0 0 0-2 13z"/><path d="M17 35l-2 6M25 35l-2 6M33 35l-2 6"/>',
+    snow: '<path d="M13 30h23a8 8 0 0 0 0-16 11 11 0 0 0-21 3 7 7 0 0 0-2 13z"/><path d="M17 37v4M15 39h4M25 37v4M23 39h4M33 37v4M31 39h4"/>',
+    storm: '<path d="M13 30h23a8 8 0 0 0 0-16 11 11 0 0 0-21 3 7 7 0 0 0-2 13z"/><path d="M25 32l-4 7h6l-4 7"/>',
+    fog: '<path d="M8 20h32M12 27h28M8 34h28"/>'
+  };
+  function icon(name, cls) {
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 48 48'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('class', cls || 'hb-wxi');
+    s.innerHTML = ICON[name] || ICON.cloud; return s;
+  }
+  function weather() {
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + WX.lat + '&longitude=' + WX.lon +
+      '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m' +
+      '&hourly=temperature_2m,weather_code,precipitation_probability' +
+      '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunset' +
+      '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FNew_York&forecast_days=2';
+    fetch(url).then(function (r) { return r.json(); }).then(paintWx, function () {
+      if (!$('wx').querySelector('.hb-wx-now')) $('wx').replaceChildren(h('p', { cls: 'hb-muted', text: 'Weather unavailable right now.' }));
+    });
+  }
+  function paintWx(w) {
+    if (!w || !w.current) return;
+    var c = w.current, k = wmo(c.weather_code), dly = w.daily || {}, hr = w.hourly || {};
+    var sunset = dly.sunset && dly.sunset[0] ? new Date(dly.sunset[0]).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    // tonight's service: 5, 7 and 9 pm
+    var today = isoDay(new Date()), svc = [];
+    (hr.time || []).forEach(function (t, i) {
+      if (t.slice(0, 10) === today && [17, 19, 21].indexOf(+t.slice(11, 13)) !== -1) svc.push({ t: +t.slice(11, 13), temp: hr.temperature_2m[i], code: hr.weather_code[i], rain: hr.precipitation_probability[i] });
+    });
+    var box = $('wx'); box.replaceChildren();
+    box.appendChild(h('div', { cls: 'hb-wx-now' }, [icon(k[2]), h('div', [h('b', { cls: 'hb-wx-temp', text: Math.round(c.temperature_2m) + '°' }),
+      h('span', { text: k[1] + (Math.abs(c.apparent_temperature - c.temperature_2m) >= 3 ? ' · feels ' + Math.round(c.apparent_temperature) + '°' : '') })])]));
+    box.appendChild(h('p', { cls: 'hb-wx-day', text: [
+      dly.temperature_2m_max ? 'High ' + Math.round(dly.temperature_2m_max[0]) + '° · Low ' + Math.round(dly.temperature_2m_min[0]) + '°' : '',
+      dly.precipitation_probability_max && dly.precipitation_probability_max[0] != null ? dly.precipitation_probability_max[0] + '% rain' : '',
+      c.wind_speed_10m >= 12 ? 'Wind ' + Math.round(c.wind_speed_10m) + ' mph' : '',
+      sunset ? 'Sunset ' + sunset : ''].filter(Boolean).join(' · ') }));
+    if (svc.length) box.appendChild(h('div', { cls: 'hb-wx-svc', 'aria-label': 'Tonight' }, svc.map(function (s) {
+      return h('div', [h('small', { text: (s.t - 12) + ' pm' }), icon(wmo(s.code)[2], 'hb-wxs'), h('b', { text: Math.round(s.temp) + '°' }), s.rain >= 30 ? h('small', { cls: 'hb-rain', text: s.rain + '%' }) : null]);
+    })));
   }
 
   /* ---------- keep the screen on (where the browser allows it) ---------- */
   var lock = null;
   function wake() {
-    if (!('wakeLock' in navigator)) { $('chkWake').textContent = 'Screen stays on: set this in the kiosk browser’s settings'; return; }
-    navigator.wakeLock.request('screen').then(function (l) {
-      lock = l; $('chkWake').textContent = 'Screen stays on'; $('chkWake').classList.add('ok');
-      l.addEventListener('release', function () { lock = null; });
-    }, function () { $('chkWake').textContent = 'Screen stays on: tap the screen once to allow it'; });
+    if (!('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen').then(function (l) { lock = l; l.addEventListener('release', function () { lock = null; }); }, function () {});
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden && !lock && started) wake(); });
   document.addEventListener('pointerdown', function () { if (!lock && started && 'wakeLock' in navigator) wake(); }, { passive: true });
@@ -88,56 +281,7 @@
   /* ---------- no long-press menus, no double-tap or pinch zoom ---------- */
   document.addEventListener('contextmenu', function (e) { if (!/INPUT|TEXTAREA/.test(e.target.tagName)) e.preventDefault(); });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
-  document.addEventListener('touchmove', function (e) { if (e.touches.length > 1 && !e.target.closest('#pad')) e.preventDefault(); }, { passive: false });
-
-  /* ---------- sample ordering list (on this screen only, for now) ---------- */
-  var KEY = 'eden-hub-order-sample';
-  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (e) { return []; } }
-  function save(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) {} }
-  var items = load();
-  function renderOrder() {
-    var ul = $('orderList'); ul.innerHTML = '';
-    items.forEach(function (it, i) {
-      var li = document.createElement('li'); li.className = 'hb-item' + (it.done ? ' done' : '');
-      var b = document.createElement('button'); b.type = 'button'; b.className = 'hb-tick'; b.setAttribute('aria-pressed', it.done ? 'true' : 'false');
-      b.innerHTML = '<span class="hb-box" aria-hidden="true"></span>';
-      var t = document.createElement('span'); t.className = 'hb-itxt'; t.textContent = it.text; b.appendChild(t);
-      var w = document.createElement('span'); w.className = 'hb-when'; w.textContent = new Date(it.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); b.appendChild(w);
-      b.addEventListener('click', function () { it.done = !it.done; save(items); renderOrder(); });
-      var x = document.createElement('button'); x.type = 'button'; x.className = 'hb-x'; x.setAttribute('aria-label', 'Remove ' + it.text); x.textContent = '×';
-      x.addEventListener('click', function () { items.splice(i, 1); save(items); renderOrder(); });
-      li.appendChild(b); li.appendChild(x); ul.appendChild(li);
-    });
-    $('orderEmpty').hidden = items.length > 0;
-    $('orderClear').hidden = !items.some(function (x) { return x.done; });
-  }
-  $('orderForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var v = $('orderIn').value.replace(/\s+/g, ' ').trim(); if (!v) return;
-    items.unshift({ text: v.charAt(0).toUpperCase() + v.slice(1), done: false, at: Date.now() });
-    items = items.slice(0, 60); save(items); $('orderIn').value = ''; renderOrder();
-    $('orderIn').blur();   // closes the on-screen keyboard
-  });
-  $('orderClear').addEventListener('click', function () { items = items.filter(function (x) { return !x.done; }); save(items); renderOrder(); });
-
-  /* ---------- touch test ---------- */
-  var pad = $('pad'), taps = 0, live = {}, maxFingers = 0;
-  function dot(x, y, cls) {
-    var r = pad.getBoundingClientRect(), d = document.createElement('span');
-    d.className = 'hb-ripple' + (cls ? ' ' + cls : ''); d.style.left = (x - r.left) + 'px'; d.style.top = (y - r.top) + 'px';
-    pad.appendChild(d); setTimeout(function () { d.remove(); }, cls ? 900 : 700);
-  }
-  pad.addEventListener('pointerdown', function (e) {
-    e.preventDefault(); pad.setPointerCapture && pad.setPointerCapture(e.pointerId);
-    live[e.pointerId] = true; taps++;
-    var n = Object.keys(live).length; maxFingers = Math.max(maxFingers, n);
-    $('padHint').hidden = true; dot(e.clientX, e.clientY);
-    $('touchCount').textContent = taps + (taps === 1 ? ' tap' : ' taps');
-    $('touchInfo').textContent = 'Touch is working: ' + (e.pointerType === 'touch' ? 'finger' : e.pointerType === 'pen' ? 'pen' : 'mouse') + ', ' + n + ' at once now (most so far: ' + maxFingers + ').';
-    $('chkTouch').textContent = 'Touch works' + (maxFingers > 1 ? ', including ' + maxFingers + ' fingers at once' : ''); $('chkTouch').classList.add('ok');
-  });
-  pad.addEventListener('pointermove', function (e) { if (live[e.pointerId]) dot(e.clientX, e.clientY, 'trail'); });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) { pad.addEventListener(t, function (e) { delete live[e.pointerId]; }); });
+  document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
   /* ---------- Hub settings: press and hold the logo for 3 seconds ---------- */
   var hold = null;

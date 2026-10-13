@@ -616,7 +616,38 @@
     size(); confirmBtn.focus();
   }
 
+  // read-only, for the Hub: the kitchen list's lines (as "By dish" shows them) and which are done
+  function fetchMenu(sb) {
+    return sb.from('site_docs').select('path,data').like('path', 'site/menu%').then(function (r) {
+      var rows = {}; ((r && r.data) || []).forEach(function (x) { rows[x.path] = x.data; });
+      var m = rows['site/menu']; if (!m || !m.tabs) return { tabs: [] };
+      return { tabs: m.tabs.map(function (t) {
+        return { id: t.id, label: t.label, groups: (t.gids || []).filter(function (id) { return rows['site/menu/groups/' + id]; }).map(function (id) { var x = rows['site/menu/groups/' + id]; return { id: id, title: x.title, note: x.note, noteAfter: x.noteAfter, items: x.items || [] }; }) };
+      }) };
+    }, function () { return { tabs: [] }; });
+  }
+  function kitchenLines(menu, st) {
+    st = st || {}; var entries = st.entries || {}, removed = st.removed || {}, extra = st.extra || {};
+    var was = P.bar; P.bar = false; var secs = sections(menu || { tabs: [] }); P.bar = was;
+    var out = [];
+    secs.forEach(function (sec) {
+      sec.dishes.forEach(function (dish) {
+        dish.parts.forEach(function (p) {
+          var key = 'd:' + sec.id + ':' + keyOf(dish.name) + ':' + keyOf(p); if (removed[key]) return;
+          out.push({ section: sec.title, dish: dish.basic ? '' : dish.name, label: p, key: key, done: !!(entries[key] || {}).done });
+        });
+      });
+      (extra[sec.id] || []).forEach(function (name) {
+        var key = 'x:' + sec.id + ':' + keyOf(name);
+        out.push({ section: sec.title, dish: '', label: name, key: key, done: !!(entries[key] || {}).done, extra: true });
+      });
+    });
+    return out;
+  }
+
   window.EdenPrep = {
+    fetchMenu: fetchMenu,
+    kitchenLines: kitchenLines,
     show: function (ctx) {
       P.ctx = ctx; P.el = ctx.el; render();
       Promise.all([loadMenu(), loadState()]).then(render);
