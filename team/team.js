@@ -204,6 +204,8 @@
         if (canPrep && !mgr) {
           var nav = $('tabPrep').parentNode; nav.insertBefore($('tabRecipes'), nav.firstChild); nav.insertBefore($('tabPrep'), nav.firstChild);
           document.body.classList.add('is-cook');
+          // a cook's to-dos sit at the top of the Prep List tab (instead of on the Schedule page)
+          $('prepTodos').appendChild($('todoSec'));
           if (!location.hash && !opened) { history.replaceState(null, '', location.pathname + '#prep'); }
         }
         opened = true;
@@ -269,7 +271,7 @@
       role: me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee') });
     var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
     // cooks: no Print button or how-to text at the top of the Prep List
-    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, cook: !admin });
+    if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepBody'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, cook: !admin });
     if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }

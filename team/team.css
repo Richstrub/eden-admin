@@ -380,3 +380,10 @@
   .tm-tabs a[aria-current="page"]{background:rgba(243,238,229,.14);color:var(--ivory)}
   .tm-tabs a[aria-current="page"] .tm-ic{color:var(--ember-hot)}
 }
+
+/* cooks: your to-dos above the prep list */
+.tm-prep-todos{max-width:1280px;margin:0 auto;padding:26px 32px 0;box-sizing:border-box}
+.tm-prep-todos:empty,.tm-prep-todos:has(> #todoSec[hidden]){display:none}
+.tm-prep-todos #todoSec{max-width:720px}
+.tm-prep-todos + #prepBody .pp-in{padding-top:22px}
+@media (max-width:760px){.tm-prep-todos{padding:18px 16px 0}.tm-prep-todos #todoSec{max-width:none}}
