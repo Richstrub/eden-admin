@@ -1,21 +1,30 @@
-/* Eden staff site: printable prep list built from the live menu.
+/* Eden staff site: the Prep List, built from the live menu, filled in by the kitchen and printable.
  *
  * A fixed Basics section comes first. Every visible dish on the Kitchen menu becomes a block: the dish (with its farm or producer), the main
  * ingredient(s) named in its title, and each component from its description ("Israeli couscous, charred tomatillo, …"). Add-ons written in a section
  * note ("Add to any large plate: Chickpea & Red Miso Butter 6 · …") become their own items.
  * "Combined" view merges components shared by several dishes into one line.
  *
- * Pars, extra items and removed lines are remembered on this computer (browser storage), so the list
- * follows the menu automatically while keeping each kitchen's own pars.
+ * Fillable: tick a line when it's done, and fill in On hand, Prep and initials. What's filled in, items added and
+ * lines taken off are shared by everyone who can see the list (Owner, managers, Kitchen logins, cooks), saved in
+ * Supabase (supabase/prep-list.sql). The Owner and managers can reset it for the next day; it resets itself at
+ * 8:00 pm if nobody does. Used on the staff site (#prep) and on the staff page's Prep List tab (cooks).
+ * Before prep-list.sql is run, it works on this device only (browser storage), as it used to.
  */
 (function () {
   'use strict';
-  var KEY = 'eden-prep-v1';
-  var P = { ctx: null, el: null, mode: 'dish', bar: false, date: null, saved: load() };
+  var KEY = 'eden-prep-v1', EKEY = 'eden-prep-entries';
+  var P = { ctx: null, el: null, mode: 'dish', bar: false, saved: load(), db: null, st: null, menu: null, pend: {}, timers: {} };
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
-  function persist() { try { localStorage.setItem(KEY, JSON.stringify(P.saved)); } catch (e) {} }
-  P.saved.pars = P.saved.pars || {}; P.saved.removed = P.saved.removed || {}; P.saved.extra = P.saved.extra || {};
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(P.saved)); if (P.db === false) localStorage.setItem(EKEY, JSON.stringify(P.st.entries)); } catch (e) {} }
+  P.saved.removed = P.saved.removed || {}; P.saved.extra = P.saved.extra || {};
+  function localState() {
+    var ent = {}; try { ent = JSON.parse(localStorage.getItem(EKEY) || '{}') || {}; } catch (e) {}
+    return { for_date: iso(new Date()), entries: ent, extra: P.saved.extra, removed: P.saved.removed, can_reset: true, me: (P.ctx && P.ctx.name) || '' };
+  }
+  function initials(n) { return String(n || '').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join(''); }
+  function gone(e) { return !!(e && (e.code === 'PGRST202' || e.code === '42883' || e.code === 'PGRST205' || /could not find the function|does not exist|schema cache/i.test(e.message || ''))); }
 
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -31,6 +40,105 @@
   function keyOf(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
   function shown(it) { return !it.hidden && (it.name || it.price); }
   function isWine(it) { return it.appellation !== undefined || it.grape !== undefined || it.country !== undefined; }
+
+  /* ---------- the shared list: load, fill in, reset ---------- */
+  function loadState() {
+    var sb = P.ctx.sb;
+    if (!sb || P.db === false) { P.db = false; P.st = localState(); return Promise.resolve(); }
+    return sb.rpc('prep_get').then(function (r) {
+      if (r.error) { if (gone(r.error)) { P.db = false; P.st = localState(); } else { P.err = true; if (!P.st) P.st = localState(); } return; }
+      if (r.data && r.data.error) { P.denied = true; P.st = localState(); return; }
+      P.db = true; P.err = false; P.st = norm(r.data);
+      // once: bring over items added / lines removed that were saved on this computer before the list was shared
+      var hasLocal = Object.keys(P.saved.extra).length || Object.keys(P.saved.removed).length;
+      if (hasLocal && !Object.keys(P.st.extra).length && !Object.keys(P.st.removed).length && !P.saved.imported) {
+        return sb.rpc('prep_import', { p_extra: P.saved.extra, p_removed: P.saved.removed }).then(function (x) {
+          if (x && !x.error && x.data && !x.data.error) { P.st = norm(x.data); P.saved.imported = 1; persist(); }
+        }, function () {});
+      }
+    }, function () { P.err = true; if (!P.st) P.st = localState(); });
+  }
+  function norm(d) { d = d || {}; d.entries = d.entries || {}; d.extra = d.extra || {}; d.removed = d.removed || {}; return d; }
+  function entry(k) { return (P.st && P.st.entries[k]) || {}; }
+  // one box changed: saved straight away (typing waits half a second)
+  function setField(k, f, v, wait) {
+    var e = P.st.entries[k] = Object.assign({}, P.st.entries[k] || {}); e[f] = v;
+    if (P.db !== true) { persist(); return; }
+    var id = k + '|' + f; P.pend[id] = v; clearTimeout(P.timers[id]);
+    P.timers[id] = setTimeout(function () {
+      P.ctx.sb.rpc('prep_set', { p_key: k, p_field: f, p_value: String(v) }).then(function (r) {
+        if (P.pend[id] === v) delete P.pend[id];
+        if (r.error || (r.data && r.data.error)) { say('Couldn’t save that. Check your connection.', 'err'); return; }
+        say('');
+      }, function () { say('Couldn’t save that. Check your connection.', 'err'); });
+    }, wait ? 500 : 0);
+  }
+  function rowCall(name, args, local) {
+    if (P.db !== true) { local(); persist(); render(); return; }
+    local(); render();
+    P.ctx.sb.rpc(name, args).then(function (r) {
+      if (r.error || !r.data || r.data.error) { say('Couldn’t save that. Check your connection.', 'err'); return; }
+      var keepEntries = P.st.entries; P.st = norm(r.data); P.st.entries = Object.assign({}, P.st.entries, keepEntries); render();
+    }, function () { say('Couldn’t save that. Check your connection.', 'err'); });
+  }
+  function hideLine(k) { rowCall('prep_hide', { p_key: k, p_on: true }, function () { P.st.removed[k] = 1; }); }
+  function restoreAll() { rowCall('prep_hide', { p_key: null, p_on: false }, function () { P.st.removed = {}; if (P.db !== true) P.saved.removed = P.st.removed; }); }
+  function addExtra(sec, name) { rowCall('prep_extra', { p_section: sec, p_name: name, p_add: true }, function () { (P.st.extra[sec] = P.st.extra[sec] || []).push(name); }); }
+  function delExtra(sec, name) { rowCall('prep_extra', { p_section: sec, p_name: name, p_add: false }, function () { P.st.extra[sec] = (P.st.extra[sec] || []).filter(function (x) { return x !== name; }); if (!P.st.extra[sec].length) delete P.st.extra[sec]; }); }
+  function resetList() {
+    if (!confirm('Reset the prep list for the next day? Everything ticked and filled in is cleared for everyone. Items added and lines taken off stay.')) return;
+    if (P.db !== true) { P.st.entries = {}; persist(); render(); return; }
+    P.ctx.sb.rpc('prep_reset').then(function (r) {
+      if (r.error || !r.data || r.data.error) { say(r.data && r.data.error === 'not_allowed' ? 'Only the Owner and managers can reset the list.' : 'Couldn’t reset. Try again.', 'err'); return; }
+      P.st = norm(r.data); render(); say('Reset for ' + longDay(P.st.for_date) + '.', 'ok');
+    }, function () { say('Couldn’t reset. Try again.', 'err'); });
+  }
+  function say(t, k) { var m = P.el && P.el.querySelector('.pp-msg'); if (m) { m.textContent = t || ''; m.className = 'pp-msg' + (k ? ' ' + k : ''); } }
+  function longDay(d) { return d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : ''; }
+  // others' changes show up every 15 seconds (without disturbing a box being typed in)
+  function poll() {
+    if (P.db !== true || !P.el || P.el.hidden || document.hidden || P.el.offsetParent === null) return;
+    var before = P.st && (P.st.for_date + '|' + P.st.reset_at + '|' + JSON.stringify(P.st.extra) + '|' + JSON.stringify(P.st.removed));
+    P.ctx.sb.rpc('prep_get').then(function (r) {
+      if (r.error || !r.data || r.data.error) return;
+      var d = norm(r.data), after = d.for_date + '|' + d.reset_at + '|' + JSON.stringify(d.extra) + '|' + JSON.stringify(d.removed);
+      Object.keys(P.pend).forEach(function (id) { var i = id.lastIndexOf('|'), k = id.slice(0, i), f = id.slice(i + 1); d.entries[k] = Object.assign({}, d.entries[k] || {}); d.entries[k][f] = P.pend[id]; });
+      P.st = d;
+      var a = document.activeElement, typing = a && P.el.contains(a) && a.tagName === 'INPUT';
+      if (after !== before && !typing) { render(); return; }
+      paintEntries();
+    }, function () {});
+  }
+  setInterval(poll, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+  function paintEntries() {
+    if (!P.el) return;
+    var a = document.activeElement;
+    P.el.querySelectorAll('tr[data-k]').forEach(function (tr) {
+      var e = entry(tr.getAttribute('data-k'));
+      tr.classList.toggle('is-done', !!e.done);
+      var b = tr.querySelector('.pp-box'); if (b) b.setAttribute('aria-checked', e.done ? 'true' : 'false');
+      tr.querySelectorAll('input[data-f]').forEach(function (i) { if (i !== a) i.value = e[i.getAttribute('data-f')] || ''; });
+    });
+    paintCount();
+  }
+  function paintCount() {
+    var c = P.el && P.el.querySelector('.pp-count'); if (!c) return;
+    var all = P.el.querySelectorAll('.pp-sheet tr[data-k]'), done = P.el.querySelectorAll('.pp-sheet tr[data-k].is-done');
+    c.textContent = done.length + ' of ' + all.length + ' done';
+  }
+  // the menu, for the staff page (the staff site passes in its own live copy)
+  function loadMenu() {
+    if (P.ctx.getMenu || P.menu) return Promise.resolve();
+    return P.ctx.sb.from('site_docs').select('path,data').like('path', 'site/menu%').then(function (r) {
+      var rows = {}; ((r && r.data) || []).forEach(function (x) { rows[x.path] = x.data; });
+      var m = rows['site/menu']; if (!m || !m.tabs) { P.menu = { tabs: [] }; return; }
+      P.menu = { tabs: m.tabs.map(function (t) {
+        return { id: t.id, label: t.label, groups: (t.gids || []).filter(function (id) { return rows['site/menu/groups/' + id]; }).map(function (id) { var x = rows['site/menu/groups/' + id]; return { id: id, title: x.title, note: x.note, noteAfter: x.noteAfter, items: x.items || [] }; }) };
+      }) };
+    }, function () { P.menu = { tabs: [] }; });
+  }
+  function getMenu() { return P.ctx.getMenu ? P.ctx.getMenu() : P.menu; }
 
   /* ---------- build the list from the menu ---------- */
   function splitParts(desc) {
@@ -98,39 +206,52 @@
   }
 
   /* ---------- rendering ---------- */
-  function parInput(k) {
-    var i = h('input', { type: 'text', cls: 'pp-par', value: P.saved.pars[k] || '', 'aria-label': 'Par', placeholder: '' });
-    i.addEventListener('input', function () { if (i.value.trim()) P.saved.pars[k] = i.value.trim(); else delete P.saved.pars[k]; persist(); });
+  function removeBtn(k) {
+    return h('button', { type: 'button', cls: 'pp-x', title: 'Take this line off the prep list', 'aria-label': 'Take line off the list', text: '✕', on: { click: function () { hideLine(k); } } });
+  }
+  function box(k, f, label, max) {
+    var i = h('input', { type: 'text', cls: f === 'ini' ? 'pp-fill-ini' : 'pp-fill', 'data-f': f, value: entry(k)[f] || '', 'aria-label': label, maxlength: String(max), autocomplete: 'off', autocapitalize: f === 'ini' ? 'characters' : 'off', spellcheck: 'false' });
+    i.addEventListener('input', function () { setField(k, f, f === 'ini' ? i.value.toUpperCase() : i.value, true); });
+    i.addEventListener('blur', function () { if (f === 'ini' && i.value !== i.value.toUpperCase()) i.value = i.value.toUpperCase(); });
     return i;
   }
-  function removeBtn(k) {
-    return h('button', { type: 'button', cls: 'pp-x', title: 'Remove this line from the prep list', 'aria-label': 'Remove line', text: '✕', on: { click: function () { P.saved.removed[k] = 1; persist(); render(); } } });
-  }
   function row(label, used, k, cls) {
-    return h('tr', { cls: cls || null }, [
-      h('td', { cls: 'pp-chk' }, h('span', { cls: 'pp-box' })),
+    var e = entry(k);
+    var chk = h('button', { type: 'button', cls: 'pp-box', role: 'checkbox', 'aria-checked': e.done ? 'true' : 'false', 'aria-label': 'Done: ' + label });
+    var tr = h('tr', { cls: [cls || '', e.done ? 'is-done' : ''].join(' ').trim() || null, 'data-k': k }, [
+      h('td', { cls: 'pp-chk' }, chk),
       h('td', { cls: 'pp-item' }, [h('span', { text: label }), used ? h('small', { text: used }) : null]),
-      h('td', { cls: 'pp-num' }, parInput(k)),
-      h('td', { cls: 'pp-num' }), h('td', { cls: 'pp-num' }), h('td', { cls: 'pp-ini' }),
+      h('td', { cls: 'pp-num' }, box(k, 'onhand', 'On hand: ' + label, 40)),
+      h('td', { cls: 'pp-num' }, box(k, 'prep', 'Prep: ' + label, 40)),
+      h('td', { cls: 'pp-ini' }, box(k, 'ini', 'Initials: ' + label, 6)),
       h('td', { cls: 'pp-tool' }, removeBtn(k))
     ]);
+    chk.addEventListener('click', function () {
+      var on = !entry(k).done;
+      setField(k, 'done', on);
+      // ticking a line signs it with your initials, if nobody has
+      var ini = tr.querySelector('input[data-f=ini]');
+      if (on && ini && !ini.value.trim() && P.st.me) { ini.value = initials(P.st.me); setField(k, 'ini', ini.value); }
+      chk.setAttribute('aria-checked', on ? 'true' : 'false'); tr.classList.toggle('is-done', on); paintCount();
+    });
+    return tr;
   }
   function table(rows) {
     return h('table', { cls: 'pp-table' }, [
-      h('thead', null, h('tr', null, [h('th', { cls: 'pp-chk', text: '✓' }), h('th', { text: 'Item' }), h('th', { cls: 'pp-num', text: 'Par' }), h('th', { cls: 'pp-num', text: 'On hand' }), h('th', { cls: 'pp-num', text: 'Prep' }), h('th', { cls: 'pp-ini', text: 'Init.' }), h('th', { cls: 'pp-tool' })])),
+      h('thead', null, h('tr', null, [h('th', { cls: 'pp-chk', text: '✓' }), h('th', { text: 'Item' }), h('th', { cls: 'pp-num', text: 'On hand' }), h('th', { cls: 'pp-num', text: 'Prep' }), h('th', { cls: 'pp-ini', text: 'Init.' }), h('th', { cls: 'pp-tool' })])),
     ].concat(rows.length && rows.every(function (r) { return r.tagName === 'TBODY'; }) ? rows : [h('tbody', null, rows)]));
   }
   function extraRows(secId) {
-    return (P.saved.extra[secId] || []).map(function (name, i) {
+    return (P.st.extra[secId] || []).map(function (name) {
       var k = 'x:' + secId + ':' + keyOf(name);
-      var tr = row(name, 'Added by you', k, 'pp-extra');
-      tr.querySelector('.pp-x').onclick = function () { P.saved.extra[secId].splice(i, 1); persist(); render(); };
+      var tr = row(name, 'Added', k, 'pp-extra');
+      tr.querySelector('.pp-x').onclick = function () { delExtra(secId, name); };
       return tr;
     });
   }
   function addLine(secId, wrap) {
     var inp = h('input', { type: 'text', cls: 'pp-addin', placeholder: 'Add an item to this section, e.g. Pickled shallots' });
-    var go = function () { var v = cap(inp.value); if (!v) return; (P.saved.extra[secId] = P.saved.extra[secId] || []).push(v); persist(); render(); };
+    var go = function () { var v = cap(inp.value); if (!v) return; addExtra(secId, v); };
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
     wrap.appendChild(h('div', { cls: 'pp-add' }, [inp, h('button', { type: 'button', cls: 'ed-btn small', text: 'Add', on: { click: go } })]));
   }
@@ -160,7 +281,7 @@
         });
       });
       order.forEach(function (k) {
-        var key = 'c:' + sec.id + ':' + k; if (P.saved.removed[key]) return;
+        var key = 'c:' + sec.id + ':' + k; if (P.st.removed[key]) return;
         var it = map[k];
         rows.push(row(it.label, it.used.length ? it.used.join(', ') : it.addon ? 'Add-on' : '', key, [it.used.length > 1 ? 'pp-shared' : '', it.main ? 'pp-main' : ''].join(' ').trim() || null)); n++;
       });
@@ -168,20 +289,20 @@
       sec.dishes.forEach(function (dish) {
         var dishRows = [];
         dish.parts.forEach(function (p, i) {
-          var key = 'd:' + sec.id + ':' + keyOf(dish.name) + ':' + keyOf(p); if (P.saved.removed[key]) return;
+          var key = 'd:' + sec.id + ':' + keyOf(dish.name) + ':' + keyOf(p); if (P.st.removed[key]) return;
           var main = i < (dish.mainN || 0);
           dishRows.push(row(p, main && dish.notes[keyOf(p)] ? cap(dish.notes[keyOf(p)]) : '', key, main ? 'pp-main' : null));
         });
         if (!dishRows.length) return;
         n += dishRows.length;
-        if (!dish.basic) { dishRows.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])])); n += 1.3; }
+        if (!dish.basic) { dishRows.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '6' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])])); n += 1.3; }
         rows.push(h('tbody', { cls: 'pp-group' }, dishRows)); // a dish and its lines stay together
       });
     }
     var extras = extraRows(sec.id);
     if (extras.length) {
       n += extras.length;
-      if (P.mode === 'dish') { if (!sec.basic) { extras.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '7' }, h('b', { text: 'Also' }))])); n += 1.3; } rows.push(h('tbody', { cls: 'pp-group' }, extras)); }
+      if (P.mode === 'dish') { if (!sec.basic) { extras.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '6' }, h('b', { text: 'Also' }))])); n += 1.3; } rows.push(h('tbody', { cls: 'pp-group' }, extras)); }
       else rows = rows.concat(extras);
     }
     var count = 0; rows.forEach(function (r) { count += r.tagName === 'TBODY' ? r.querySelectorAll('tr:not(.pp-dish)').length : 1; });
@@ -195,21 +316,22 @@
 
   function render() {
     var el = P.el; if (!el) return;
-    var menu = P.ctx.getMenu();
+    var menu = getMenu();
     el.innerHTML = '';
     var wrap = h('div', { cls: 'pp-in' });
     el.appendChild(wrap);
-    if (!menu) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'Loading the menu…' })); return; }
+    if (!menu || !P.st) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'Loading the prep list…' })); return; }
+    if (P.denied) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'The Prep List is for the kitchen: the Owner, managers and cooks.' })); return; }
     var secs = sections(menu);
 
     // controls (screen only)
-    var date = h('input', { type: 'date', value: P.date || iso(new Date()) });
-    date.addEventListener('change', function () { P.date = date.value; render(); });
-    var removedN = Object.keys(P.saved.removed).length;
+    var removedN = Object.keys(P.st.removed).length;
+    var resetInfo = P.st.reset_at ? (P.st.reset_auto ? 'Reset automatically ' : 'Reset by ' + (P.st.reset_by || 'a manager') + ' ') + new Date(P.st.reset_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
     wrap.appendChild(h('div', { cls: 'pp-controls' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow', text: P.bar ? 'Bar' : 'Kitchen' }), h('h1', { cls: 'sc-week', text: P.bar ? 'Bar Prep List' : 'Prep List' })]),
+      h('div', null, [h('p', { cls: 'sc-eyebrow', text: P.bar ? 'Bar' : 'Kitchen' }), h('h1', { cls: 'sc-week', text: P.bar ? 'Bar Prep List' : 'Prep List' }),
+        h('p', { cls: 'pp-for' }, [h('b', { text: 'For ' + longDay(P.st.for_date) }), h('span', { cls: 'pp-count' }), resetInfo ? h('span', { cls: 'pp-reset-i', text: resetInfo }) : null])]),
       h('div', { cls: 'pp-ctl' }, [
-        h('label', { cls: 'sc-f' }, [h('span', { text: 'Date' }), date]),
+        P.st.can_reset ? h('button', { type: 'button', cls: 'ed-btn pp-resetbtn', text: 'Reset for next day', title: 'Clear everything ticked and filled in, for everyone', on: { click: resetList } }) : null,
         h('div', { cls: 'sc-viewtog', role: 'group', 'aria-label': 'Layout' }, [
           h('button', { type: 'button', 'aria-pressed': P.mode === 'dish' ? 'true' : 'false', text: 'By dish', on: { click: function () { P.mode = 'dish'; render(); } } }),
           h('button', { type: 'button', 'aria-pressed': P.mode === 'combined' ? 'true' : 'false', text: 'Combined', on: { click: function () { P.mode = 'combined'; render(); } } })
@@ -217,14 +339,18 @@
         h('div', { cls: 'sc-viewtog pp-bartog', role: 'group', 'aria-label': 'List' }, [
           h('button', { type: 'button', cls: 'pp-barbtn', 'aria-pressed': P.bar ? 'true' : 'false', title: P.bar ? 'Back to the kitchen prep list' : 'Show the bar prep list', text: 'Bar prep', on: { click: function () { P.bar = !P.bar; render(); } } })
         ]),
-        removedN ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Restore ' + removedN + ' removed line' + (removedN === 1 ? '' : 's'), on: { click: function () { P.saved.removed = {}; persist(); render(); } } }) : null,
+        removedN ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Restore ' + removedN + ' removed line' + (removedN === 1 ? '' : 's'), on: { click: restoreAll } }) : null,
         h('button', { type: 'button', cls: 'ed-btn pp-printbtn', text: 'Print', on: { click: preview } })
       ])
     ]));
-    wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') + 'Type pars in the Par column; they, any items you add, and lines you remove are remembered on this computer. “Combined” merges components used in more than one dish. Prints on one landscape 11 × 8½ page.' }));
+    wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
+      (P.db === true ? 'Tick a line when it’s done and fill in On hand, Prep and your initials; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next day at 8:00 pm unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
+      '“Combined” merges components used in more than one dish (it keeps its own ticks). Prints on one landscape 11 × 8½ page.' }));
+    wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));
+    if (P.db === false && P.ctx.role === 'owner') wrap.appendChild(h('p', { cls: 'pp-setup', text: 'To share the Prep List with managers and cooks, run supabase/prep-list.sql in Supabase (SQL Editor → New query → paste → Run), then reload.' }));
 
     // the printable sheet: a landscape page with each section as its own panel, in three columns
-    var d = P.date ? new Date(P.date + 'T12:00:00') : new Date();
+    var d = new Date((P.st.for_date || iso(new Date())) + 'T12:00:00');
     var sheet = h('div', { cls: 'pp-sheet' + (P.bar ? ' is-bar' : '') });
     sheet.appendChild(h('div', { cls: 'pp-head' }, [
       h('div', { cls: 'pp-head-l' }, [h('div', { cls: 'pp-brand', text: 'EDEN' }), h('div', { cls: 'pp-title', text: (P.bar ? 'Bar Prep List' : 'Prep List') + (P.mode === 'combined' ? ' · Combined' : '') })]),
@@ -248,6 +374,7 @@
     var notes = h('section', { cls: 'pp-notes' }, [h('header', { cls: 'pp-sec-h' }, [h('h2', { text: 'Notes & 86’d' })]), h('div', { cls: 'pp-lines' })]);
     (colEls[light] || body).appendChild(notes);
     wrap.appendChild(sheet);
+    paintCount();
   }
 
   /* ---------- printing: one landscape 11 x 8.5 page ----------
@@ -276,6 +403,7 @@
     var src = sheet.querySelectorAll('input'), dst = copy.querySelectorAll('input');
     for (var i = 0; i < dst.length; i++) { var t = document.createElement('span'); t.className = 'pp-parv'; t.textContent = src[i] ? src[i].value : ''; dst[i].replaceWith(t); }
     copy.querySelectorAll('.pp-add, .pp-x').forEach(function (x) { x.remove(); });
+    copy.querySelectorAll('.pp-box').forEach(function (b) { var t = document.createElement('span'); t.className = 'pp-boxp'; t.textContent = b.getAttribute('aria-checked') === 'true' ? '✓' : ''; b.replaceWith(t); });
     copy.removeAttribute('id');
     var page = h('div', { cls: 'pp-page' }, h('div', { cls: 'pp-page-in' }, copy));
     var stage = h('div', { cls: 'pp-stage' }, page);
@@ -302,10 +430,13 @@
   }
 
   window.EdenPrep = {
-    show: function (ctx) { P.ctx = ctx; P.el = ctx.el; render(); },
+    show: function (ctx) {
+      P.ctx = ctx; P.el = ctx.el; render();
+      Promise.all([loadMenu(), loadState()]).then(render);
+    },
     refresh: function () {
       if (!P.el || P.el.hidden) return;
-      var a = document.activeElement; if (a && P.el.contains(a) && a.tagName === 'INPUT') return; // don't wipe a par mid-typing
+      var a = document.activeElement; if (a && P.el.contains(a) && a.tagName === 'INPUT') return; // don't wipe a box mid-typing
       render();
     },
     _test: { fit: fit, unfit: unfit, preview: preview, partition: partition, sections: sections, titleParts: titleParts, splitParts: splitParts, addOns: addOns, P: P }

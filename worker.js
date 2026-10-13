@@ -416,5 +416,7 @@ export default {
   // every 20 minutes (wrangler.jsonc "triggers"): look for today's OpenTable email for Pre-shift
   async scheduled(evt, env, ctx) {
     ctx.waitUntil(preshiftRefresh(env, inqKey(env), false).catch(() => null));
+    // Prep List: the 8:00 pm reset for the next day (New York time), if nobody did it
+    if (inqKey(env) && env.SUPABASE_URL) ctx.waitUntil(rpc(env, 'prep_auto_server', { p_key: inqKey(env) }).catch(() => null));
   }
 };

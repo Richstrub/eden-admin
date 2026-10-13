@@ -276,7 +276,9 @@
   }
   function showPrep() {
     if (!window.EdenPrep) return;
-    window.EdenPrep.show({ el: $('viewPrep'), status: status, getMenu: function () {
+    // managers set up as employees don't load the website data here, so the prep list reads the menu itself
+    if (role === 'scheduler') { window.EdenPrep.show({ el: $('viewPrep'), status: status, sb: sb, role: role, name: staffName }); return; }
+    window.EdenPrep.show({ el: $('viewPrep'), status: status, sb: sb, role: role, name: staffName, getMenu: function () {
       if (!store.loaded) return null;
       return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] };
     } });
