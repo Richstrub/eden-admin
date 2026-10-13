@@ -36,7 +36,7 @@ button{font:inherit;color:inherit}
 /* top: time, day, weather */
 .hb-top{display:grid;grid-template-columns:1fr auto;gap:calc(var(--u)*2);align-items:end}
 .hb-when{display:grid;gap:calc(var(--u)*.2)}
-.hb-logo{justify-self:start;border:0;background:none;padding:0 0 calc(var(--u)*.6);font-family:var(--serif);font-size:calc(var(--u)*1.9);letter-spacing:.3em;cursor:pointer;text-align:left;position:relative}
+.hb-logo{touch-action:none;-webkit-touch-callout:none;justify-self:start;border:0;background:none;padding:0 0 calc(var(--u)*.6);font-family:var(--serif);font-size:calc(var(--u)*1.9);letter-spacing:.3em;cursor:pointer;text-align:left;position:relative}
 .hb-logo span{display:inline-block;margin-left:.6em;font-family:var(--sans);font-size:calc(var(--u)*.7);letter-spacing:.4em;color:var(--ember-hot);vertical-align:middle;text-transform:uppercase}
 .hb-logo::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ember-hot)}
 .hb-logo.holding::after{width:100%;transition:width 3s linear}

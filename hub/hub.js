@@ -88,6 +88,26 @@
     loadMenu().then(board);
     setInterval(board, BOARD_MS); setInterval(loadMenu, MENU_MS);
     weather(); setInterval(weather, WX_MS);
+    watchForUpdates();
+  }
+
+  /* ---------- update itself: when a new version of the Hub is published, reload within 5 minutes ---------- */
+  var PAGE_SIG = null;
+  function pageSig() {
+    // the page's own HTML names every script and stylesheet with a version, so it changes whenever the Hub does
+    return fetch(location.pathname + '?check=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (t) { return t ? (t.match(/\?v=[\w.-]+/g) || []).join('|') + '|' + t.length : null; }, function () { return null; });
+  }
+  function watchForUpdates() {
+    pageSig().then(function (s) { PAGE_SIG = s; });
+    setInterval(function () {
+      if (!navigator.onLine) return;
+      pageSig().then(function (s) {
+        if (!s) return;
+        if (!PAGE_SIG) { PAGE_SIG = s; return; }
+        if (s !== PAGE_SIG && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) location.reload();
+      });
+    }, 5 * 60 * 1000);
   }
 
   /* ---------- clock ---------- */
@@ -284,9 +304,19 @@
   document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
   /* ---------- Hub settings: press and hold the logo for 3 seconds ---------- */
-  var hold = null;
-  $('logo').addEventListener('pointerdown', function () { $('logo').classList.add('holding'); hold = setTimeout(openSheet, 3000); });
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (t) { $('logo').addEventListener(t, function () { clearTimeout(hold); $('logo').classList.remove('holding'); }); });
+  var hold = null, taps = [];
+  function endHold() { clearTimeout(hold); hold = null; $('logo').classList.remove('holding'); }
+  $('logo').addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    endHold(); $('logo').classList.add('holding'); hold = setTimeout(function () { endHold(); openSheet(); }, 3000);
+    // or 5 quick taps
+    var now = Date.now(); taps = taps.filter(function (t) { return now - t < 2500; }); taps.push(now);
+    if (taps.length >= 5) { taps = []; endHold(); openSheet(); }
+  });
+  // a finger that slides off counts as letting go only well away from the logo; a mouse leaving lets go at once
+  $('logo').addEventListener('pointerup', endHold);
+  $('logo').addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') endHold(); });
+  document.addEventListener('pointerup', function () { if (hold) endHold(); });
   $('logo').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.shiftKey) openSheet(); });
   function openSheet() {
     $('logo').classList.remove('holding');
