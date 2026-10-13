@@ -635,7 +635,9 @@
     back.appendChild(card); N.el.appendChild(back); paint();
     function add() {
       var rows = (each.checked && lines.length ? lines.map(function (l) { return { title: l, details: '' }; }) : [{ title: title || lines[0], details: title ? body : lines.slice(1).join('\n') }])
-        .map(function (r, i) { return { id: uid(), title: r.title.slice(0, 300), details: r.details, due: due.value || null, done: false, created_by: C.name || '', note_id: N.note.id, sort: i }; });
+        .map(function (r, i) { var t = { id: uid(), title: r.title.slice(0, 300), details: r.details, due: due.value || null, done: false, created_by: C.name || '', note_id: N.note.id, sort: i };
+          if (T.assignOk && T.uid) { t.assigned_user = T.uid; t.assigned_to = T.myEmp || null; t.assigned_name = C.name || ''; }   // yours, like any new to-do
+          return t; });
       saveNote().then(function () { return C.sb.from('todos').upsert(rows, { onConflict: 'id' }); }).then(function (r) {
         if (r.error) { msg.textContent = isMissing(r.error) ? 'The to-do list isn’t set up yet. Run supabase/notes.sql in Supabase.' : isPerm(r.error) ? 'Your role can’t use the to-do list.' : 'Couldn’t add. Try again.'; return; }
         T.items = T.items.concat(rows.map(function (x) { return Object.assign({ created_at: new Date().toISOString() }, x); }));
@@ -679,29 +681,48 @@
     var people = C.sb.from('employees').select('id,name,active').then(function (r) {
       T.people = ((r && r.data) || []).filter(function (e) { return e.active !== false && e.name; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
     }, function () {});
-    var probe = C.sb.from('todos').select('assigned_to').limit(1).then(function (r) { T.assignOk = !!(r && !r.error); }, function () { T.assignOk = false; });
+    var probe = C.sb.from('todos').select('assigned_to,assigned_user').limit(1).then(function (r) { T.assignOk = !!(r && !r.error); }, function () { T.assignOk = false; });
+    // who "me" is: your sign-in, and your employee record if you have one (so your to-dos also show on your staff page)
+    var meP = Promise.all([C.sb.auth.getSession(), C.sb.rpc('team_me')]).then(function (x) {
+      T.uid = x[0] && x[0].data && x[0].data.session && x[0].data.session.user && x[0].data.session.user.id;
+      T.myEmp = (x[1] && x[1].data && x[1].data.employee && x[1].data.employee.id) || null;
+    }, function () {});
     var list = C.sb.from('todos').select('*').order('created_at').then(function (r) {
       T.loaded = true;
       if (r.error) { T.missing = isMissing(r.error); T.items = []; if (!T.missing) C.status(isPerm(r.error) ? 'Your role can’t open the to-do list.' : 'Couldn’t load the to-do list.', 'err'); return; }
       T.missing = false; T.items = r.data || [];
     }, function () { T.loaded = true; });
-    return Promise.all([people, probe, list]);
+    return Promise.all([people, probe, list, meP]);
   }
   function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : p[0] || ''; }
-  function assignSelect(cur, cls) {
-    var sel = h('select', { cls: cls || '', 'aria-label': 'Assign to' }, [h('option', { value: '', text: 'Not assigned' })].concat(T.people.map(function (e) { return h('option', { value: e.id, text: e.name }); })));
-    sel.value = cur || '';
+  function isMine(t) { return !!T.uid && t.assigned_user === T.uid; }
+  // the value a to-do shows in the "Assign to" menu
+  function whoValue(t) {
+    if (isMine(t)) return 'me';
+    if (t.assigned_to) return t.assigned_to;
+    if (t.assigned_user) return 'keep';
+    return '';
+  }
+  function assignSelect(t, cls) {
+    var opts = [h('option', { value: 'me', text: 'Me' + (C.name ? ' (' + C.name + ')' : '') }), h('option', { value: '', text: 'Not assigned (anyone)' })];
+    if (t && t.assigned_user && !isMine(t) && !t.assigned_to) opts.push(h('option', { value: 'keep', text: t.assigned_name || 'Another manager' }));
+    T.people.forEach(function (e) { if (e.id !== T.myEmp) opts.push(h('option', { value: e.id, text: e.name })); });
+    var sel = h('select', { cls: cls || '', 'aria-label': 'Assign to' }, opts);
+    sel.value = t ? whoValue(t) : 'me';
     return sel;
   }
-  function setAssignee(t, id) {
-    var e = T.people.filter(function (x) { return x.id === id; })[0];
-    if (!id || !e) { t.assigned_to = null; t.assigned_name = ''; t.assigned_by = ''; return; }
-    if (t.assigned_to !== id) t.assigned_by = C.name || '';
-    t.assigned_to = id; t.assigned_name = e.name;
+  function setAssignee(t, v) {
+    if (v === 'keep') return;
+    var before = whoValue(t);
+    if (v === 'me') { t.assigned_user = T.uid || null; t.assigned_to = T.myEmp || null; t.assigned_name = C.name || ''; t.assigned_by = ''; return; }
+    var e = T.people.filter(function (x) { return x.id === v; })[0];
+    if (!v || !e) { t.assigned_to = null; t.assigned_user = null; t.assigned_name = ''; t.assigned_by = ''; return; }
+    if (before !== v) t.assigned_by = C.name || '';
+    t.assigned_to = v; t.assigned_user = null; t.assigned_name = e.name;
   }
   function saveTodo(t) {
     var row = { id: t.id, title: t.title, details: t.details || '', due: t.due || null, done: !!t.done, done_at: t.done ? (t.done_at || new Date().toISOString()) : null, created_by: t.created_by || '', note_id: t.note_id || null, sort: t.sort || 0 };
-    if (T.assignOk) { row.assigned_to = t.assigned_to || null; row.assigned_name = t.assigned_name || ''; row.assigned_by = t.assigned_by || ''; }
+    if (T.assignOk) { row.assigned_to = t.assigned_to || null; row.assigned_user = t.assigned_user || null; row.assigned_name = t.assigned_name || ''; row.assigned_by = t.assigned_by || ''; }
     return C.sb.from('todos').upsert(row, { onConflict: 'id' })
       .then(function (r) { if (r.error) C.status(isPerm(r.error) ? 'Your role can’t change the to-do list.' : 'Couldn’t save. Try again.', 'err'); else C.status('Saved.', 'ok'); return r; });
   }
@@ -715,25 +736,25 @@
     if (T.missing) { wrap.appendChild(h('div', { cls: 'iv-setup' }, [h('p', { text: 'The to-do list isn’t in Supabase yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/notes.sql from the eden-admin repository, and click Run. Then reload this page.' })])); return; }
     var inp = h('input', { type: 'text', cls: 'td-new', placeholder: 'Add a to-do and press Enter', 'aria-label': 'New to-do' });
     var due = h('input', { type: 'date', cls: 'td-due', 'aria-label': 'Due date (optional)' });
-    var who = T.assignOk && T.people.length ? assignSelect(T.lastWho || '', 'td-due td-who') : null;
+    var who = T.assignOk ? assignSelect(null, 'td-due td-who') : null;   // starts on "Me" every time
     function addNew() {
       var v = inp.value.trim(); if (!v) { inp.focus(); return; }
       var t = { id: uid(), title: v, details: '', due: due.value || null, done: false, created_by: C.name || '', created_at: new Date().toISOString(), sort: 0 };
-      if (who) { setAssignee(t, who.value); T.lastWho = who.value; }
+      if (who) setAssignee(t, who.value);
       T.items.push(t); saveTodo(t); renderTodo();
       var again = T.el.querySelector('.td-new'); if (again) again.focus();
     }
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addNew(); } });
     wrap.appendChild(h('div', { cls: 'td-add' }, [inp, due, who, h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: addNew } })]));
     if (T.assignOk) {
-      var F = [['all', 'Everything'], ['open', 'Not assigned'], ['staff', 'Given to staff']];
+      var F = [['all', 'Everything'], ['mine', 'Mine'], ['staff', 'Given to others'], ['open', 'Not assigned']];
       wrap.appendChild(h('div', { cls: 'td-filter', role: 'group', 'aria-label': 'Show' }, F.map(function (f) {
         return h('button', { type: 'button', 'aria-pressed': T.filter === f[0] ? 'true' : 'false', text: f[1], on: { click: function () { T.filter = f[0]; renderTodo(); } } });
       })));
-      if (who) wrap.appendChild(h('p', { cls: 'td-hint', text: 'A to-do given to someone shows on their own staff page (Schedule tab), where they tick it off. You’ll see it ticked here.' }));
+      if (who) wrap.appendChild(h('p', { cls: 'td-hint', text: 'New to-dos are yours unless you choose someone else. A to-do given to a staff member shows on their own staff page (Schedule tab), where they tick it off; you’ll see it ticked here.' }));
     } else if (C.canAssignHint) wrap.appendChild(h('p', { cls: 'td-hint', text: 'To give to-dos to staff, run supabase/todo-assign.sql in Supabase, then reload.' }));
     var today = iso(new Date());
-    var keep = function (t) { return T.filter === 'open' ? !t.assigned_to : T.filter === 'staff' ? !!t.assigned_to : true; };
+    var keep = function (t) { return T.filter === 'mine' ? isMine(t) : T.filter === 'open' ? !t.assigned_to && !t.assigned_user : T.filter === 'staff' ? (!!t.assigned_to || !!t.assigned_user) && !isMine(t) : true; };
     var open1 = T.items.filter(function (t) { return !t.done && keep(t); }).sort(function (a, b) {
       var da = a.due || '9999', db = b.due || '9999'; return da < db ? -1 : da > db ? 1 : (a.created_at < b.created_at ? -1 : 1);
     });
@@ -758,7 +779,7 @@
       h('div', { cls: 'td-main' }, [
         h('button', { type: 'button', cls: 'td-t', text: t.title, on: { click: function () { editTodo(t); } } }),
         t.details ? h('p', { cls: 'td-d', text: t.details }) : null,
-        h('span', { cls: 'td-meta' }, [t.assigned_to ? h('span', { cls: 'td-who-chip', text: '→ ' + shortName(t.assigned_name) }) : null, [t.due ? (over ? 'Overdue · ' : soon ? 'Today · ' : 'Due ') + dayLabel(t.due) : '', t.created_by ? 'by ' + t.created_by : '', t.note_id ? 'from a note' : '', t.assigned_to && t.done ? 'ticked off by ' + shortName(t.assigned_name) : ''].filter(Boolean).join(' · ')])
+        h('span', { cls: 'td-meta' }, [isMine(t) ? h('span', { cls: 'td-who-chip mine', text: 'Me' }) : (t.assigned_to || t.assigned_user) ? h('span', { cls: 'td-who-chip', text: '→ ' + (shortName(t.assigned_name) || 'someone') }) : null, [t.due ? (over ? 'Overdue · ' : soon ? 'Today · ' : 'Due ') + dayLabel(t.due) : '', t.created_by ? 'by ' + t.created_by : '', t.note_id ? 'from a note' : '', t.assigned_to && t.done && !isMine(t) ? 'ticked off by ' + shortName(t.assigned_name) : ''].filter(Boolean).join(' · ')])
       ]),
       h('button', { type: 'button', cls: 'td-x', 'aria-label': 'Delete ' + t.title, title: 'Delete', text: '✕', on: { click: function () {
         if (!confirm('Delete “' + t.title + '”?')) return;
@@ -770,7 +791,7 @@
   function editTodo(t) {
     var title = h('input', { type: 'text', value: t.title }), details = h('textarea', { rows: '5' }); details.value = t.details || '';
     var due = h('input', { type: 'date', value: t.due || '' });
-    var whoSel = T.assignOk && T.people.length ? assignSelect(t.assigned_to || '') : null;
+    var whoSel = T.assignOk ? assignSelect(t) : null;
     var back = h('div', { cls: 'sc-modal', role: 'dialog', 'aria-modal': 'true' });
     function close() { back.remove(); }
     var noteBtn = t.note_id ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the note', on: { click: function () { close(); openNote(t.note_id); } } }) : null;

@@ -1652,3 +1652,4 @@ body.nt-open #app{visibility:hidden!important}
 #viewTodo .td-list{background:#fff;border:1px solid rgba(15,18,21,.09);margin-top:10px}
 #viewTodo .td-item{align-items:flex-start;padding:12px 14px}
 @media (max-width:760px){#viewTodo .td-in{padding:20px 16px 60px}}
+.td-who-chip.mine{background:#eef1ec;color:#3f5a43}

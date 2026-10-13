@@ -1,6 +1,6 @@
 -- Eden staff site: assign to-dos to any staff member.
 -- Run AFTER supabase/notes.sql and supabase/team.sql. Paste into Supabase > SQL Editor > New query, click Run.
--- Safe to run more than once.
+-- Safe to run more than once (run it again after updates: it adds anything new).
 --
 -- The Owner and managers can give a to-do to anyone on the employee list. It then shows on that person's own
 -- staff page (Schedule tab, "Your to-dos"), where they can tick it off. Staff only ever see their own to-dos,
@@ -9,6 +9,8 @@
 alter table public.todos add column if not exists assigned_to   uuid references public.employees (id) on delete set null;
 alter table public.todos add column if not exists assigned_name text not null default '';
 alter table public.todos add column if not exists assigned_by   text not null default '';
+-- whose to-do it is on the staff site: new to-dos belong to whoever adds them, unless they give them to someone
+alter table public.todos add column if not exists assigned_user uuid references auth.users (id) on delete set null;
 create index if not exists todos_assigned on public.todos (assigned_to) where assigned_to is not null;
 
 -- the signed-in staff member's own to-dos (open ones, and ones finished in the last week)
