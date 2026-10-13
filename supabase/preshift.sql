@@ -1,4 +1,4 @@
--- Eden staff site: Pre-shift (starting with tonight's reservations from OpenTable).
+-- Eden staff site: Pre-shift (reservations from OpenTable, menu changes, and notes from the Owner and managers).
 -- Run AFTER supabase/inquiries.sql, supabase/team.sql and supabase/business-email.sql.
 -- Paste into Supabase > SQL Editor > New query, click Run. Safe to run more than once.
 --
@@ -92,3 +92,46 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.menu_changes(int) from public, anon;
 grant execute on function public.menu_changes(int) to authenticated;
+
+-- Pre-shift section 3: Notes. The Owner and managers send these from the Notes tab ("Send to pre-shift").
+-- Each note is for one service day; everyone on the team can read that day's notes on Pre-shift.
+-- The Owner and managers can take a note off; past days stay out of sight (Pre-shift only shows today).
+create table if not exists public.preshift_notes (
+  id           text primary key,
+  service_date date not null,
+  body         text not null default '',
+  ink          text not null default '',          -- handwriting as a picture (optional)
+  author       text not null default '',
+  user_id      uuid default auth.uid() references auth.users (id) on delete set null,
+  note_id      text,                              -- the note it came from
+  created_at   timestamptz not null default now(),
+  constraint preshift_notes_has_something check (length(trim(body)) > 0 or length(ink) > 0),
+  constraint preshift_notes_ink_size check (length(ink) < 1500000)
+);
+create index if not exists preshift_notes_day on public.preshift_notes (service_date, created_at);
+alter table public.preshift_notes enable row level security;
+revoke all on public.preshift_notes from anon;
+grant select, insert, delete on public.preshift_notes to authenticated;
+
+drop policy if exists "team reads pre-shift notes" on public.preshift_notes;
+create policy "team reads pre-shift notes" on public.preshift_notes for select to authenticated using (public.is_team());
+drop policy if exists "owner and managers send pre-shift notes" on public.preshift_notes;
+create policy "owner and managers send pre-shift notes" on public.preshift_notes for insert to authenticated
+  with check (public.can_schedule() and user_id = auth.uid());
+drop policy if exists "owner and managers remove pre-shift notes" on public.preshift_notes;
+create policy "owner and managers remove pre-shift notes" on public.preshift_notes for delete to authenticated
+  using (public.can_schedule());
+
+-- the sender's name is filled in by the database, so nobody can send as someone else
+create or replace function public.preshift_notes_author() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.user_id := auth.uid();
+  new.author := coalesce((select nullif(s.name, '') from public.staff s where s.user_id = auth.uid() limit 1),
+                         (select nullif(e.name, '') from public.employees e where e.email <> '' and lower(e.email) = lower(coalesce(auth.jwt() ->> 'email', '')) limit 1),
+                         nullif(auth.jwt() ->> 'email', ''), '');
+  return new;
+end $$;
+revoke all on function public.preshift_notes_author() from public, anon, authenticated;
+drop trigger if exists preshift_notes_author on public.preshift_notes;
+create trigger preshift_notes_author before insert on public.preshift_notes for each row execute function public.preshift_notes_author();

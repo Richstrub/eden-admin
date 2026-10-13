@@ -132,6 +132,7 @@
         h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
         share,
         h('button', { type: 'button', cls: 'nt-b', text: 'Add to to-do', on: { click: toTodo } }),
+        C.canPreshift ? h('button', { type: 'button', cls: 'nt-b nt-psbtn', text: 'Send to pre-shift', title: 'Put this note in the Notes section of Pre-shift for the whole team', on: { click: toPreshift } }) : null,
         C.canCal && window.EdenCal ? h('button', { type: 'button', cls: 'nt-b nt-calbtn', text: 'Add to calendar', title: 'Save this note as an event on the calendar', on: { click: toCalendar } }) : null,
         h('button', { type: 'button', cls: 'nt-b', text: 'New', title: 'Start a new note', on: { click: newNote } }),
         h('button', { type: 'button', cls: 'nt-b nt-close', 'aria-label': 'Close notes', text: 'Done', on: { click: close } })
@@ -647,6 +648,54 @@
     }
   }
 
+  /* ---------- send a note to Pre-shift (Owner and managers) ----------
+   * It shows up in the Notes section of that day's Pre-shift for everyone on the team (supabase/preshift.sql).
+   * What's sent is a copy: changing the note afterwards doesn't change what's on Pre-shift. */
+  function toPreshift() {
+    var title = (N.note.title || '').trim(), body = (N.note.body || '').trim();
+    var hasInk = !!(N.note.ink && N.note.ink.length);
+    if (!title && !body && !hasInk) { toast('Write something first.', 'err'); return; }
+    var now = new Date(), tom = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    var txt = h('textarea', { cls: 'nt-ps-text', rows: '6', 'aria-label': 'What the team will see' }); txt.value = [title, body].filter(Boolean).join('\n\n');
+    var dayT = h('input', { type: 'radio', name: 'ntPsDay', value: iso(now) }), dayM = h('input', { type: 'radio', name: 'ntPsDay', value: iso(tom) }), dayO = h('input', { type: 'radio', name: 'ntPsDay', value: 'other' });
+    dayT.checked = true;
+    var other = h('input', { type: 'date', min: iso(now), 'aria-label': 'Pre-shift date' }); other.addEventListener('input', function () { dayO.checked = true; });
+    var withInk = hasInk ? h('input', { type: 'checkbox' }) : null; if (withInk) withInk.checked = !body;
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var back = h('div', { cls: 'sc-modal nt-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Send to pre-shift' });
+    var sendBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Send', on: { click: send } });
+    back.appendChild(h('div', { cls: 'sc-card' }, [
+      h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Send to pre-shift' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: function () { back.remove(); } } })]),
+      h('div', { cls: 'sc-card-b' }, [
+        h('p', { cls: 'nt-ps-hint', text: 'Everyone on the team sees this in the Notes section of Pre-shift that day. You can change the words here first.' }),
+        h('div', { cls: 'nt-ps-days', role: 'radiogroup', 'aria-label': 'Which pre-shift' }, [
+          h('label', { cls: 'sc-check' }, [dayT, ' Today']), h('label', { cls: 'sc-check' }, [dayM, ' Tomorrow']), h('label', { cls: 'sc-check' }, [dayO, ' Another day ', other])
+        ]),
+        txt,
+        withInk ? h('label', { cls: 'sc-check' }, [withInk, ' Include the handwriting']) : null,
+        msg
+      ]),
+      h('div', { cls: 'sc-card-f' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { back.remove(); } } }), sendBtn])
+    ]));
+    N.el.appendChild(back); setTimeout(function () { txt.focus(); }, 30);
+    function send() {
+      var day = dayO.checked ? other.value : (dayM.checked ? dayM.value : dayT.value);
+      if (!day) { msg.textContent = 'Pick the day.'; return; }
+      var ink = '';
+      if (withInk && withInk.checked) { var cv = inkImage(1, false); if (cv) { ink = cv.toDataURL('image/jpeg', 0.8); if (ink.length > 1400000) ink = inkImage(0.6, false).toDataURL('image/jpeg', 0.7); } }
+      var text = txt.value.trim();
+      if (!text && !ink) { msg.textContent = 'Write something to send.'; return; }
+      sendBtn.disabled = true; msg.textContent = 'Sending…';
+      var row = { id: uid(), service_date: day, body: text.slice(0, 4000), ink: ink, note_id: N.note.id };
+      saveNote().then(function () { return C.sb.from('preshift_notes').insert(row); }).then(function (r) {
+        sendBtn.disabled = false;
+        if (r && r.error) { msg.textContent = isMissing(r.error) ? 'Pre-shift notes switch on once supabase/preshift.sql is run in Supabase (SQL Editor → New query → paste → Run).' : isPerm(r.error) ? 'Only the Owner and managers can send notes to pre-shift.' : 'Couldn’t send. Try again.'; return; }
+        try { window.dispatchEvent(new CustomEvent('eden:preshift-note', { detail: { day: day } })); } catch (e) {}
+        back.remove(); toast(day === iso(now) ? 'Sent to today’s pre-shift.' : 'Sent to pre-shift for ' + dayLabel(day) + '.', 'ok');
+      }, function () { sendBtn.disabled = false; msg.textContent = 'Couldn’t send. Try again.'; });
+    }
+  }
+
   /* ---------- save a note as a calendar event ----------
    * Opens the calendar's Add event form filled in from the note: the title (or first line) becomes the
    * event name, the note becomes the event notes, and a date or time written in the note (e.g. "Oct 24",
@@ -815,7 +864,7 @@
   window.EdenNotes = {
     init: function (ctx) {
       C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal;
-      C.canShare = !!ctx.canShare; C.isOwner = !!ctx.isOwner; C.canAssignHint = !!ctx.isOwner;
+      C.canShare = !!ctx.canShare; C.canPreshift = !!(ctx.canPreshift == null ? ctx.canShare : ctx.canPreshift); C.isOwner = !!ctx.isOwner; C.canAssignHint = !!ctx.isOwner;
       ctx.sb.auth.getSession().then(function (r) { C.uid = r && r.data && r.data.session && r.data.session.user && r.data.session.user.id; }, function () {});
     },
     openNote: function (id) { openNote(id); },

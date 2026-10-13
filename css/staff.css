@@ -1728,3 +1728,17 @@ body.nt-open #app{visibility:hidden!important}
 .gate-new{font-size:.84rem;text-align:center;color:var(--soft-dark)}
 .gate-new a{color:var(--ember-hot)}
 .sc-onboard p{line-height:1.5}
+
+/* Pre-shift 3: Notes */
+.ps-nlist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:10px}
+.ps-note{border:1px solid rgba(15,18,21,.08);border-left:3px solid #8a5226;border-radius:12px;padding:12px 14px;background:#fbfaf7}
+.ps-note-t{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.96rem;line-height:1.5;margin:0}
+.ps-note-ink{display:block;max-width:100%;height:auto;margin-top:10px;border-radius:8px;border:1px solid rgba(15,18,21,.06);background:#fff}
+.ps-note-m{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;font-size:.78rem;color:#857f75}
+.ps-note-x{background:none;border:0;padding:4px 0;font:inherit;color:#a3392b;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.ps-note-x:disabled{opacity:.5}
+/* Notes tab: Send to pre-shift */
+.nt-ps-hint{font-size:.86rem;color:#6b665e;margin:0 0 10px}
+.nt-ps-days{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin-bottom:10px}
+.nt-ps-days input[type=date]{margin-left:4px;min-width:150px;width:auto;padding:5px 8px;font:inherit;font-size:.9rem;border:1px solid rgba(15,18,21,.15);border-radius:8px;background:#fff}
+.nt-ps-text{width:100%;box-sizing:border-box;min-height:120px;font:inherit;font-size:.95rem;line-height:1.45;padding:10px 12px;border:1px solid rgba(15,18,21,.15);border-radius:10px;resize:vertical;margin-bottom:8px}

@@ -2,7 +2,8 @@
  *
  * 1. Reservations: filled in automatically from OpenTable's email to rich@edencny.com (see preshift-worker.js).
  *    Today's pre-shift appears once that day's OpenTable email has arrived, and clears after midnight.
- * More sections (specials, 86'd, wine, notes from managers) come next.
+ * 2. Menu changes in the last 24 hours.
+ * 3. Notes: sent by the Owner and managers from the Notes tab ("Send to pre-shift"), for one service day.
  */
 (function () {
   'use strict';
@@ -69,7 +70,7 @@
     var mc = h('section', { cls: 'eo-card ps-menu', 'aria-labelledby': 'psMenuH' }, [h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psMenuH' }, [h('span', { cls: 'eo-n', text: '2' }), 'Menu changes']), h('span', { cls: 'ps-when', text: 'Last 24 hours' })]), h('p', { cls: 'ps-src', text: 'Loading…' })]);
     wrap.appendChild(mc);
     menuChanges(mc);
-    wrap.appendChild(h('p', { cls: 'ps-next', text: 'More pre-shift sections (specials, wine, notes from managers) are coming next.' }));
+    wrap.appendChild(notesCard());
   }
 
   /* ---------- 1. Reservations ---------- */
@@ -163,6 +164,43 @@
       card.appendChild(det);
     }
     return card;
+  }
+
+  /* ---------- 3. Notes from the Owner and managers ---------- */
+  function notesCard() {
+    var card = h('section', { cls: 'eo-card ps-notes', 'aria-labelledby': 'psNotesH' });
+    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psNotesH' }, [h('span', { cls: 'eo-n', text: '3' }), 'Notes'])]);
+    var mgr = P.ctx.role === 'owner' || P.ctx.role === 'manager' || P.ctx.role === 'scheduler';
+    if (mgr && window.EdenNotes) head.appendChild(h('button', { type: 'button', cls: 'eo-btn ps-check', text: 'Write a note', on: { click: function () { window.EdenNotes.open(); } } }));
+    card.appendChild(head);
+    var body = h('div', { cls: 'ps-notes-b' }, [h('p', { cls: 'ps-src', text: 'Loading…' })]);
+    card.appendChild(body);
+    loadNotes(body, mgr);
+    P.notesBody = body; P.notesMgr = mgr;
+    return card;
+  }
+  // a note just sent from the Notes tab shows up straight away
+  window.addEventListener('eden:preshift-note', function (e) { if (P.notesBody && document.body.contains(P.notesBody) && e.detail && e.detail.day === today()) loadNotes(P.notesBody, P.notesMgr); });
+  function loadNotes(body, mgr) {
+    P.ctx.sb.from('preshift_notes').select('id,body,ink,author,created_at').eq('service_date', today()).order('created_at', { ascending: true }).then(function (r) {
+      body.innerHTML = '';
+      if (r.error) { body.appendChild(h('p', { cls: 'ps-src', text: /preshift_notes|schema cache|does not exist/i.test(r.error.message || '') ? (P.ctx.role === 'owner' ? 'Notes switch on once supabase/preshift.sql is run again in Supabase (SQL Editor > New query > paste > Run).' : 'Notes aren’t switched on yet.') : 'Couldn’t load notes.' })); return; }
+      var rows = r.data || [];
+      if (!rows.length) { body.appendChild(h('p', { cls: 'ps-src', text: mgr ? 'No notes for today yet. In the Notes tab, open a note and press “Send to pre-shift”.' : 'No notes for today.' })); return; }
+      body.appendChild(h('ul', { cls: 'ps-nlist' }, rows.map(function (n) {
+        var li = h('li', { cls: 'ps-note' }, [
+          n.body ? h('p', { cls: 'ps-note-t', text: n.body }) : null,
+          n.ink && /^data:image\/(png|jpeg);base64,/.test(n.ink) ? h('img', { cls: 'ps-note-ink', src: n.ink, alt: 'Handwritten note' + (n.author ? ' from ' + n.author : '') }) : null,
+          h('div', { cls: 'ps-note-m' }, [h('span', { text: (n.author || 'A manager') + ' · ' + when(n.created_at) }),
+            mgr ? h('button', { type: 'button', cls: 'ps-note-x', text: 'Remove', 'aria-label': 'Remove this note from pre-shift', on: { click: function () {
+              if (!confirm('Take this note off pre-shift for everyone?')) return;
+              var b = this; b.disabled = true;
+              P.ctx.sb.from('preshift_notes').delete().eq('id', n.id).then(function (x) { if (x.error) { b.disabled = false; alert('Couldn’t remove it. Try again.'); return; } loadNotes(body, mgr); });
+            } } }) : null])
+        ]);
+        return li;
+      })));
+    }, function () { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: 'Couldn’t load notes.' })); });
   }
 
   /* ---------- 2. Menu changes in the last 24 hours (from the menu editor's history) ---------- */
