@@ -502,10 +502,10 @@
           h('button', { type: 'button', cls: 'pp-barbtn', 'aria-pressed': P.bar ? 'true' : 'false', title: P.bar ? 'Back to the kitchen prep list' : 'Show the bar prep list', text: 'Bar prep', on: { click: function () { P.bar = !P.bar; render(); } } })
         ]),
         removedN ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Restore ' + removedN + ' removed line' + (removedN === 1 ? '' : 's'), on: { click: restoreAll } }) : null,
-        h('button', { type: 'button', cls: 'ed-btn pp-printbtn', text: 'Print', on: { click: preview } })
+        P.ctx.cook ? null : h('button', { type: 'button', cls: 'ed-btn pp-printbtn', text: 'Print', on: { click: preview } })
       ])
     ]));
-    wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
+    if (!P.ctx.cook) wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
       (P.db === true ? 'Tick a line when it’s done, fill in On hand, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next day at 8:00 pm unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
       '“Combined” merges components used in more than one dish (it keeps its own ticks). Prints on one landscape 11 × 8½ page.' }));
     wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));

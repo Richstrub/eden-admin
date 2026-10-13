@@ -2017,3 +2017,4 @@ body.nt-open #app{visibility:hidden!important}
 .rc-app .rc-scale .rc-x{border-radius:10px;font-size:16px;height:42px}
 .rc-app .rc-yield{font-family:Jost,system-ui,sans-serif;font-size:.92rem;color:#8a5226;margin:10px 0 2px}
 .rc-app .rc-yield.is-base{display:none}
+.tm-prep .pp-sheet{margin-top:16px}
