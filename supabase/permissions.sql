@@ -2,6 +2,7 @@
 -- each kind of employee (Employee, Cook, Server) can use, with exceptions for one person.
 -- Run AFTER: team.sql, access-and-timeoff.sql, todo-assign.sql, recipes.sql, calendar.sql, preshift.sql, resources.sql,
 -- prep-list.sql and server.sql. Paste into Supabase > SQL Editor > New query, click Run. Safe to run more than once.
+-- If one of those hasn't been run yet, its section is skipped (not an error); run this file again after running it.
 -- If you run any of those files again later, run this one again afterwards.
 --
 -- Sections: schedule, todos, timeoff, board, preshift, resources, prep, recipes, calendar.
@@ -79,7 +80,11 @@ end $$;
 revoke execute on function public.can_prep() from anon;
 grant execute on function public.can_prep() to authenticated;
 
+
 -- Schedule (the staff page's published schedule)
+do $guard$ begin
+  if to_regclass('public.schedule_weeks') is not null then
+    execute $q$
 create or replace function public.team_schedule(p_week date) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare w public.schedule_weeks%rowtype; me uuid; res jsonb;
@@ -105,9 +110,16 @@ begin
   from jsonb_array_elements(coalesce(w.published, '[]'::jsonb)) s
   left join public.employees e on e.id::text = s ->> 'emp';
   return jsonb_build_object('week_start', p_week, 'published', true, 'published_at', w.published_at, 'shifts', res);
-end $$;
+end $$
+    $q$;
+  else raise notice 'Skipped Schedule: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- To-dos (the staff page's "Your to-dos")
+do $guard$ begin
+  if to_regclass('public.todos') is not null then
+    execute $q$
 create or replace function public.my_todos() returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -119,7 +131,9 @@ language sql stable security definer set search_path = public as $$
     and t.assigned_to = public.my_employee_id()
     and (not t.done or t.done_at > now() - interval '7 days')
     and public.section_ok('todos')
-$$;
+$$
+    $q$;
+    execute $q$
 create or replace function public.finish_my_todo(p_id text, p_done boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
@@ -127,34 +141,83 @@ begin
   update public.todos set done = p_done, done_at = case when p_done then now() end
   where id = p_id and assigned_to is not null and assigned_to = public.my_employee_id();
   return jsonb_build_object('ok', found);
-end $$;
-revoke all on function public.my_todos(), public.finish_my_todo(text, boolean) from public, anon;
-grant execute on function public.my_todos(), public.finish_my_todo(text, boolean) to authenticated;
+end $$
+    $q$;
+    execute $q$
+revoke all on function public.my_todos(), public.finish_my_todo(text, boolean) from public, anon
+    $q$;
+    execute $q$
+grant execute on function public.my_todos(), public.finish_my_todo(text, boolean) to authenticated
+    $q$;
+  else raise notice 'Skipped To-dos: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Time off
-drop policy if exists "see own or manage time off" on public.time_off;
+do $guard$ begin
+  if to_regclass('public.time_off') is not null then
+    execute $q$
+drop policy if exists "see own or manage time off" on public.time_off
+    $q$;
+    execute $q$
 create policy "see own or manage time off" on public.time_off
-  for select to authenticated using (public.can_schedule() or (emp = public.my_employee_id() and public.section_ok('timeoff')));
-drop policy if exists "request time off" on public.time_off;
+  for select to authenticated using (public.can_schedule() or (emp = public.my_employee_id() and public.section_ok('timeoff')))
+    $q$;
+    execute $q$
+drop policy if exists "request time off" on public.time_off
+    $q$;
+    execute $q$
 create policy "request time off" on public.time_off
-  for insert to authenticated with check (public.can_schedule() or (emp = public.my_employee_id() and status = 'pending' and public.section_ok('timeoff')));
-drop policy if exists "cancel pending or manage time off" on public.time_off;
+  for insert to authenticated with check (public.can_schedule() or (emp = public.my_employee_id() and status = 'pending' and public.section_ok('timeoff')))
+    $q$;
+    execute $q$
+drop policy if exists "cancel pending or manage time off" on public.time_off
+    $q$;
+    execute $q$
 create policy "cancel pending or manage time off" on public.time_off
-  for delete to authenticated using (public.can_schedule() or (emp = public.my_employee_id() and status = 'pending' and public.section_ok('timeoff')));
+  for delete to authenticated using (public.can_schedule() or (emp = public.my_employee_id() and status = 'pending' and public.section_ok('timeoff')))
+    $q$;
+  else raise notice 'Skipped Time off: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Message board
-drop policy if exists "team reads the board" on public.board_posts;
+do $guard$ begin
+  if to_regclass('public.board_posts') is not null then
+    execute $q$
+drop policy if exists "team reads the board" on public.board_posts
+    $q$;
+    execute $q$
 create policy "team reads the board" on public.board_posts
-  for select to authenticated using (public.is_team() and public.section_ok('board'));
-drop policy if exists "team posts to the board" on public.board_posts;
+  for select to authenticated using (public.is_team() and public.section_ok('board'))
+    $q$;
+    execute $q$
+drop policy if exists "team posts to the board" on public.board_posts
+    $q$;
+    execute $q$
 create policy "team posts to the board" on public.board_posts
-  for insert to authenticated with check (public.is_team() and public.section_ok('board') and author = auth.uid());
+  for insert to authenticated with check (public.is_team() and public.section_ok('board') and author = auth.uid())
+    $q$;
+  else raise notice 'Skipped Message board: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Pre-shift
-drop policy if exists "team reads pre-shift notes" on public.preshift_notes;
-create policy "team reads pre-shift notes" on public.preshift_notes for select to authenticated using (public.is_team() and public.section_ok('preshift'));
-drop policy if exists "team reads education" on public.preshift_education;
-create policy "team reads education" on public.preshift_education for select to authenticated using (public.is_team() and public.section_ok('preshift'));
+do $guard$ begin
+  if to_regclass('public.preshift_notes') is not null and to_regclass('public.preshift_education') is not null and to_regclass('public.preshift_days') is not null then
+    execute $q$
+drop policy if exists "team reads pre-shift notes" on public.preshift_notes
+    $q$;
+    execute $q$
+create policy "team reads pre-shift notes" on public.preshift_notes for select to authenticated using (public.is_team() and public.section_ok('preshift'))
+    $q$;
+    execute $q$
+drop policy if exists "team reads education" on public.preshift_education
+    $q$;
+    execute $q$
+create policy "team reads education" on public.preshift_education for select to authenticated using (public.is_team() and public.section_ok('preshift'))
+    $q$;
+    execute $q$
 create or replace function public.preshift_today() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare r public.preshift_days; res jsonb; mgr boolean := coalesce(public.can_schedule(), false);
@@ -179,22 +242,61 @@ begin
   end if;
   return jsonb_build_object('service_date', r.service_date, 'source_subject', r.source_subject, 'source_received', r.source_received,
     'source_forwarded', r.source_forwarded, 'reservations', res, 'updated_at', r.updated_at);
-end $$;
-revoke all on function public.preshift_today() from public, anon;
-grant execute on function public.preshift_today() to authenticated;
+end $$
+    $q$;
+    execute $q$
+revoke all on function public.preshift_today() from public, anon
+    $q$;
+    execute $q$
+grant execute on function public.preshift_today() to authenticated
+    $q$;
+  else raise notice 'Skipped Pre-shift: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Resources (and their files; Pre-shift's education PDFs share the same private folder)
-drop policy if exists "team reads resources" on public.resources;
-create policy "team reads resources" on public.resources for select to authenticated using (public.is_team() and public.section_ok('resources'));
-drop policy if exists "team opens education pdfs" on storage.objects;
+do $guard$ begin
+  if to_regclass('public.resources') is not null then
+    execute $q$
+drop policy if exists "team reads resources" on public.resources
+    $q$;
+    execute $q$
+create policy "team reads resources" on public.resources for select to authenticated using (public.is_team() and public.section_ok('resources'))
+    $q$;
+    execute $q$
+drop policy if exists "team opens education pdfs" on storage.objects
+    $q$;
+    execute $q$
 create policy "team opens education pdfs" on storage.objects for select to authenticated
   using (bucket_id = 'preshift-education' and public.is_team()
-         and case when name like 'resources/%' then public.section_ok('resources') else public.section_ok('preshift') end);
+         and case when name like 'resources/%' then public.section_ok('resources') else public.section_ok('preshift') end)
+    $q$;
+  else raise notice 'Skipped Resources: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Recipes
-drop policy if exists "team reads recipes" on public.recipes;
-create policy "team reads recipes" on public.recipes for select to authenticated using (public.is_team() and public.section_ok('recipes'));
+do $guard$ begin
+  if to_regclass('public.recipes') is not null then
+    execute $q$
+drop policy if exists "team reads recipes" on public.recipes
+    $q$;
+    execute $q$
+create policy "team reads recipes" on public.recipes for select to authenticated using (public.is_team() and public.section_ok('recipes'))
+    $q$;
+  else raise notice 'Skipped Recipes: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
 
 -- Calendar
-drop policy if exists "team reads events" on public.events;
-create policy "team reads events" on public.events for select to authenticated using (public.is_team() and public.section_ok('calendar'));
+do $guard$ begin
+  if to_regclass('public.events') is not null then
+    execute $q$
+drop policy if exists "team reads events" on public.events
+    $q$;
+    execute $q$
+create policy "team reads events" on public.events for select to authenticated using (public.is_team() and public.section_ok('calendar'))
+    $q$;
+  else raise notice 'Skipped Calendar: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
