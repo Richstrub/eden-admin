@@ -189,7 +189,15 @@
     first.then(function () { return load(); }).then(function () {
       render();
       startTimer();
+      M.shown = true; flushDraft();
     });
+  }
+  // a new email started somewhere else on the staff site (Notes > Email): opens once the email page is ready
+  function flushDraft() {
+    if (!M.pending || !M.shown || !M.el || M.el.hidden || !mine().length) return;
+    var o = M.pending; M.pending = null;
+    if (!acct() || !acct().mine) M.acct = mine()[0].id;
+    compose(o);
   }
   function hide() { stopTimer(); }
   function startTimer() {
@@ -772,6 +780,7 @@
     var bccRow = h('label', { cls: 'em-crow', hidden: true }, [h('span', { text: 'Bcc' }), bcc]);
     var subj = h('input', { cls: 'em-in', type: 'text', value: o.subject || '', 'aria-label': 'Subject', placeholder: 'Subject' });
     var text = h('textarea', { cls: 'em-in em-body-in', rows: '10', 'aria-label': 'Message', placeholder: 'Write your message' });
+    if (o.body) text.value = o.body;
     var sigBox = h('input', { type: 'checkbox', checked: true });
     var own = mySig();
     var sigRow = h('label', { cls: 'em-check' }, [sigBox, own ? ' Add my sign-off' : ' Add my Gmail signature']);
@@ -969,6 +978,10 @@
 
   window.EdenMail = {
     show: show, hide: hide,
+    // is there a mailbox this person can write from? (known once the menu's unread counts have loaded)
+    canDraft: function () { return mine().length > 0; },
+    // open a new email (subject, body, files: [{ file, name, mime, size }]) on the Business email page
+    draft: function (o) { M.pending = Object.assign({}, o, { files: undefined, fwdAtts: (o.files || []).slice() }); flushDraft(); },
     // the unread count beside "Business email" in the menu
     counts: function (ctx) {
       if (!M.ctx) M.ctx = ctx; else { M.ctx.sb = ctx.sb; M.ctx.role = ctx.role; M.ctx.uid = ctx.uid; }

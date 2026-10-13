@@ -120,7 +120,7 @@
         // a menu group with nothing this person can open is left out
         document.querySelectorAll('.sb-group').forEach(function (g) { if (!g.hasAttribute('data-owner')) g.hidden = ![].some.call(g.querySelectorAll('a'), function (a) { return !a.hidden; }); });
         show('app'); entered = session.user.id;
-        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), isOwner: role === 'owner' });
+        if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), canMail: canMail(), canRecipes: isMgr(), isOwner: role === 'owner' });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         route();
         refreshToday();

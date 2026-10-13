@@ -115,6 +115,44 @@
     return { qty: qty, unit: unit, item: item, note: note };
   }
 
+  /* ---------- a recipe from plain text (Notes > Send to recipes) ----------
+   * Understands headings ("Ingredients", "Method"/"Directions"/"Steps", "Notes") and lines like "Yield: 4 qt",
+   * "Serves 6", "Time: 2 hours", "Allergens: dairy", "Category: Sauces". Without headings, lines that start with
+   * an amount are ingredients and the rest is the method. */
+  var H_ING = /^(ingredients?|for the [a-z ]+|you('ll| will) need)\s*:?$/i, H_METH = /^(method|directions?|steps?|procedure|instructions?|preparation|how to( make( it)?)?)\s*:?$/i, H_NOTE = /^(notes?|tips?|chef'?s notes?)\s*:?$/i;
+  function fromText(title, body) {
+    var lines = String(body || '').split('\n').map(function (l) { return l.replace(/\s+$/, ''); });
+    var name = String(title || '').trim();
+    if (!name) { while (lines.length && !lines[0].trim()) lines.shift(); name = (lines.shift() || '').trim().replace(/:$/, ''); }
+    var x = { id: uid(), name: name.slice(0, 200), category: '', yield_qty: null, yield_unit: '', time: '', allergens: '', ingredients: [], method: [], notes: [] };
+    var mode = 'auto', sawMethod = false, m;
+    lines.forEach(function (raw) {
+      var l = raw.trim(); if (!l) return;
+      var bare = l.replace(/^[-*•]\s*/, '');
+      if ((m = /^(yield|makes|serves|portions)\s*[:\-]?\s*(.+)$/i.exec(bare))) {
+        var q = /^((?:\d+\s+)?\d+\/\d+|\d*\.?\d+)\s*(.*)$/.exec(m[2].trim());
+        if (q) { x.yield_qty = parseQty(q[1]); x.yield_unit = (q[2] || (/serves/i.test(m[1]) ? 'servings' : '')).trim().slice(0, 40); return; }
+      }
+      if ((m = /^((?:total |prep |cook |active )?time)\s*[:\-]\s*(.+)$/i.exec(bare))) { x.time = (x.time ? x.time + ', ' : '') + (/^time$/i.test(m[1]) ? '' : m[1].replace(/\s*time$/i, '') + ' ') + m[2].trim(); return; }
+      if ((m = /^allergens?\s*[:\-]\s*(.+)$/i.exec(bare))) { x.allergens = m[1].trim(); return; }
+      if ((m = /^category\s*[:\-]\s*(.+)$/i.exec(bare))) { x.category = m[1].trim(); return; }
+      if (H_ING.test(bare)) { mode = 'ing'; if (!/^ingredients?/i.test(bare)) x.ingredients.push({ head: true, item: bare.replace(/:$/, '') }); return; }
+      if (H_METH.test(bare)) { mode = 'meth'; sawMethod = true; return; }
+      if (H_NOTE.test(bare)) { mode = 'note'; return; }
+      if (mode === 'note') { x.notes.push(l); return; }
+      if (mode === 'meth') { x.method.push(l.replace(/^(step\s*)?\d+\s*[.):-]\s*/i, '')); return; }
+      var step = /^(step\s*\d+|\d+\s*[.)])\s+/i.test(l);
+      var p = step ? null : parseLine(l);
+      if (mode === 'ing') { if (p) x.ingredients.push(p); return; }
+      // no headings: amounts are ingredients; short lines before the method are too (e.g. "salt, to taste")
+      if (!step && p && (p.head || p.qty != null || (!sawMethod && bare.split(/\s+/).length <= 6 && !/[.!?]$/.test(bare)))) { x.ingredients.push(p); return; }
+      sawMethod = true; x.method.push(l.replace(/^(step\s*)?\d+\s*[.):-]\s*/i, ''));
+    });
+    x.method = x.method.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n');
+    x.notes = x.notes.join('\n');
+    return x;
+  }
+
   /* ---------- state ---------- */
   var R = { ctx: null, el: null, list: [], loaded: false, missing: false, cur: null, edit: null, q: '', cat: '', factor: 1, target: null, smart: true, dirty: false };
 
@@ -143,6 +181,7 @@
       if (r.error) { R.missing = isMissing(r.error); R.list = []; if (!R.missing) status(isPerm(r.error) ? 'Your login can’t open the recipes.' : 'Couldn’t load the recipes.', 'err'); return; }
       R.missing = false;
       R.list = (r.data || []).map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; }).sort(function (a, b) { return String(a.name).localeCompare(b.name); });
+      if (R.pendingOpen) { var f = R.list.filter(function (x) { return x.id === R.pendingOpen; })[0]; if (f) { R.cur = f; R.edit = null; R.factor = 1; R.target = null; } R.pendingOpen = null; }
     }, function () { R.loaded = true; });
   }
 
@@ -395,6 +434,9 @@
       if (!R.loaded) { render(); load().then(render); } else render();
     },
     reload: function () { R.loaded = false; if (R.el) { render(); load().then(render); } },
+    fromText: fromText,
+    // show this recipe the next time the recipe book opens (or now, if it's open)
+    focus: function (id) { R.pendingOpen = id; R.loaded = false; R.edit = null; if (R.el && !R.el.hidden && R.ctx && R.el.offsetParent !== null) { render(); load().then(render); } },
     _test: { parseQty: parseQty, parseLine: parseLine, smart: smart, fmtAmount: fmtAmount, R: R }
   };
 })();

@@ -129,9 +129,10 @@
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
         h('button', { type: 'button', cls: 'nt-b nt-mic', 'aria-pressed': 'false', title: 'Speak your note; it’s typed on the Write page', on: { click: toggleDictation } }, [h('span', { cls: 'nt-mic-dot', 'aria-hidden': 'true' }), h('span', { cls: 'nt-mic-l', text: 'Dictate' })]),
-        h('button', { type: 'button', cls: 'nt-b', text: 'Email', on: { click: emailNote } }),
+        h('button', { type: 'button', cls: 'nt-b nt-mailbtn', text: 'Email', title: C.canMail ? 'Start a new email with this note on the Business email page (the note is then removed)' : 'Email this note', on: { click: emailNote } }),
         share,
-        h('button', { type: 'button', cls: 'nt-b', text: 'Add to to-do', on: { click: toTodo } }),
+        h('button', { type: 'button', cls: 'nt-b nt-todobtn', text: 'Send to to-do', title: 'Make this note a to-do (the note is then removed)', on: { click: toTodo } }),
+        C.canRecipes && window.EdenRecipes && window.EdenRecipes.fromText ? h('button', { type: 'button', cls: 'nt-b nt-rcbtn', text: 'Send to recipes', title: 'Save this note as a recipe (the note is then removed)', on: { click: toRecipe } }) : null,
         C.canPreshift ? h('button', { type: 'button', cls: 'nt-b nt-psbtn', text: 'Send to pre-shift', title: 'Put this note in the Notes section of Pre-shift for the whole team', on: { click: toPreshift } }) : null,
         C.canCal && window.EdenCal ? h('button', { type: 'button', cls: 'nt-b nt-calbtn', text: 'Add to calendar', title: 'Save this note as an event on the calendar', on: { click: toCalendar } }) : null,
         h('button', { type: 'button', cls: 'nt-b', text: 'New', title: 'Start a new note', on: { click: newNote } }),
@@ -595,7 +596,41 @@
     var subject = (N.note.title || '').trim() || noteTitle(N.note);
     return 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(noteText() + '\n\n— ' + (C.name || 'Eden'));
   }
-  function emailNote() { saveNote(); location.href = mailUrl(); }
+  // Email: with a Business email mailbox, a new email opens on the email page with the note in it (handwriting
+  // attached as a picture) and the note is removed. Otherwise it opens the device's mail app, and the note stays.
+  function emailNote() {
+    var M = window.EdenMail;
+    if (!(C.canMail && M && M.draft && M.canDraft && M.canDraft())) { saveNote(); location.href = mailUrl(); return; }
+    var n = N.note, title = (n.title || '').trim(), body = (n.body || '').trim();
+    if (!title && !body && !(n.ink && n.ink.length)) { toast('Write something first.', 'err'); return; }
+    var img = inkImage(2, false);
+    var go = function (files) {
+      M.draft({ subject: title || (body ? noteTitle(n) : 'Note'), body: body, files: files });
+      removeSent('email').then(function () {
+        close();
+        if (location.hash !== '#email') location.hash = '#email';
+      });
+    };
+    if (img && img.toBlob) img.toBlob(function (bl) { go(bl ? [{ file: new File([bl], (title.replace(/[^\w\- ]+/g, '').trim() || 'note') + '.png', { type: 'image/png' }), name: (title.replace(/[^\w\- ]+/g, '').trim() || 'note') + '.png', mime: 'image/png', size: bl.size }] : []); }, 'image/png');
+    else go([]);
+  }
+
+  /* ---------- after a note is sent somewhere (email, to-do, recipes) it's removed from Notes ----------
+   * Only the person who wrote a note (or the Owner, for a shared note) can remove it; anyone else's shared note stays. */
+  function settle() { return new Promise(function (res) { (function wait() { if (N.saving) setTimeout(wait, 80); else res(); })(); }); }
+  function removeSent(where) {
+    var n = N.note;
+    if (!(mine(n) || (n.shared && C.isOwner))) { toast('Sent to ' + where + '. The note stays because a colleague wrote it.', 'ok'); return Promise.resolve(false); }
+    clearTimeout(N.saveT); N.dirty = false; dropDraft();
+    var after = function () { N.notes = N.notes.filter(function (x) { return x.id !== n.id; }); if (N.note.id === n.id) load(blankNote()); else paintList(); toast('Sent to ' + where + '. The note was removed.', 'ok'); return true; };
+    return settle().then(function () {
+      if (N.missing) return after();
+      return C.sb.from('notes').delete().eq('id', n.id).then(function (r) {
+        if (r && r.error) { toast('Sent to ' + where + ', but the note couldn’t be removed. Delete it from the list.', 'err'); return false; }
+        return after();
+      }, function () { toast('Sent to ' + where + ', but the note couldn’t be removed. Delete it from the list.', 'err'); return false; });
+    });
+  }
   function shareNote() {
     var subject = (N.note.title || '').trim() || noteTitle(N.note);
     var img = inkImage(2, false), data = { title: subject, text: (N.note.body || '').trim() || subject };
@@ -623,7 +658,7 @@
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
     var back = h('div', { cls: 'sc-modal nt-modal', role: 'dialog', 'aria-modal': 'true' });
     var card = h('div', { cls: 'sc-card' }, [
-      h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Add to to-do list' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: function () { back.remove(); } } })]),
+      h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Send to to-do list' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: function () { back.remove(); } } })]),
       h('div', { cls: 'sc-card-b' }, [
         lines.length > 1 ? h('label', { cls: 'sc-check' }, [each, ' One to-do for each line (' + lines.length + ')']) : null,
         h('label', { cls: 'sc-check' }, [one, lines.length > 1 ? ' One to-do, with the note as its details' : ' Add as one to-do']),
@@ -631,18 +666,19 @@
         prev, msg
       ]),
       h('div', { cls: 'sc-card-f' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { back.remove(); } } }),
-        h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: add } })])
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Send', on: { click: add } })])
     ]);
     back.appendChild(card); N.el.appendChild(back); paint();
     function add() {
       var rows = (each.checked && lines.length ? lines.map(function (l) { return { title: l, details: '' }; }) : [{ title: title || lines[0], details: title ? body : lines.slice(1).join('\n') }])
-        .map(function (r, i) { var t = { id: uid(), title: r.title.slice(0, 300), details: r.details, due: due.value || null, done: false, created_by: C.name || '', note_id: N.note.id, sort: i };
+        .map(function (r, i) { var t = { id: uid(), title: r.title.slice(0, 300), details: r.details, due: due.value || null, done: false, created_by: C.name || '', note_id: null, sort: i };
           if (T.assignOk && T.uid) { t.assigned_user = T.uid; t.assigned_to = T.myEmp || null; t.assigned_name = C.name || ''; }   // yours, like any new to-do
           return t; });
-      saveNote().then(function () { return C.sb.from('todos').upsert(rows, { onConflict: 'id' }); }).then(function (r) {
-        if (r.error) { msg.textContent = isMissing(r.error) ? 'The to-do list isn’t set up yet. Run supabase/notes.sql in Supabase.' : isPerm(r.error) ? 'Your role can’t use the to-do list.' : 'Couldn’t add. Try again.'; return; }
+      C.sb.from('todos').upsert(rows, { onConflict: 'id' }).then(function (r) {
+        if (r.error) { msg.textContent = isMissing(r.error) ? 'The to-do list isn’t set up yet. Run supabase/notes.sql in Supabase.' : isPerm(r.error) ? 'Your role can’t use the to-do list.' : 'Couldn’t send. Try again.'; return; }
         T.items = T.items.concat(rows.map(function (x) { return Object.assign({ created_at: new Date().toISOString() }, x); }));
-        back.remove(); toast('Added ' + rows.length + ' to-do' + (rows.length === 1 ? '' : 's') + '.', 'ok');
+        back.remove();
+        removeSent(rows.length === 1 ? 'the to-do list' : 'the to-do list (' + rows.length + ' to-dos)');
         renderTodo();
       });
     }
@@ -693,6 +729,57 @@
         try { window.dispatchEvent(new CustomEvent('eden:preshift-note', { detail: { day: day } })); } catch (e) {}
         back.remove(); toast(day === iso(now) ? 'Sent to today’s pre-shift.' : 'Sent to pre-shift for ' + dayLabel(day) + '.', 'ok');
       }, function () { sendBtn.disabled = false; msg.textContent = 'Couldn’t send. Try again.'; });
+    }
+  }
+
+  /* ---------- send a note to Recipes (Owner and managers) ----------
+   * The note's title becomes the recipe name; lines with amounts become ingredients and the rest the method
+   * (headings like "Ingredients" and "Method", and "Yield: 4 qt" / "Time: 2 hrs", are understood). The recipe is
+   * saved, the note removed, and the recipe opened so it can be checked or edited. */
+  function toRecipe() {
+    var title = (N.note.title || '').trim(), body = (N.note.body || '').trim();
+    if (!title && !body) { toast(N.note.ink && N.note.ink.length ? 'Convert the handwriting to text first.' : 'Write something first.', 'err'); return; }
+    var x = window.EdenRecipes.fromText(title, body);
+    var name = h('input', { type: 'text', value: x.name, 'aria-label': 'Recipe name', placeholder: 'Recipe name' });
+    var cat = h('input', { type: 'text', value: x.category, 'aria-label': 'Category', placeholder: 'e.g. Sauces' });
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var ings = x.ingredients.filter(function (i) { return !i.head; });
+    var steps = x.method ? x.method.split('\n') : [];
+    var fmtIng = function (i) { return [i.qty != null ? String(Math.round(i.qty * 1000) / 1000) : '', i.unit, i.item].filter(Boolean).join(' ') + (i.note ? ', ' + i.note : ''); };
+    var prev = h('div', { cls: 'nt-rc-prev' }, [
+      h('p', { cls: 'nt-rc-sum', text: [ings.length + ' ingredient' + (ings.length === 1 ? '' : 's'), steps.length + ' step' + (steps.length === 1 ? '' : 's'), x.yield_qty != null ? 'makes ' + x.yield_qty + (x.yield_unit ? ' ' + x.yield_unit : '') : '', x.time].filter(Boolean).join(' · ') }),
+      ings.length ? h('ul', { cls: 'nt-prev' }, ings.slice(0, 12).map(function (i) { return h('li', { text: fmtIng(i) }); }).concat(ings.length > 12 ? [h('li', { text: '…and ' + (ings.length - 12) + ' more' })] : [])) : null,
+      steps.length ? h('ol', { cls: 'nt-prev nt-rc-steps' }, steps.slice(0, 4).map(function (t) { return h('li', { text: t.replace(/^\d+\.\s*/, '') }); }).concat(steps.length > 4 ? [h('li', { cls: 'nt-more', text: '…and ' + (steps.length - 4) + ' more steps' })] : [])) : null
+    ]);
+    var back = h('div', { cls: 'sc-modal nt-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Send to recipes' });
+    var sendBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Send', on: { click: send } });
+    back.appendChild(h('div', { cls: 'sc-card' }, [
+      h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Send to recipes' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: function () { back.remove(); } } })]),
+      h('div', { cls: 'sc-card-b' }, [
+        h('label', { cls: 'sc-f' }, [h('span', { text: 'Recipe name' }), name]),
+        h('label', { cls: 'sc-f' }, [h('span', { text: 'Category (optional)' }), cat]),
+        prev,
+        h('p', { cls: 'nt-ps-hint', text: 'You can fix anything after it’s saved: the recipe opens in Recipes, press Edit.' }),
+        msg
+      ]),
+      h('div', { cls: 'sc-card-f' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { back.remove(); } } }), sendBtn])
+    ]));
+    N.el.appendChild(back); setTimeout(function () { name.focus(); }, 30);
+    function send() {
+      var nm = name.value.trim(); if (!nm) { msg.textContent = 'Give the recipe a name.'; name.focus(); return; }
+      var row = { id: x.id, name: nm.slice(0, 200), category: cat.value.trim(), yield_qty: x.yield_qty, yield_unit: x.yield_unit, time: x.time, allergens: x.allergens,
+        ingredients: x.ingredients, method: x.method, notes: x.notes, updated_by: C.name || '' };
+      sendBtn.disabled = true; msg.textContent = 'Saving…';
+      C.sb.from('recipes').upsert(row, { onConflict: 'id' }).then(function (r) {
+        sendBtn.disabled = false;
+        if (r.error) { msg.textContent = isMissing(r.error) ? 'Recipes aren’t set up yet. Run supabase/recipes.sql in Supabase.' : isPerm(r.error) ? 'Only the Owner and managers can add recipes.' : 'Couldn’t save. Try again.'; return; }
+        back.remove();
+        removeSent('Recipes').then(function () {
+          window.EdenRecipes.focus(row.id);
+          close();
+          if (location.hash !== '#recipes') location.hash = '#recipes';
+        });
+      }, function () { sendBtn.disabled = false; msg.textContent = 'Couldn’t save. Try again.'; });
     }
   }
 
@@ -864,7 +951,12 @@
   window.EdenNotes = {
     init: function (ctx) {
       C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal;
-      C.canShare = !!ctx.canShare; C.canPreshift = !!(ctx.canPreshift == null ? ctx.canShare : ctx.canPreshift); C.isOwner = !!ctx.isOwner; C.canAssignHint = !!ctx.isOwner;
+      // the To-do page passes only the basics: keep what sign-in set up (sharing, email, recipes, pre-shift)
+      if ('canShare' in ctx) C.canShare = !!ctx.canShare;
+      if ('canMail' in ctx) C.canMail = !!ctx.canMail;
+      if ('canRecipes' in ctx) C.canRecipes = !!ctx.canRecipes;
+      if ('canPreshift' in ctx || 'canShare' in ctx) C.canPreshift = !!(ctx.canPreshift == null ? ctx.canShare : ctx.canPreshift);
+      if ('isOwner' in ctx) { C.isOwner = !!ctx.isOwner; C.canAssignHint = !!ctx.isOwner; }
       ctx.sb.auth.getSession().then(function (r) { C.uid = r && r.data && r.data.session && r.data.session.user && r.data.session.user.id; }, function () {});
     },
     openNote: function (id) { openNote(id); },

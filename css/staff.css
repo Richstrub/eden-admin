@@ -1761,3 +1761,9 @@ body.nt-open #app{visibility:hidden!important}
 .ps-edu-x{flex:none}
 /* Pre-shift on the staff page */
 .tm-preshift .ps{max-width:860px;margin:0 auto}
+/* Notes: Send to recipes */
+.nt-rc-prev{border:1px solid rgba(15,18,21,.08);border-radius:10px;background:#fbfaf7;padding:10px 14px;margin:6px 0 10px}
+.nt-rc-sum{font-size:.84rem;color:#5d5952;margin:0 0 6px}
+.nt-rc-prev .nt-prev{margin:4px 0 0}
+.nt-rc-steps{padding-left:1.2em}
+.nt-rc-steps .nt-more{list-style:none;margin-left:-1.2em;color:#857f75}
