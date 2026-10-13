@@ -150,7 +150,7 @@
       if (!isPerm(e)) S.timer = setTimeout(saveWeek, 5000);
     });
   }
-  var ACCESS = { employee: 'Employee', cook: 'Cook', server: 'Server', manager: 'Manager' };
+  var ACCESS = { employee: 'Employee', cook: 'Cook', server: 'Server', bartender: 'Bartender', manager: 'Manager' };
   function empRow(e) {
     var r = { id: e.id, name: e.name || '', phone: e.phone || '', position: e.position || '', active: e.active !== false };
     if (S.hasEmail) r.email = String(e.email || '').trim().toLowerCase();
@@ -167,7 +167,7 @@
       .catch(function (err) {
         if (err && err.code === '23505') { status('That email is already used by another employee.', 'err'); return; }
         if (err && /only the owner/i.test(err.message || '')) { status('Only the Owner can change permissions.', 'err'); return; }
-        if (err && (err.code === '23514' || /employees_access_check/i.test(err.message || ''))) { status(e.access === 'server' ? 'The Server permission switches on once supabase/server.sql is run in Supabase (SQL Editor → New query → paste → Run).' : 'The Cook permission switches on once supabase/prep-list.sql is run in Supabase (SQL Editor → New query → paste → Run).', 'err'); return; }
+        if (err && (err.code === '23514' || /employees_access_check/i.test(err.message || ''))) { status(e.access === 'bartender' ? 'The Bartender class switches on once supabase/permissions.sql is run in Supabase (SQL Editor → New query → paste → Run).' : e.access === 'server' ? 'The Server permission switches on once supabase/server.sql is run in Supabase (SQL Editor → New query → paste → Run).' : 'The Cook permission switches on once supabase/prep-list.sql is run in Supabase (SQL Editor → New query → paste → Run).', 'err'); return; }
         status(isPerm(err) ? 'Your account can\u2019t change employees.' : 'Couldn\u2019t save the employee. Check your connection.', 'err');
       });
   }
@@ -718,7 +718,7 @@
       cells.push(h('td', null, inp('position', { list: 'scPosList', placeholder: 'e.g. Server' })));
       if (S.hasAccess) {
         if (isOwner()) {
-          var sel = h('select', { cls: 'sc-access', 'aria-label': 'Permissions for ' + (e.name || 'employee'), title: 'Cook: an employee who can also see and fill in the Prep List. Server: an employee on the floor.' }, Object.keys(ACCESS).map(function (k) { return h('option', { value: k, text: ACCESS[k] }); }));
+          var sel = h('select', { cls: 'sc-access', 'aria-label': 'Permissions for ' + (e.name || 'employee'), title: 'Cook: an employee who can also see and fill in the Prep List. Server: an employee on the floor. Bartender: an employee behind the bar. What each can see is set under Team › Employees › Permissions.' }, Object.keys(ACCESS).map(function (k) { return h('option', { value: k, text: ACCESS[k] }); }));
           sel.value = ACCESS[e.access] ? e.access : 'employee';
           sel.addEventListener('change', function () { e.access = sel.value; empChanged(e); });
           cells.push(h('td', null, sel));

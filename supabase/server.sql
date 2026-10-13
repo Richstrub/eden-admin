@@ -7,7 +7,7 @@
 -- server-only pages) check for it.
 
 alter table public.employees drop constraint if exists employees_access_check;
-alter table public.employees add constraint employees_access_check check (access in ('employee', 'cook', 'server', 'manager'));
+alter table public.employees add constraint employees_access_check check (access in ('employee', 'cook', 'server', 'bartender', 'manager'));
 
 create or replace function public.is_server() returns boolean
 language sql stable security definer set search_path = public as $$

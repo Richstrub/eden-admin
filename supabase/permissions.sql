@@ -1,5 +1,5 @@
 -- Eden staff site: Permissions (Team > Employees > Permissions). The Owner chooses what each kind of employee
--- (Employee, Cook, Server) can see and do on the staff page, with exceptions for one person.
+-- (Employee, Cook, Server, Bartender) can see and do on the staff page, with exceptions for one person.
 -- Run AFTER: team.sql, access-and-timeoff.sql, todo-assign.sql, recipes.sql, calendar.sql, preshift.sql, resources.sql,
 -- prep-list.sql and server.sql. Paste into Supabase > SQL Editor > New query, click Run. Safe to run more than once.
 -- If one of those hasn't been run yet, its section is skipped (not an error); run this file again after running it.
@@ -16,8 +16,20 @@
 -- Out of the box everything is on, except the Prep List (cooks only). The Owner and managers always have everything.
 -- Kitchen logins count as cooks and Front-of-house logins as servers. This is enforced by the database, not just hidden.
 
+-- The Bartender class (set on the Employees page, under Access). Same as an employee unless Permissions says otherwise.
+alter table public.employees drop constraint if exists employees_access_check;
+alter table public.employees add constraint employees_access_check check (access in ('employee', 'cook', 'server', 'bartender', 'manager'));
+create or replace function public.is_bartender() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.employees
+                 where active and access = 'bartender' and email <> ''
+                   and lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')))
+$$;
+revoke execute on function public.is_bartender() from anon;
+grant execute on function public.is_bartender() to authenticated;
+
 create table if not exists public.section_rules (
-  level    text not null check (level in ('employee', 'cook', 'server')),
+  level    text not null,
   section  text not null,
   allowed  boolean not null,
   updated_at timestamptz not null default now(),
@@ -30,6 +42,8 @@ create table if not exists public.section_people (
   updated_at timestamptz not null default now(),
   primary key (employee_id, section)
 );
+alter table public.section_rules drop constraint if exists section_rules_level_check;
+alter table public.section_rules add constraint section_rules_level_check check (level in ('employee', 'cook', 'server', 'bartender'));
 alter table public.section_rules drop constraint if exists section_rules_section_check;
 alter table public.section_rules add constraint section_rules_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.edit', 'recipes', 'calendar'));
 alter table public.section_people drop constraint if exists section_people_section_check;
@@ -45,11 +59,11 @@ drop policy if exists "owner sets exceptions" on public.section_people;
 create policy "owner sets exceptions" on public.section_people for all to authenticated
   using (coalesce(public.access_level() = 'owner', false)) with check (coalesce(public.access_level() = 'owner', false));
 
--- what kind of employee the signed-in person is: employee, cook or server
+-- what kind of employee the signed-in person is: employee, cook, server or bartender
 create or replace function public.my_level() returns text
 language sql stable security definer set search_path = public as $$
   select case public.staff_role() when 'kitchen' then 'cook' when 'foh' then 'server' else
-    coalesce((select case when e.access in ('cook', 'server') then e.access else 'employee' end from public.employees e where e.id = public.my_employee_id()), 'employee') end
+    coalesce((select case when e.access in ('cook', 'server', 'bartender') then e.access else 'employee' end from public.employees e where e.id = public.my_employee_id()), 'employee') end
 $$;
 
 -- may the signed-in person use this section (or finer control, like 'board.post')?
