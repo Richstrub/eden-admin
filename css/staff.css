@@ -1767,3 +1767,13 @@ body.nt-open #app{visibility:hidden!important}
 .nt-rc-prev .nt-prev{margin:4px 0 0}
 .nt-rc-steps{padding-left:1.2em}
 .nt-rc-steps .nt-more{list-style:none;margin-left:-1.2em;color:#857f75}
+/* Notes: eraser */
+.nt-paper{position:relative}
+.nt-eopts{display:none;align-items:center;gap:6px;padding:3px 6px 3px 8px;margin-left:-2px;border-left:2px solid var(--ink);background:#f6f2ea;border-radius:0 3px 3px 0}
+.nt.is-erasing .nt-eopts{display:inline-flex}
+.nt-eopts .nt-es{min-width:32px;padding:7px 9px}
+.nt-ring{position:absolute;z-index:3;pointer-events:none;border-radius:50%;border:1.5px solid rgba(15,18,21,.55);background:rgba(255,255,255,.35);box-shadow:0 0 0 1px rgba(255,255,255,.8)}
+.nt-ring.is-stroke{border-style:dashed}
+.nt-canvas.erasing{cursor:none}
+@media (hover:none){.nt-canvas.erasing{cursor:auto}}
+.nt-mode .nt-erasebtn[aria-pressed="true"]{background:#8a5226;color:#fbf6ef}

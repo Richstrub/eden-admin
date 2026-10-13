@@ -19,7 +19,11 @@
   var SIZES = [['S', 1.6], ['M', 2.6], ['L', 4.2]];
 
   var C = { sb: null, status: function () {}, name: '' };
+  var ERASE_SIZES = [['S', 12], ['M', 26], ['L', 48]];
+  function pref(k, d) { try { var v = localStorage.getItem('eden-nt-' + k); return v == null ? d : v; } catch (e) { return d; } }
+  function setPref(k, v) { try { localStorage.setItem('eden-nt-' + k, String(v)); } catch (e) {} }
   var N = { el: null, note: null, notes: [], loaded: false, missing: false, mode: 'ink', color: COLORS[0][0], size: 2.6, eraser: false,
+    eraseKind: pref('erase', 'stroke') === 'area' ? 'area' : 'stroke', eraseSize: +pref('erase-size', 26) || 26, hist: [],
     penSeen: false, saveT: null, saving: false, dirty: false, redo: [] };
   var T = { el: null, items: [], loaded: false, missing: false, showDone: false, people: [], assignOk: false, filter: 'all' };
 
@@ -101,7 +105,7 @@
     var draft = null; try { draft = JSON.parse(localStorage.getItem(DRAFT) || 'null'); } catch (e) {}
     N.note = draft && hasContent(draft) ? draft : blankNote();
     if (draft && hasContent(draft)) N.dirty = true;
-    N.redo = [];
+    N.redo = []; N.hist = [];
     build();
     document.body.classList.add('nt-open');
     loadNotes().then(function () { paintList(); paintFolder(); if (N.dirty) saveNote(); });
@@ -124,7 +128,8 @@
       C.canShare ? folderPicker() : null,
       h('div', { cls: 'nt-mode', role: 'group', 'aria-label': 'Mode' }, [
         h('button', { type: 'button', 'data-mode': 'text', text: 'Write', title: 'Write with Apple Pencil; Scribble turns it into text', on: { click: function () { setMode('text'); } } }),
-        h('button', { type: 'button', 'data-mode': 'ink', text: 'Sketch', title: 'Draw or keep handwriting as ink', on: { click: function () { setMode('ink'); } } })
+        h('button', { type: 'button', 'data-mode': 'ink', text: 'Sketch', title: 'Draw or keep handwriting as ink', on: { click: function () { N.eraser = false; setMode('ink'); paintTools(); } } }),
+        h('button', { type: 'button', 'data-mode': 'erase', cls: 'nt-erasebtn', text: 'Eraser', title: 'Erase handwriting (tap again to go back to the pen)', on: { click: eraserButton } })
       ]),
       h('span', { cls: 'nt-state', role: 'status' }),
       h('div', { cls: 'nt-acts' }, [
@@ -148,9 +153,15 @@
     SIZES.forEach(function (s) { tools.appendChild(h('button', { type: 'button', cls: 'nt-sz', 'data-size': String(s[1]), text: s[0], 'aria-label': 'Pen size ' + s[0], on: { click: function () { N.size = s[1]; N.eraser = false; paintTools(); } } })); });
     tools.appendChild(h('span', { cls: 'nt-sep' }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t nt-eraser', text: 'Eraser', on: { click: function () { N.eraser = !N.eraser; paintTools(); } } }));
+    // eraser options: wipe whole strokes with a touch, or rub out part of a stroke (three sizes)
+    var eo = h('span', { cls: 'nt-eopts', role: 'group', 'aria-label': 'Eraser' }, [
+      h('button', { type: 'button', cls: 'nt-t nt-ek', 'data-kind': 'stroke', text: 'Whole stroke', title: 'Touch a line to erase all of it', on: { click: function () { setErase('stroke'); } } }),
+      h('button', { type: 'button', cls: 'nt-t nt-ek', 'data-kind': 'area', text: 'Rub out', title: 'Rub out just the part you go over', on: { click: function () { setErase('area'); } } })
+    ].concat(ERASE_SIZES.map(function (z) { return h('button', { type: 'button', cls: 'nt-sz nt-es', 'data-esize': String(z[1]), text: z[0], 'aria-label': 'Eraser size ' + z[0], on: { click: function () { N.eraseSize = z[1]; setPref('erase-size', z[1]); setErase('area'); } } }); })));
+    tools.appendChild(eo);
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: 'Undo', on: { click: undo } }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: 'Redo', on: { click: redo } }));
-    tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: 'Clear', on: { click: function () { if (N.note.ink.length && confirm('Clear the handwriting on this note?')) { N.redo = []; N.note.ink = []; redraw(); changed(); } } } }));
+    tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: 'Clear', on: { click: function () { if (N.note.ink.length && confirm('Clear the handwriting on this note? (Undo brings it back.)')) { N.hist.push({ clear: N.note.ink.slice() }); N.redo = []; N.note.ink = []; redraw(); changed(); } } } }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-t', text: '+ Page', title: 'More room to write', on: { click: addPage } }));
     tools.appendChild(h('span', { cls: 'nt-grow' }));
     tools.appendChild(h('button', { type: 'button', cls: 'nt-b nt-convert', text: 'Convert sketch to text', on: { click: convert } }));
@@ -213,7 +224,7 @@
   function setMode(m) {
     N.mode = m;
     N.el.classList.toggle('is-text', m === 'text'); N.el.classList.toggle('is-ink', m === 'ink');
-    N.el.querySelectorAll('.nt-mode button').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-mode') === m ? 'true' : 'false'); });
+    N.el.querySelectorAll('.nt-mode button').forEach(function (b) { var dm = b.getAttribute('data-mode'); b.setAttribute('aria-pressed', dm === 'erase' ? (m === 'ink' && N.eraser ? 'true' : 'false') : (dm === m && !(dm === 'ink' && N.eraser)) ? 'true' : 'false'); });
     if (m === 'ink') { sizeCanvas(); } else setTimeout(function () { N.text.focus(); }, 30);
   }
   function paintTools() {
@@ -221,7 +232,21 @@
     N.el.querySelectorAll('.nt-sw').forEach(function (b) { b.setAttribute('aria-pressed', !N.eraser && b.getAttribute('data-color') === N.color ? 'true' : 'false'); });
     N.el.querySelectorAll('.nt-sz').forEach(function (b) { b.setAttribute('aria-pressed', !N.eraser && +b.getAttribute('data-size') === N.size ? 'true' : 'false'); });
     N.el.querySelector('.nt-eraser').setAttribute('aria-pressed', N.eraser ? 'true' : 'false');
+    N.el.querySelectorAll('.nt-ek').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-kind') === N.eraseKind ? 'true' : 'false'); });
+    N.el.querySelectorAll('.nt-es').forEach(function (b) { b.setAttribute('aria-pressed', N.eraseKind === 'area' && +b.getAttribute('data-esize') === N.eraseSize ? 'true' : 'false'); });
+    N.el.classList.toggle('is-erasing', !!N.eraser);
     N.canvas.classList.toggle('erasing', N.eraser);
+    if (!N.eraser && N.ring) N.ring.hidden = true;
+    N.el.querySelectorAll('.nt-mode button').forEach(function (b) { var dm = b.getAttribute('data-mode'); if (dm === 'erase') b.setAttribute('aria-pressed', N.mode === 'ink' && N.eraser ? 'true' : 'false'); if (dm === 'ink') b.setAttribute('aria-pressed', N.mode === 'ink' && !N.eraser ? 'true' : 'false'); });
+  }
+  function setErase(kind) { N.eraseKind = kind; setPref('erase', kind); N.eraser = true; paintTools(); }
+  // the Eraser button beside Write / Sketch
+  function eraserButton() {
+    if (N.mode === 'text') {
+      if (!(N.note.ink && N.note.ink.length)) { toast('Words on the Write page are typed text: scratch them out with your Pencil, or select them and press delete. The eraser is for Sketch.', ''); return; }
+      N.eraser = true; setMode('ink'); paintTools(); return;
+    }
+    N.eraser = !N.eraser; paintTools();
   }
   function paintList() {
     var list = N.list; if (!list) return;
@@ -252,7 +277,7 @@
   }
   function load(n) {
     stopDictation();
-    N.note = n; N.redo = []; N.dirty = false;
+    N.note = n; N.redo = []; N.hist = []; N.dirty = false;
     N.titleEl.value = n.title || ''; N.text.value = n.body || '';
     N.paper.scrollTop = 0; N.extra = 0;
     setMode(n.ink && n.ink.length && !(n.body || '').trim() ? 'ink' : 'text');
@@ -323,17 +348,23 @@
       if (e.button > 0) return;
       e.preventDefault();
       try { c.setPointerCapture(e.pointerId); } catch (x) {}
-      cur = { id: e.pointerId, s: { c: N.eraser ? '#000' : N.color, w: N.eraser ? 22 : N.size, e: N.eraser || undefined, p: [pt(e)] } };
+      // the eraser button, or the eraser end of a pen that has one
+      var erasing = N.eraser || (e.pointerType === 'pen' && (e.buttons & 32));
+      if (erasing && N.eraseKind === 'stroke') { cur = { id: e.pointerId, wipe: [], last: pt(e) }; ringAt(e); wipeAt(cur, cur.last); return; }
+      cur = { id: e.pointerId, s: { c: erasing ? '#000' : N.color, w: erasing ? N.eraseSize : N.size, e: erasing || undefined, p: [pt(e)] } };
       if (!cur.s.e) delete cur.s.e;
       N.redo = [];
       N.note.ink.push(cur.s);
       drawStroke(N.ctx, cur.s);
     });
+    c.addEventListener('pointermove', function (e) { if (e.pointerType !== 'touch' || !N.penSeen) ringAt(e); });
+    c.addEventListener('pointerleave', function () { if (N.ring) N.ring.hidden = true; });
     c.addEventListener('pointermove', function (e) {
       if (touchY != null && e.pointerType === 'touch') { N.paper.scrollTop -= e.clientY - touchY; touchY = e.clientY; return; }
       if (!cur || e.pointerId !== cur.id) return;
       e.preventDefault();
       var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; if (!evs.length) evs = [e];
+      if (cur.wipe) { evs.forEach(function (ev) { var q = pt(ev); wipeAt(cur, q); cur.last = q; }); return; }
       var start = cur.s.p.length;
       evs.forEach(function (ev) { var q = pt(ev), l = cur.s.p[cur.s.p.length - 1]; if (Math.abs(q[0] - l[0]) + Math.abs(q[1] - l[1]) >= 0.8) cur.s.p.push(q); });
       drawStroke(N.ctx, cur.s, start);
@@ -341,6 +372,8 @@
     function end(e) {
       if (touchY != null && e.pointerType === 'touch') { touchY = null; return; }
       if (!cur || e.pointerId !== cur.id) return;
+      if (cur.wipe) { if (cur.wipe.length) { N.hist.push({ del: cur.wipe }); N.redo = []; changed(); } cur = null; return; }
+      N.hist.push({ add: cur.s });
       cur = null; changed();
       if (inkHeight() > c.clientHeight - 200) sizeCanvas();
     }
@@ -349,8 +382,56 @@
     ['touchstart', 'touchmove', 'touchend'].forEach(function (t) { c.addEventListener(t, function (e) { if (e.cancelable) e.preventDefault(); }, { passive: false }); });
     c.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
-  function undo() { var s = N.note.ink.pop(); if (s) { N.redo.push(s); redraw(); changed(); } }
-  function redo() { var s = N.redo.pop(); if (s) { N.note.ink.push(s); redraw(); changed(); } }
+  /* ---------- eraser ---------- */
+  // circle that shows where the eraser will touch
+  function ringAt(e) {
+    if (!N.eraser && !(e.pointerType === 'pen' && (e.buttons & 32))) { if (N.ring) N.ring.hidden = true; return; }
+    if (!N.ring) { N.ring = h('div', { cls: 'nt-ring', 'aria-hidden': 'true' }); N.paper.appendChild(N.ring); }
+    var d = N.eraseKind === 'stroke' ? 20 : N.eraseSize, pr = N.paper.getBoundingClientRect();
+    N.ring.hidden = false; N.ring.classList.toggle('is-stroke', N.eraseKind === 'stroke');
+    N.ring.style.width = N.ring.style.height = d + 'px';
+    N.ring.style.left = (e.clientX - pr.left + N.paper.scrollLeft - d / 2) + 'px';
+    N.ring.style.top = (e.clientY - pr.top + N.paper.scrollTop - d / 2) + 'px';
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
+    var x = ax + t * dx - px, y = ay + t * dy - py; return Math.sqrt(x * x + y * y);
+  }
+  function hits(s, x, y, r) {
+    var p = s.p, rr = r + s.w / 2 + 1;
+    if (p.length === 1) return Math.abs(p[0][0] - x) + Math.abs(p[0][1] - y) <= rr * 1.5 && segDist(x, y, p[0][0], p[0][1], p[0][0], p[0][1]) <= rr;
+    for (var i = 1; i < p.length; i++) if (segDist(x, y, p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]) <= rr) return true;
+    return false;
+  }
+  // whole-stroke eraser: remove every line the eraser passes over (checks along the path so quick swipes don't skip)
+  function wipeAt(cur, q) {
+    var a = cur.last || q, r = 10, steps = Math.max(1, Math.ceil(Math.hypot(q[0] - a[0], q[1] - a[1]) / 6)), gone = false;
+    for (var k = 0; k <= steps; k++) {
+      var x = a[0] + (q[0] - a[0]) * k / steps, y = a[1] + (q[1] - a[1]) * k / steps;
+      for (var i = N.note.ink.length - 1; i >= 0; i--) {
+        var s = N.note.ink[i];
+        if (s.e || !hits(s, x, y, r)) continue;
+        N.note.ink.splice(i, 1); cur.wipe.push({ s: s, i: i }); gone = true;
+      }
+    }
+    if (gone) redraw();
+  }
+  // undo / redo cover drawing, rubbing out, wiping whole strokes and Clear
+  function undo() {
+    var a = N.hist.pop(), ink = N.note.ink;
+    if (!a) { var s = ink.pop(); if (s) { N.redo.push({ add: s }); redraw(); changed(); } return; }
+    if (a.add) { var j = ink.lastIndexOf(a.add); if (j !== -1) ink.splice(j, 1); }
+    else if (a.del) { for (var k = a.del.length - 1; k >= 0; k--) ink.splice(Math.min(a.del[k].i, ink.length), 0, a.del[k].s); }
+    else if (a.clear) N.note.ink = a.clear.slice();
+    N.redo.push(a); redraw(); changed();
+  }
+  function redo() {
+    var a = N.redo.pop(), ink = N.note.ink; if (!a) return;
+    if (a.add) ink.push(a.add);
+    else if (a.del) a.del.forEach(function (d) { var j = ink.indexOf(d.s); if (j !== -1) ink.splice(j, 1); });
+    else if (a.clear) N.note.ink = [];
+    N.hist.push(a); redraw(); changed();
+  }
 
   // Render the handwriting in black on white, trimmed to what's written (for reading and sharing).
   function inkImage(scale, forOcr) {
