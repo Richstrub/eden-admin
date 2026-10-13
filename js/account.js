@@ -100,6 +100,43 @@
         });
       });
     },
+    // Owner/managers: make (or fix) an employee's login with a temporary password, no email needed
+    createFor: function (sb, person, done) {
+      var temp = makeTemp(), fixing = !!person.fixing;
+      var shown = h('input', { type: 'text', value: temp, cls: 'acct-temp', 'aria-label': 'Temporary password', spellcheck: 'false', autocomplete: 'off' });
+      var msg = h('p', { cls: 'acct-msg', role: 'status' });
+      var go = h('button', { type: 'button', cls: 'acct-primary', text: fixing ? 'Set password and switch on' : 'Create login' });
+      var box = h('div', null, [
+        h('p', { text: fixing
+          ? (person.name || person.email) + ' started an account but never confirmed it (the confirmation email probably didn’t reach them). This switches the account on with the temporary password below.'
+          : 'This makes a login for ' + (person.name || person.email) + ' straight away, with no email needed, using the temporary password below.' }),
+        h('label', { cls: 'acct-f' }, ['Temporary password', shown]),
+        h('p', { cls: 'acct-sub', text: 'Login email: ' + person.email }),
+        msg, h('div', { cls: 'acct-row' }, [go, h('button', { type: 'button', cls: 'acct-ghost', text: 'Cancel', on: { click: function () { close(); } } })])
+      ]);
+      var close = modal(fixing ? 'Switch on login' : 'Create login', [box]);
+      go.addEventListener('click', function () {
+        var pw = shown.value.trim();
+        if (pw.length < MIN) { msg.textContent = 'Use at least ' + MIN + ' characters.'; return; }
+        go.disabled = true; msg.textContent = 'Saving…';
+        sb.rpc('create_employee_login', { p_email: person.email, p_password: pw }).then(function (r) {
+          var j = r.data || {};
+          if (r.error) { go.disabled = false; msg.textContent = /create_employee_login|function|schema cache/i.test(r.error.message || '') ? 'Not switched on yet: run supabase/staff-logins.sql in Supabase.' : 'Couldn’t do it: ' + (r.error.message || 'try again.'); return; }
+          if (!j.ok) { go.disabled = false; msg.textContent = j.message || 'Couldn’t do it.'; return; }
+          var link = location.origin + '/team/';
+          var note = 'Hi ' + String(person.name || '').split(' ')[0] + ', your Eden staff page login is ready. Go to ' + link + ' and sign in with ' + person.email + ' and the temporary password ' + pw + '. It will ask you to choose your own password.';
+          box.replaceWith(h('div', null, [
+            h('p', { text: 'Done. ' + (person.name || person.email) + ' can sign in now. Their temporary password is:' }),
+            h('p', { cls: 'acct-big', text: pw }),
+            h('p', { cls: 'acct-sub', text: 'Give it to them in person or by text. They sign in at ' + link + ' with ' + person.email + ', and choose their own password straight away. This window is the only place it’s shown.' }),
+            h('div', { cls: 'acct-row' }, [
+              h('button', { type: 'button', cls: 'acct-ghost', text: 'Copy a text message', on: { click: function (e) { var b = e.currentTarget; if (navigator.clipboard) navigator.clipboard.writeText(note).then(function () { b.textContent = 'Copied'; }); } } }),
+              h('button', { type: 'button', cls: 'acct-primary', text: 'Done', on: { click: function () { close(); } } })])
+          ]));
+          if (done) done();
+        });
+      });
+    },
     // Owner/managers: temporary password for an employee
     resetFor: function (sb, person, done) {
       var temp = makeTemp();

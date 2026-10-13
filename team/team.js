@@ -142,6 +142,7 @@
         : 'If that email has an account, a reset link is on its way. No email after a few minutes? Check your spam folder, or ask a manager to set a temporary password for you.';
     });
   });
+  if (/^#create\b/.test(location.hash)) setMode('up');   // the staff site's "Create your account" link
   window.EdenAccount.choose(sb, $('newpw').querySelector('form'), function () { recovering = false; history.replaceState(null, '', location.pathname); enter(); });
   document.querySelectorAll('[data-act="chpw"]').forEach(function (b) { b.addEventListener('click', function () { window.EdenAccount.change(sb); }); });
 

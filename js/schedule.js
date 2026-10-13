@@ -169,7 +169,14 @@
         status(isPerm(err) ? 'Your account can\u2019t change employees.' : 'Couldn\u2019t save the employee. Check your connection.', 'err');
       });
   }
+  function loadAuthCfg() {
+    if (S.authCfg !== undefined) return Promise.resolve();
+    var C = (window.EDEN_STAFF_CONFIG || {}).supabase || {};
+    S.authCfg = null;
+    return fetch(String(C.url || '').replace(/\/$/, '') + '/auth/v1/settings', { headers: { apikey: C.key } }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { S.authCfg = j; }, function () { S.authCfg = null; });
+  }
   function loadAccounts() {
+    loadAuthCfg().then(function () { if (S.authCfg) render(); });
     return sb().rpc('employee_accounts').then(function (r) {
       S.accounts = {};
       if (r.error) { S.accountsOk = false; return; }
@@ -641,6 +648,13 @@
       cp
     ]));
     if (!S.hasEmail) wrap.appendChild(h('div', { cls: 'ed-banner' }, [h('p', { text: 'To add login emails, run the one-time team setup in Supabase (supabase/team.sql), then reload this page.' })]));
+    // what Supabase is set to do when staff sign up (read from its public settings)
+    if (S.hasEmail && S.authCfg) {
+      var ac = S.authCfg, notes = [];
+      if (ac.disable_signup) notes.push('New staff can’t create accounts themselves right now (sign-ups are switched off in Supabase: Authentication › Sign In / Providers › Allow new users to sign up). Use “Create login” below for each person.');
+      else if (ac.mailer_autoconfirm === false) notes.push('When staff create their own account, Supabase emails them a confirmation link. Unless Supabase sends email through Resend (Authentication › Emails › SMTP Settings), those emails don’t reach them. The quickest way in: “Create login” below, then give them the temporary password.');
+      if (notes.length) wrap.appendChild(h('div', { cls: 'ed-banner sc-onboard' }, notes.map(function (t) { return h('p', { text: t }); })));
+    }
     var list = S.employees.slice().sort(function (a, b) { return (!a.name) - (!b.name) || (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''); });
     var heads = ['Name', 'Mobile number'].concat(S.hasEmail ? ['Email (login)'] : []).concat(['Position']).concat(S.hasAccess ? ['Permissions'] : []).concat(S.hasEmail ? ['Login'] : []).concat(['On schedule', '']);
     var table = h('table', { cls: 'sc-ptable' }, [h('thead', null, h('tr', null, heads.map(function (t) { return h('th', { text: t }); })))]);
@@ -678,10 +692,18 @@
         var acct = e.email ? S.accounts && S.accounts[String(e.email).trim().toLowerCase()] : null;
         // forgot or compromised password: a manager sets a temporary one (only the Owner can for managers)
         var canReset = acct && window.EdenAccount && (isOwner() || e.access !== 'manager');
+        var person = { name: e.name, email: String(e.email || '').trim().toLowerCase() };
+        var canMake = window.EdenAccount && window.EdenAccount.createFor && e.active !== false && (isOwner() || e.access !== 'manager');
+        var refresh = function () { loadAccounts().then(render); };
+        var waiting = acct && acct.confirmed === false;   // signed up, but the confirmation email never got clicked
         login = !e.email ? h('span', { cls: 'sc-login none', text: '\u2013' })
-          : acct ? h('span', { cls: 'sc-acct' }, [h('span', { cls: 'sc-login ok', text: 'Active' + (acct.last_sign_in_at ? ' \u00b7 ' + new Date(acct.last_sign_in_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '') }),
-              canReset ? h('button', { type: 'button', cls: 'sc-resetpw', text: 'Reset password', on: { click: function () { window.EdenAccount.resetFor(sb(), { name: e.name, email: String(e.email).trim().toLowerCase() }); } } }) : null])
-          : S.accountsOk ? h('span', { cls: 'sc-login', text: 'Not created yet' }) : h('span', { cls: 'sc-login none', text: '\u2013' });
+          : acct && !waiting ? h('span', { cls: 'sc-acct' }, [h('span', { cls: 'sc-login ok', text: (acct.last_sign_in_at ? 'Active \u00b7 ' + new Date(acct.last_sign_in_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Created, not signed in yet') }),
+              canReset ? h('button', { type: 'button', cls: 'sc-resetpw', text: 'Reset password', on: { click: function () { window.EdenAccount.resetFor(sb(), person); } } }) : null])
+          : waiting ? h('span', { cls: 'sc-acct' }, [h('span', { cls: 'sc-login warn', text: 'Waiting on email confirmation' }),
+              canMake ? h('button', { type: 'button', cls: 'sc-resetpw', text: 'Switch on with a password', on: { click: function () { window.EdenAccount.createFor(sb(), Object.assign({ fixing: true }, person), refresh); } } }) : null])
+          : S.accountsOk ? h('span', { cls: 'sc-acct' }, [h('span', { cls: 'sc-login', text: 'No login yet' }),
+              canMake ? h('button', { type: 'button', cls: 'sc-resetpw', text: 'Create login', on: { click: function () { window.EdenAccount.createFor(sb(), person, refresh); } } }) : null])
+          : h('span', { cls: 'sc-login none', text: '\u2013' });
       }
       var cells = [h('td', null, inp('name', { placeholder: 'Full name' })), h('td', null, [ph, bad])];
       if (S.hasEmail) cells.push(h('td', null, em));

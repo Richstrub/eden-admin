@@ -1724,3 +1724,7 @@ body.nt-open #app{visibility:hidden!important}
 .ps-k-removed,.ps-k-hidden{background:#fdf0ee;color:#a3392b}
 .ps-k-price{background:#fbf3ea;color:#8a5226}
 .ps-k-pair{background:#f1eef6;color:#5b4b7a}
+.sc-login.warn{color:#a3392b}
+.gate-new{font-size:.84rem;text-align:center;color:var(--soft-dark)}
+.gate-new a{color:var(--ember-hot)}
+.sc-onboard p{line-height:1.5}

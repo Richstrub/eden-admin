@@ -40,7 +40,7 @@
     signinMsg.textContent = 'Signing in…';
     sb.auth.signInWithPassword({ email: email, password: pw }).then(function (r) {
       if (r.error) {
-        signinMsg.textContent = /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : 'That email and password did not work.';
+        signinMsg.textContent = /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : /not confirmed/i.test(r.error.message || '') ? 'This account still needs its confirmation email. Ask a manager to switch it on (Schedule › Employees).' : 'That email and password did not work. New to the team? Use the link below to create your account.';
         return;
       }
       signinForm.password.value = ''; signinMsg.textContent = '';
