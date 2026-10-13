@@ -52,7 +52,8 @@
     P.payReady = ctx.isOwner ? q(sb.from('pay_rates').select('emp').limit(1)) : null;
     P.events = q(sb.from('events').select('id,title,type,date,start,end,room,guests,all_day').gte('date', today).lte('date', iso(addDays(now, 7))));
     P.notes = mgr ? q(sb.from('notes').select('id,title,body,author,edited_by,updated_at,shared').eq('shared', true)) : null;
-    P.todos = q(sb.from('todos').select('id,title,due,done'));
+    P.todos = q(sb.from('todos').select('*'));
+    P.me = q(sb.rpc('team_me'));
     var keys = Object.keys(P);
     return Promise.all(keys.map(function (k) { return P[k]; })).then(function (vals) {
       var d = {}; keys.forEach(function (k, i) { d[k] = vals[i]; });
@@ -98,7 +99,9 @@
     }
     // every open to-do: overdue first, then by due date, then the ones with no date
     if (d.todos) {
-      var open = d.todos.filter(function (t) { return !t.done && String(t.title || '').trim(); }).sort(function (a, b) {
+      // to-dos given to someone else are theirs (they show on that person's staff page), not yours
+      var myEmp = d.me && d.me.employee && d.me.employee.id;
+      var open = d.todos.filter(function (t) { return !t.done && String(t.title || '').trim() && (!t.assigned_to || t.assigned_to === myEmp); }).sort(function (a, b) {
         var ka = a.due || '9999', kb = b.due || '9999'; return ka < kb ? -1 : ka > kb ? 1 : String(a.title).localeCompare(String(b.title));
       });
       var SHOW = 8;

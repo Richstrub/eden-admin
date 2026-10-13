@@ -152,7 +152,44 @@
       show('app'); entered = session.user && session.user.id;
       if (!started) { started = true; startBoard(); }
       loadMyOff().then(loadView);
+      loadTodos();
       page();
+    });
+  }
+
+  /* ---------- your to-dos (given to you by the Owner or a manager) ---------- */
+  var todos = [];
+  function loadTodos() {
+    if (!me || !me.employee) { $('todoSec').hidden = true; return; }
+    sb.rpc('my_todos').then(function (r) {
+      if (r.error) { $('todoSec').hidden = true; return; }   // not set up yet
+      todos = r.data || []; renderTodos();
+    }, function () {});
+  }
+  setInterval(function () { if (!$('app').hidden && !document.hidden) loadTodos(); }, 120000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && me) loadTodos(); });
+  function renderTodos() {
+    var ul = $('myTodos'); ul.innerHTML = '';
+    var open = todos.filter(function (t) { return !t.done; }), done = todos.filter(function (t) { return t.done; });
+    $('todoSec').hidden = !todos.length;
+    var today = iso(new Date());
+    open.concat(done).forEach(function (t) {
+      var late = !t.done && t.due && t.due < today, now = !t.done && t.due === today;
+      var cb = h('button', { type: 'button', cls: 'tm-tick' + (t.done ? ' on' : ''), 'aria-pressed': t.done ? 'true' : 'false', 'aria-label': (t.done ? 'Done: ' : 'Mark done: ') + t.title,
+        on: { click: function () { tick(t, !t.done, cb); } } });
+      ul.appendChild(h('li', { cls: 'tm-todo' + (t.done ? ' done' : '') + (late ? ' late' : '') }, [cb, h('div', { cls: 'tm-todo-m' }, [
+        h('b', { text: t.title }),
+        t.details ? h('p', { text: t.details }) : null,
+        h('span', { text: [t.due ? (late ? 'Overdue · was due ' : now ? 'Due today · ' : 'Due ') + dayLabel(t.due) : '', t.assigned_by ? 'from ' + t.assigned_by : '', t.done ? 'done' : ''].filter(Boolean).join(' · ') })])]));
+    });
+  }
+  function tick(t, done, btn) {
+    btn.disabled = true;
+    sb.rpc('finish_my_todo', { p_id: t.id, p_done: done }).then(function (r) {
+      btn.disabled = false;
+      if (r.error || !(r.data && r.data.ok)) { $('todoMsg').textContent = 'Couldn’t save that. Try again.'; return; }
+      $('todoMsg').textContent = '';
+      t.done = done; t.done_at = done ? new Date().toISOString() : null; renderTodos();
     });
   }
 

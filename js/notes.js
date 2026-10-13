@@ -21,7 +21,7 @@
   var C = { sb: null, status: function () {}, name: '' };
   var N = { el: null, note: null, notes: [], loaded: false, missing: false, mode: 'ink', color: COLORS[0][0], size: 2.6, eraser: false,
     penSeen: false, saveT: null, saving: false, dirty: false, redo: [] };
-  var T = { el: null, items: [], loaded: false, missing: false, showDone: false };
+  var T = { el: null, items: [], loaded: false, missing: false, showDone: false, people: [], assignOk: false, filter: 'all' };
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -675,14 +675,34 @@
 
   /* ---------- To-do page ---------- */
   function loadTodos() {
-    return C.sb.from('todos').select('*').order('created_at').then(function (r) {
+    // staff to give to-dos to (the employee list), and whether assigning is set up (supabase/todo-assign.sql)
+    var people = C.sb.from('employees').select('id,name,active').then(function (r) {
+      T.people = ((r && r.data) || []).filter(function (e) { return e.active !== false && e.name; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+    }, function () {});
+    var probe = C.sb.from('todos').select('assigned_to').limit(1).then(function (r) { T.assignOk = !!(r && !r.error); }, function () { T.assignOk = false; });
+    var list = C.sb.from('todos').select('*').order('created_at').then(function (r) {
       T.loaded = true;
       if (r.error) { T.missing = isMissing(r.error); T.items = []; if (!T.missing) C.status(isPerm(r.error) ? 'Your role can’t open the to-do list.' : 'Couldn’t load the to-do list.', 'err'); return; }
       T.missing = false; T.items = r.data || [];
     }, function () { T.loaded = true; });
+    return Promise.all([people, probe, list]);
+  }
+  function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : p[0] || ''; }
+  function assignSelect(cur, cls) {
+    var sel = h('select', { cls: cls || '', 'aria-label': 'Assign to' }, [h('option', { value: '', text: 'Not assigned' })].concat(T.people.map(function (e) { return h('option', { value: e.id, text: e.name }); })));
+    sel.value = cur || '';
+    return sel;
+  }
+  function setAssignee(t, id) {
+    var e = T.people.filter(function (x) { return x.id === id; })[0];
+    if (!id || !e) { t.assigned_to = null; t.assigned_name = ''; t.assigned_by = ''; return; }
+    if (t.assigned_to !== id) t.assigned_by = C.name || '';
+    t.assigned_to = id; t.assigned_name = e.name;
   }
   function saveTodo(t) {
-    return C.sb.from('todos').upsert({ id: t.id, title: t.title, details: t.details || '', due: t.due || null, done: !!t.done, done_at: t.done ? (t.done_at || new Date().toISOString()) : null, created_by: t.created_by || '', note_id: t.note_id || null, sort: t.sort || 0 }, { onConflict: 'id' })
+    var row = { id: t.id, title: t.title, details: t.details || '', due: t.due || null, done: !!t.done, done_at: t.done ? (t.done_at || new Date().toISOString()) : null, created_by: t.created_by || '', note_id: t.note_id || null, sort: t.sort || 0 };
+    if (T.assignOk) { row.assigned_to = t.assigned_to || null; row.assigned_name = t.assigned_name || ''; row.assigned_by = t.assigned_by || ''; }
+    return C.sb.from('todos').upsert(row, { onConflict: 'id' })
       .then(function (r) { if (r.error) C.status(isPerm(r.error) ? 'Your role can’t change the to-do list.' : 'Couldn’t save. Try again.', 'err'); else C.status('Saved.', 'ok'); return r; });
   }
   function renderTodo() {
@@ -695,19 +715,29 @@
     if (T.missing) { wrap.appendChild(h('div', { cls: 'iv-setup' }, [h('p', { text: 'The to-do list isn’t in Supabase yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/notes.sql from the eden-admin repository, and click Run. Then reload this page.' })])); return; }
     var inp = h('input', { type: 'text', cls: 'td-new', placeholder: 'Add a to-do and press Enter', 'aria-label': 'New to-do' });
     var due = h('input', { type: 'date', cls: 'td-due', 'aria-label': 'Due date (optional)' });
+    var who = T.assignOk && T.people.length ? assignSelect(T.lastWho || '', 'td-due td-who') : null;
     function addNew() {
       var v = inp.value.trim(); if (!v) { inp.focus(); return; }
       var t = { id: uid(), title: v, details: '', due: due.value || null, done: false, created_by: C.name || '', created_at: new Date().toISOString(), sort: 0 };
+      if (who) { setAssignee(t, who.value); T.lastWho = who.value; }
       T.items.push(t); saveTodo(t); renderTodo();
       var again = T.el.querySelector('.td-new'); if (again) again.focus();
     }
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addNew(); } });
-    wrap.appendChild(h('div', { cls: 'td-add' }, [inp, due, h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: addNew } })]));
+    wrap.appendChild(h('div', { cls: 'td-add' }, [inp, due, who, h('button', { type: 'button', cls: 'ed-btn', text: 'Add', on: { click: addNew } })]));
+    if (T.assignOk) {
+      var F = [['all', 'Everything'], ['open', 'Not assigned'], ['staff', 'Given to staff']];
+      wrap.appendChild(h('div', { cls: 'td-filter', role: 'group', 'aria-label': 'Show' }, F.map(function (f) {
+        return h('button', { type: 'button', 'aria-pressed': T.filter === f[0] ? 'true' : 'false', text: f[1], on: { click: function () { T.filter = f[0]; renderTodo(); } } });
+      })));
+      if (who) wrap.appendChild(h('p', { cls: 'td-hint', text: 'A to-do given to someone shows on their own staff page (Schedule tab), where they tick it off. You’ll see it ticked here.' }));
+    } else if (C.canAssignHint) wrap.appendChild(h('p', { cls: 'td-hint', text: 'To give to-dos to staff, run supabase/todo-assign.sql in Supabase, then reload.' }));
     var today = iso(new Date());
-    var open1 = T.items.filter(function (t) { return !t.done; }).sort(function (a, b) {
+    var keep = function (t) { return T.filter === 'open' ? !t.assigned_to : T.filter === 'staff' ? !!t.assigned_to : true; };
+    var open1 = T.items.filter(function (t) { return !t.done && keep(t); }).sort(function (a, b) {
       var da = a.due || '9999', db = b.due || '9999'; return da < db ? -1 : da > db ? 1 : (a.created_at < b.created_at ? -1 : 1);
     });
-    var done = T.items.filter(function (t) { return t.done; }).sort(function (a, b) { return (a.done_at || '') < (b.done_at || '') ? 1 : -1; });
+    var done = T.items.filter(function (t) { return t.done && keep(t); }).sort(function (a, b) { return (a.done_at || '') < (b.done_at || '') ? 1 : -1; });
     wrap.appendChild(h('p', { cls: 'td-count', text: open1.length ? open1.length + ' to do' + (open1.filter(function (t) { return t.due && t.due < today; }).length ? ' · ' + open1.filter(function (t) { return t.due && t.due < today; }).length + ' overdue' : '') : 'Nothing to do. Nice.' }));
     var ul = h('ul', { cls: 'td-list' }); open1.forEach(function (t) { ul.appendChild(todoRow(t, today)); }); wrap.appendChild(ul);
     if (done.length) {
@@ -728,7 +758,7 @@
       h('div', { cls: 'td-main' }, [
         h('button', { type: 'button', cls: 'td-t', text: t.title, on: { click: function () { editTodo(t); } } }),
         t.details ? h('p', { cls: 'td-d', text: t.details }) : null,
-        h('span', { cls: 'td-meta', text: [t.due ? (over ? 'Overdue · ' : soon ? 'Today · ' : 'Due ') + dayLabel(t.due) : '', t.created_by ? 'by ' + t.created_by : '', t.note_id ? 'from a note' : ''].filter(Boolean).join(' · ') })
+        h('span', { cls: 'td-meta' }, [t.assigned_to ? h('span', { cls: 'td-who-chip', text: '→ ' + shortName(t.assigned_name) }) : null, [t.due ? (over ? 'Overdue · ' : soon ? 'Today · ' : 'Due ') + dayLabel(t.due) : '', t.created_by ? 'by ' + t.created_by : '', t.note_id ? 'from a note' : '', t.assigned_to && t.done ? 'ticked off by ' + shortName(t.assigned_name) : ''].filter(Boolean).join(' · ')])
       ]),
       h('button', { type: 'button', cls: 'td-x', 'aria-label': 'Delete ' + t.title, title: 'Delete', text: '✕', on: { click: function () {
         if (!confirm('Delete “' + t.title + '”?')) return;
@@ -740,14 +770,15 @@
   function editTodo(t) {
     var title = h('input', { type: 'text', value: t.title }), details = h('textarea', { rows: '5' }); details.value = t.details || '';
     var due = h('input', { type: 'date', value: t.due || '' });
+    var whoSel = T.assignOk && T.people.length ? assignSelect(t.assigned_to || '') : null;
     var back = h('div', { cls: 'sc-modal', role: 'dialog', 'aria-modal': 'true' });
     function close() { back.remove(); }
     var noteBtn = t.note_id ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the note', on: { click: function () { close(); openNote(t.note_id); } } }) : null;
     back.appendChild(h('div', { cls: 'sc-card' }, [
       h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'To-do' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: close } })]),
-      h('div', { cls: 'sc-card-b' }, [h('label', { cls: 'sc-f' }, [h('span', { text: 'To-do' }), title]), h('label', { cls: 'sc-f td-det' }, [h('span', { text: 'Details' }), details]), h('label', { cls: 'sc-f' }, [h('span', { text: 'Due (optional)' }), due])]),
+      h('div', { cls: 'sc-card-b' }, [h('label', { cls: 'sc-f' }, [h('span', { text: 'To-do' }), title]), h('label', { cls: 'sc-f td-det' }, [h('span', { text: 'Details' }), details]), h('label', { cls: 'sc-f' }, [h('span', { text: 'Due (optional)' }), due]), whoSel ? h('label', { cls: 'sc-f' }, [h('span', { text: 'Assigned to' }), whoSel]) : null]),
       h('div', { cls: 'sc-card-f' }, [noteBtn || h('span'), h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: close } }),
-        h('button', { type: 'button', cls: 'ed-btn', text: 'Save', on: { click: function () { if (!title.value.trim()) { title.focus(); return; } t.title = title.value.trim(); t.details = details.value; t.due = due.value || null; saveTodo(t); close(); renderTodo(); } } })])
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Save', on: { click: function () { if (!title.value.trim()) { title.focus(); return; } t.title = title.value.trim(); t.details = details.value; t.due = due.value || null; if (whoSel) setAssignee(t, whoSel.value); saveTodo(t); close(); renderTodo(); } } })])
     ]));
     back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
     document.body.appendChild(back); setTimeout(function () { title.focus(); }, 30);
@@ -762,7 +793,7 @@
   window.EdenNotes = {
     init: function (ctx) {
       C.sb = ctx.sb; C.status = ctx.status || C.status; C.name = ctx.name || ''; if ('canCal' in ctx) C.canCal = !!ctx.canCal;
-      C.canShare = !!ctx.canShare; C.isOwner = !!ctx.isOwner;
+      C.canShare = !!ctx.canShare; C.isOwner = !!ctx.isOwner; C.canAssignHint = !!ctx.isOwner;
       ctx.sb.auth.getSession().then(function (r) { C.uid = r && r.data && r.data.session && r.data.session.user && r.data.session.user.id; }, function () {});
     },
     openNote: function (id) { openNote(id); },

@@ -1639,3 +1639,16 @@ body.nt-open #app{visibility:hidden!important}
 .td-tick.on::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
 .td-item.ticked .td-what b{text-decoration:line-through;color:#857f75}
 .td-item.td-todo.late .td-what span{color:#a3392b}
+.td-filter{display:inline-flex;gap:2px;padding:3px;background:#efe9df;border-radius:18px;margin:10px 0 4px}
+.td-filter button{border:0;background:none;padding:6px 14px;border-radius:15px;font:inherit;font-size:.82rem;color:#5d5952;cursor:pointer}
+.td-filter button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,18,21,.12)}
+.td-hint{font-size:.8rem;color:var(--stone);margin:4px 0 8px}
+.td-who-chip{display:inline-block;margin-right:6px;padding:0 8px;border-radius:9px;background:#fbf3ea;color:#8a5226;font-size:.72rem}
+.td-add .td-who{width:auto;flex:0 0 auto;max-width:200px}
+/* the To-do page shares class names with Today; keep it a single column */
+#viewTodo .td-in{display:block;max-width:860px;padding:32px 32px 80px}
+#viewTodo .td-title{font-size:inherit;margin:0}
+#viewTodo .td-title .sc-week{font-size:clamp(2rem,4vw,2.8rem)}
+#viewTodo .td-list{background:#fff;border:1px solid rgba(15,18,21,.09);margin-top:10px}
+#viewTodo .td-item{align-items:flex-start;padding:12px 14px}
+@media (max-width:760px){#viewTodo .td-in{padding:20px 16px 60px}}
