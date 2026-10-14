@@ -144,7 +144,7 @@ if (!Element.prototype.replaceChildren) {
         return;
       }
       LAST = r.data;
-      paintPreshift(r.data); paintPrep(r.data); paintCal(r.data);
+      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintCal(r.data);
       $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }, function () {});
   }
@@ -227,6 +227,55 @@ if (!Element.prototype.replaceChildren) {
     $('prepBar').setAttribute('aria-valuenow', String(pct));
     $('prepPct').textContent = total ? pct + '%' : '–';
     $('prepSub').textContent = total ? done + ' of ' + total + ' done · ' + (total - done) + ' to go' : '';
+  }
+
+  /* ---------- today's schedule: one row per shift on an hour scale, like the staff page's day view ---------- */
+  // Shifts can end at a server "out" time; those are drawn to an assumed clock time with a faded end.
+  var ENDS = { cut1: { label: '1st cut', at: '20:00' }, cut2: { label: '2nd cut', at: '21:00' }, close: { label: 'close', at: '22:00' } };
+  function mins(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
+  function endMin(s) { if (ENDS[s.end]) return mins(ENDS[s.end].at); var e = mins(s.end); if (s.end && e <= mins(s.start)) e += 1440; return e; }
+  function clock(m) { m = ((m % 1440) + 1440) % 1440; var H = Math.floor(m / 60), M = m % 60; return (H % 12 || 12) + (M ? ':' + String(M).padStart(2, '0') : '') + (H >= 12 ? 'p' : 'a'); }
+  function fmtT(t) { return ENDS[t] ? ENDS[t].label : t ? clock(mins(t)) : ''; }
+  function shiftHrs(s) { if (!s.start || !s.end) return null; var d = endMin(s) - mins(s.start); return d > 0 ? d / 60 : null; }
+  function paintShifts(d) {
+    var box = $('shiftsBody'), sum = $('shiftsSum');
+    box.replaceChildren(); sum.textContent = '';
+    if (d.shifts == null) { box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
+    if (!d.shifts_posted) { box.appendChild(h('p', { cls: 'hb-muted', text: 'This week’s schedule hasn’t been published yet.' })); return; }
+    var list = (d.shifts || []).filter(function (s) { return s.start; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || String(a.name).localeCompare(String(b.name)); });
+    if (!list.length) { box.appendChild(h('p', { cls: 'hb-muted', text: 'Nobody is scheduled today.' })); return; }
+    var lo = Infinity, hi = -Infinity;
+    list.forEach(function (s) { var a = mins(s.start), b = endMin(s); if (b <= a) b = a + 60; lo = Math.min(lo, a); hi = Math.max(hi, b); });
+    lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
+    if (hi - lo < 6 * 60) hi = Math.min(lo + 6 * 60, 30 * 60);
+    var span = hi - lo, pct = function (m) { return ((m - lo) / span * 100) + '%'; };
+    var names = {}; list.forEach(function (s) { names[s.name] = 1; });
+    var last = list.reduce(function (x, s) { return endMin(s) > endMin(x) || (endMin(s) === endMin(x) && ENDS[s.end]) ? s : x; }, list[0]);
+    sum.textContent = Object.keys(names).length + ' working · first in ' + fmtT(list[0].start) + ' · last out ' + fmtT(last.end);
+    var tl = h('div', { cls: 'hb-tl' });
+    var scale = h('div', { cls: 'hb-tl-scale' });
+    for (var m = lo; m <= hi; m += 60) scale.appendChild(h('span', { cls: 'hb-tl-tick', style: 'left:' + pct(m), text: clock(m) }));
+    tl.appendChild(h('div', { cls: 'hb-tl-row hb-tl-ruler' }, [h('div', { cls: 'hb-tl-who' }), scale]));
+    var lanes = h('div', { cls: 'hb-tl-lanes' });
+    list.forEach(function (s) {
+      var a = mins(s.start), b = endMin(s), approx = !!ENDS[s.end], hrs = shiftHrs(s);
+      if (b <= a) b = a + 60;
+      var pos = s.role || s.position || '';
+      lanes.appendChild(h('div', { cls: 'hb-tl-row' }, [
+        h('div', { cls: 'hb-tl-who' }, [h('b', { text: s.name }), h('small', { text: [pos, hrs != null ? (approx ? '~' : '') + (Math.round(hrs * 4) / 4) + 'h' : ''].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'hb-tl-lane' }, [h('div', { cls: 'hb-tl-bar' + (approx ? ' approx' : ''), style: 'left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')' },
+          [h('span', { text: fmtT(s.start) + '–' + fmtT(s.end) + (s.note ? ' · ' + s.note : '') })])])
+      ]));
+    });
+    tl.appendChild(lanes);
+    // hour lines and a "now" line, over the lanes only
+    var grid = h('div', { cls: 'hb-tl-grid', 'aria-hidden': 'true' });
+    for (var g = lo; g <= hi; g += 60) grid.appendChild(h('i', { style: 'left:' + pct(g) }));
+    var now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
+    if (nowM < lo && nowM + 1440 <= hi) nowM += 1440;
+    if (nowM >= lo && nowM <= hi) grid.appendChild(h('b', { cls: 'hb-tl-now', style: 'left:' + pct(nowM) }));
+    tl.appendChild(grid);
+    box.appendChild(tl);
   }
 
   var TYPE = { private: 'Private event', supper: 'Supper Club', catering: 'Catering', meeting: 'Meeting', closed: 'Closed', other: '' };
