@@ -169,11 +169,12 @@ if (!Element.prototype.replaceChildren) {
     b.addEventListener('click', function () { var pg = b.getAttribute('data-p'); if (!pg) closePop(); else if (pg !== popPage) openPop(pg, b.getAttribute('data-title')); });
   });
   $('popClose').addEventListener('click', closePop);
+  // the Kitchen prep card on the board opens the prep list (the same page the menu used to)
+  $('prepCard').addEventListener('click', function () { if (popPage !== 'prep') openPop('prep', 'Kitchen prep list'); });
+  $('prepCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('prep', 'Kitchen prep list'); } });
   $('pop').addEventListener('pointerdown', popTouched, { passive: true });
   function paintNav(d) {
     $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';
-    var ps = $('prepSub').textContent, m = /(\d+) of (\d+) done/.exec(ps);
-    $('navPrep').textContent = m ? Math.round(+m[1] / +m[2] * 100) + '% done' : '';
     (d.checklists || []).forEach(function (l) {
       var el = document.querySelector('[data-ck="' + l.id + '"]'); if (!el) return;
       el.textContent = l.done + ' / ' + l.total; el.classList.toggle('full', l.total > 0 && l.done === l.total);
