@@ -183,6 +183,9 @@ if (!Element.prototype.replaceChildren) {
   $('popClose').addEventListener('click', closePop);
   // the Kitchen prep card on the board opens the prep list (the same page the menu used to)
   $('prepCard').addEventListener('click', function () { if (popPage !== 'prep') openPop('prep', 'Kitchen prep list'); });
+  // the Calendar card opens the whole Calendar page (day, week and month views of events)
+  $('calCard').addEventListener('click', function () { if (popPage !== 'calendar') openPop('calendar', 'Calendar'); });
+  $('calCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('calendar', 'Calendar'); } });
   // the Pre-shift card opens the whole pre-shift page (reservations, menu changes, notes, education)
   $('preCard').addEventListener('click', function () { if (popPage !== 'preshift') openPop('preshift', 'Pre-shift'); });
   $('preCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('preshift', 'Pre-shift'); } });

@@ -460,7 +460,7 @@ end $$;
 revoke all on function public.checklist_save(text, text, jsonb) from public, anon;
 grant execute on function public.checklist_save(text, text, jsonb) to authenticated;
 
--- 10. Pre-shift as a whole page on the Hub (tap the Pre-shift card): today's reservations (no guest spend, no raw email),
+-- 10. Pre-shift and the Calendar as whole pages on the Hub (tap their cards): today's reservations (no guest spend, no raw email),
 --     menu changes, notes and the education PDFs, to read only. The staff site's Pre-shift page uses these when it's on the Hub.
 create or replace function public.hub_preshift_today() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -521,6 +521,11 @@ $$;
   if to_regclass('public.preshift_education') is not null then
     execute 'drop policy if exists "hub reads education" on public.preshift_education';
     execute $p$create policy "hub reads education" on public.preshift_education for select to authenticated using (coalesce(public.staff_role() = 'hub', false))$p$;
+  end if;
+  -- the whole Calendar page on the Hub (tap the Calendar card), to read only
+  if to_regclass('public.events') is not null then
+    execute 'drop policy if exists "hub reads events" on public.events';
+    execute $p$create policy "hub reads events" on public.events for select to authenticated using (coalesce(public.staff_role() = 'hub', false))$p$;
   end if;
   if to_regclass('storage.objects') is not null then
     execute 'drop policy if exists "hub opens education pdfs" on storage.objects';
