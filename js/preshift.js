@@ -38,7 +38,7 @@
   // today's pre-shift; preshift_today() leaves out what guests spend for anyone who isn't the Owner or a manager
   function load() {
     var gone = function (e) { return !!(e && (e.code === 'PGRST202' || e.code === 'PGRST205' || e.code === '42P01' || e.code === '42883' || /schema cache|does not exist|could not find/i.test(e.message || ''))); };
-    return P.ctx.sb.rpc('preshift_today').then(function (r) {
+    return P.ctx.sb.rpc(P.ctx.hub ? 'hub_preshift_today' : 'preshift_today').then(function (r) {   // on the Hub: its own read-only copy
       if (!r.error) { P.missing = false; P.day = r.data || null; return; }
       if (!gone(r.error)) { P.day = null; return; }
       return P.ctx.sb.from('preshift_days').select('*').eq('service_date', today()).maybeSingle().then(function (t) {
@@ -340,7 +340,7 @@
   var KIND = { new: 'New', removed: 'Removed', hidden: '86’d', back: 'Back on', price: 'Price', desc: 'Changed', pair: 'Pairing' };
   function menuChanges(card) {
     var body = card.querySelector('.ps-src');
-    P.ctx.sb.rpc('menu_changes', { p_hours: 24 }).then(function (r) {
+    P.ctx.sb.rpc(P.ctx.hub ? 'hub_menu_changes' : 'menu_changes', { p_hours: 24 }).then(function (r) {
       if (r.error) { body.textContent = /menu_changes|function|schema cache/i.test(r.error.message || '') ? (P.ctx.role === 'owner' ? 'Run supabase/preshift.sql in Supabase again to switch this on (it needs History, supabase/history.sql).' : 'Not switched on yet.') : 'Couldn’t load menu changes.'; return; }
       var secs = (r.data || []).map(function (c) { var d = diffSection(c); d.who = c.who; d.at = c.at; return d; }).filter(function (d) { return d.lines.length; });
       if (!secs.length) { body.textContent = 'No menu changes in the last 24 hours.'; return; }

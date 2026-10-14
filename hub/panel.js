@@ -14,6 +14,7 @@
     var session = r && r.data && r.data.session;
     if (!session) { msg('The Hub is signed out. Close this and sign in on the Hub.'); return; }
     if (p === 'orders') { window.EdenOrders.show({ sb: sb, el: el, mode: 'hub' }); return; }
+    if (p === 'preshift') { el.classList.add('hp-pre'); window.EdenPreshift.show({ sb: sb, el: el, role: 'hub', name: 'Hub', hub: true, noNotes: true, api: '../' }); return; }
     if (p === 'prep') {
       // initials: on this shared screen, whoever is working types theirs in once (remembered for 10 minutes)
       var who = document.createElement('label'); who.className = 'ck-who hp-who';

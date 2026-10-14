@@ -99,6 +99,7 @@ if (!Element.prototype.replaceChildren) {
     setInterval(repaint, 60 * 1000);   // keep the 'now' line and 'minutes ago' current between changes
     weather(); setInterval(weather, WX_MS);
     watchForUpdates();
+    touched();
   }
 
   /* ---------- update itself: when a new version of the Hub is published, reload within a minute ---------- */
@@ -145,11 +146,22 @@ if (!Element.prototype.replaceChildren) {
       else if (Date.now() - lastBoard >= 10 * 60 * 1000) board();   // a full refresh every 10 minutes anyway
     }, function () { polling = false; });
   }
-  function repaint() { if (LAST) { paintPreshift(LAST); paintShifts(LAST); paintWeek(LAST); } }
+  function repaint() { if (LAST) { paintPreshift(LAST); paintSchedule(); } }
 
   /* ---------- the menu on the left: each page opens in a pop-up over the board ---------- */
-  var POP_IDLE_MS = 3 * 60 * 1000, popTimer = null, popPage = '';
-  function popTouched() { clearTimeout(popTimer); if (popPage) popTimer = setTimeout(closePop, POP_IDLE_MS); }   // nobody's touched it for 3 minutes: back to the board
+  // nobody's touched the screen for 2 minutes: back to the home screen (the board, today's schedule, lists at the top)
+  var IDLE_MS = 2 * 60 * 1000, idleTimer = null, popPage = '';
+  function touched() { clearTimeout(idleTimer); idleTimer = setTimeout(goHome, IDLE_MS); }
+  function goHome() {
+    if (popPage) closePop();
+    $('sheet').hidden = true;
+    if (SCH.view !== 'day' || SCH.day) { SCH.view = 'day'; SCH.day = null; paintSchedule(); }
+    ['preBody', 'prepBody', 'shiftsBody', 'calBody'].forEach(function (id) { var e = $(id); if (e) e.scrollTop = 0; });
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+  document.addEventListener('pointerdown', touched, { passive: true, capture: true });
+  document.addEventListener('keydown', touched, true);
+  var popTouched = touched;
   function openPop(page, title) {
     popPage = page;
     $('popH').textContent = title || '';
@@ -160,7 +172,7 @@ if (!Element.prototype.replaceChildren) {
     markNav(page); popTouched();
   }
   function closePop() {
-    clearTimeout(popTimer); popPage = '';
+    popPage = '';
     $('pop').hidden = true; $('popFrame').src = 'about:blank';
     markNav(''); STAMP = null; poll();   // show anything just changed right away
   }
@@ -171,6 +183,9 @@ if (!Element.prototype.replaceChildren) {
   $('popClose').addEventListener('click', closePop);
   // the Kitchen prep card on the board opens the prep list (the same page the menu used to)
   $('prepCard').addEventListener('click', function () { if (popPage !== 'prep') openPop('prep', 'Kitchen prep list'); });
+  // the Pre-shift card opens the whole pre-shift page (reservations, menu changes, notes, education)
+  $('preCard').addEventListener('click', function () { if (popPage !== 'preshift') openPop('preshift', 'Pre-shift'); });
+  $('preCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('preshift', 'Pre-shift'); } });
   $('prepCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('prep', 'Kitchen prep list'); } });
   $('pop').addEventListener('pointerdown', popTouched, { passive: true });
   function paintNav(d) {
@@ -194,7 +209,7 @@ if (!Element.prototype.replaceChildren) {
       var menuChanged = LAST && JSON.stringify(LAST.menu || []) !== JSON.stringify(r.data.menu || []);
       LAST = r.data; lastBoard = Date.now();
       if (menuChanged) loadMenu();   // a menu section was edited: pick up new prep lines now
-      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintWeek(r.data); paintCal(r.data); paintNav(r.data);
+      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintCal(r.data); paintNav(r.data);
       $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }, function () {});
   }
@@ -287,13 +302,63 @@ if (!Element.prototype.replaceChildren) {
   function clock(m) { m = ((m % 1440) + 1440) % 1440; var H = Math.floor(m / 60), M = m % 60; return (H % 12 || 12) + (M ? ':' + String(M).padStart(2, '0') : '') + (H >= 12 ? 'p' : 'a'); }
   function fmtT(t) { return ENDS[t] ? ENDS[t].label : t ? clock(mins(t)) : ''; }
   function shiftHrs(s) { if (!s.start || !s.end) return null; var d = endMin(s) - mins(s.start); return d > 0 ? d / 60 : null; }
-  function paintShifts(d) {
-    var box = $('shiftsBody'), sum = $('shiftsSum');
-    box.replaceChildren(); sum.textContent = '';
-    if (d.shifts == null) { box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
-    if (!d.shifts_posted) { box.appendChild(h('p', { cls: 'hb-muted', text: 'This week’s schedule hasn’t been published yet.' })); return; }
-    var list = (d.shifts || []).filter(function (s) { return s.start; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || String(a.name).localeCompare(String(b.name)); });
-    if (!list.length) { box.appendChild(h('p', { cls: 'hb-muted', text: 'Nobody is scheduled today.' })); return; }
+  /* ---------- the schedule card: Day (timeline), Week (seven columns) and Month (calendar) ---------- */
+  var WDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var SCH = { view: 'day', day: null, month: null, monthKey: '', missing: false, loading: false };
+  function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : (p[0] || ''); }
+  function addDays(iso, n) { var x = new Date(iso + 'T12:00:00'); x.setDate(x.getDate() + n); return isoDay(x); }
+  function byTime(a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || String(a.name).localeCompare(String(b.name)); }
+  function weekOf(d, iso) { return d.week_start && iso >= d.week_start && iso <= addDays(d.week_start, 6); }
+  // a month's calendar runs from the Sunday before the 1st to the Saturday after the last day
+  function monthRange(iso) {
+    var f = new Date(iso.slice(0, 7) + '-01T12:00:00'), l = new Date(f); l.setMonth(l.getMonth() + 1); l.setDate(0);
+    var from = new Date(f); from.setDate(from.getDate() - from.getDay()); var to = new Date(l); to.setDate(to.getDate() + (6 - to.getDay()));
+    return { key: iso.slice(0, 7), first: isoDay(f), last: isoDay(l), from: isoDay(from), to: isoDay(to) };
+  }
+  function loadMonth(iso, force) {
+    var R = monthRange(iso);
+    if (SCH.loading || (!force && SCH.monthKey === R.key && SCH.month)) return;
+    SCH.loading = true;
+    sb.rpc('hub_schedule', { p_from: R.from, p_to: R.to }).then(function (r) {
+      SCH.loading = false;
+      if (r.error) { SCH.missing = /hub_schedule|function|schema cache/i.test(r.error.message || ''); paintSchedule(); return; }
+      if (!Array.isArray(r.data)) return;
+      SCH.missing = false; SCH.month = r.data; SCH.monthKey = R.key; paintSchedule();
+    }, function () { SCH.loading = false; });
+  }
+  // shifts for one day: today's and this week's come with the board; other days from the month's schedule
+  function shiftsOn(d, iso) {
+    if (iso === d.today) return d.shifts_posted ? (d.shifts || []) : null;
+    if (weekOf(d, iso)) { var i = Math.round((new Date(iso + 'T12:00:00') - new Date(d.week_start + 'T12:00:00')) / 864e5); return d.shifts_posted ? (d.week_shifts || []).filter(function (s) { return s.day === i; }) : null; }
+    if (SCH.month && SCH.monthKey === iso.slice(0, 7)) return SCH.month.filter(function (s) { return s.date === iso; });
+    if (SCH.month && iso >= monthRange(SCH.monthKey + '-01').from && iso <= monthRange(SCH.monthKey + '-01').to) return SCH.month.filter(function (s) { return s.date === iso; });
+    return undefined;   // not loaded yet
+  }
+  function setView(v, day) { SCH.view = v; SCH.day = day || null; if (v === 'month' || (day && LAST && !weekOf(LAST, day) && day !== LAST.today)) loadMonth(day || (LAST && LAST.today) || isoDay(new Date())); paintSchedule(); }
+  [].forEach.call(document.querySelectorAll('.hb-seg button'), function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-v')); }); });
+  function paintShifts(d) { if (SCH.month && SCH.view !== 'day' && !SCH.loading) loadMonth(SCH.monthKey + '-01', true); paintSchedule(); }   // the board changed: refresh the month too
+  function paintSchedule() {
+    var d = LAST; if (!d) return;
+    var box = $('shiftsBody'), sum = $('shiftsSum'), keep = box.scrollTop, sameView = box.getAttribute('data-v') === SCH.view + (SCH.day || '');
+    box.replaceChildren(); sum.textContent = ''; box.setAttribute('data-v', SCH.view + (SCH.day || ''));
+    [].forEach.call(document.querySelectorAll('.hb-seg button'), function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-v') === SCH.view ? 'true' : 'false'); });
+    if (d.shifts == null) { $('shiftsH').textContent = 'Schedule'; box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
+    if (SCH.view === 'week') paintWeek(d, box, sum);
+    else if (SCH.view === 'month') paintMonth(d, box, sum);
+    else paintDay(d, SCH.day || d.today, box, sum);
+    if (sameView) box.scrollTop = keep;
+  }
+  function paintDay(d, iso, box, sum) {
+    var isToday = iso === d.today;
+    $('shiftsH').textContent = isToday ? 'Today’s schedule' : new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var raw = shiftsOn(d, iso);
+    if (!isToday) box.appendChild(h('button', { type: 'button', cls: 'hb-back', text: '‹ Back to today', onclick: null }));
+    var back = box.querySelector('.hb-back'); if (back) back.addEventListener('click', function () { setView('day'); });
+    if (raw === undefined) { box.appendChild(h('p', { cls: 'hb-muted', text: SCH.missing ? 'One step left: run the updated supabase/hub.sql in Supabase.' : 'Loading…' })); if (!SCH.missing) loadMonth(iso); return; }
+    if (raw === null) { box.appendChild(h('p', { cls: 'hb-muted', text: 'This week’s schedule hasn’t been published yet.' })); return; }
+    var list = raw.filter(function (s) { return s.start; }).sort(byTime);
+    if (!list.length) { box.appendChild(h('p', { cls: 'hb-muted', text: isToday ? 'Nobody is scheduled today.' : 'Nobody is scheduled this day (or that week isn’t published yet).' })); return; }
     var lo = Infinity, hi = -Infinity;
     list.forEach(function (s) { var a = mins(s.start), b = endMin(s); if (b <= a) b = a + 60; lo = Math.min(lo, a); hi = Math.max(hi, b); });
     lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
@@ -318,40 +383,57 @@ if (!Element.prototype.replaceChildren) {
       ]));
     });
     tl.appendChild(lanes);
-    // hour lines and a "now" line, over the lanes only
+    // hour lines, and on today a "now" line
     var grid = h('div', { cls: 'hb-tl-grid', 'aria-hidden': 'true' });
     for (var g = lo; g <= hi; g += 60) grid.appendChild(h('i', { style: 'left:' + pct(g) }));
-    var now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
-    if (nowM < lo && nowM + 1440 <= hi) nowM += 1440;
-    if (nowM >= lo && nowM <= hi) grid.appendChild(h('b', { cls: 'hb-tl-now', style: 'left:' + pct(nowM) }));
+    if (isToday) {
+      var now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
+      if (nowM < lo && nowM + 1440 <= hi) nowM += 1440;
+      if (nowM >= lo && nowM <= hi) grid.appendChild(h('b', { cls: 'hb-tl-now', style: 'left:' + pct(nowM) }));
+    }
     tl.appendChild(grid);
     box.appendChild(tl);
   }
-
-  /* ---------- this week: seven day columns, like the staff page's week view ---------- */
-  var WDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : (p[0] || ''); }
-  function paintWeek(d) {
-    var box = $('weekBody'), when = $('weekWhen');
-    box.replaceChildren(); when.textContent = '';
-    if (d.week_shifts == null) { box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
-    var ws = d.week_start ? new Date(d.week_start + 'T12:00:00') : null;
-    var dateOf = function (i) { var x = new Date(ws); x.setDate(x.getDate() + i); return x; };
-    if (ws) { var we = dateOf(6), sameM = ws.getMonth() === we.getMonth();
-      when.textContent = ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' + (sameM ? we.getDate() : we.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); }
+  function paintWeek(d, box, sum) {
+    $('shiftsH').textContent = 'This week';
+    var ws = d.week_start;
+    if (ws) { var a = new Date(ws + 'T12:00:00'), e = new Date(addDays(ws, 6) + 'T12:00:00');
+      sum.textContent = a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' + (a.getMonth() === e.getMonth() ? e.getDate() : e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + ' · tap a day for its timeline'; }
     if (!d.shifts_posted) { box.appendChild(h('p', { cls: 'hb-muted', text: 'This week’s schedule hasn’t been published yet.' })); return; }
-    var todayI = ws ? Math.round((new Date(d.today + 'T12:00:00') - ws) / 864e5) : -1;
     var grid = h('div', { cls: 'hb-wk' });
     for (var i = 0; i < 7; i++) {
-      var list = d.week_shifts.filter(function (s) { return s.day === i && s.start; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || String(a.name).localeCompare(String(b.name)); });
-      var col = h('div', { cls: 'hb-wk-col' + (i === todayI ? ' today' : i < todayI ? ' past' : '') }, [
-        h('div', { cls: 'hb-wk-h' }, [h('span', { text: i === todayI ? 'Today' : WDAYS[i] }), h('b', { text: ws ? (dateOf(i).getMonth() + 1) + '/' + dateOf(i).getDate() : '' }), h('small', { text: list.length ? list.length + ' working' : 'Nobody' })])]);
-      list.forEach(function (s) {
-        col.appendChild(h('div', { cls: 'hb-wk-s' }, [h('b', { text: shortName(s.name) }), h('span', { text: fmtT(s.start) + '–' + fmtT(s.end) })]));
-      });
-      grid.appendChild(col);
+      (function (i) {
+        var iso = addDays(ws, i), list = (d.week_shifts || []).filter(function (s) { return s.day === i && s.start; }).sort(byTime);
+        var col = h('div', { cls: 'hb-wk-col' + (iso === d.today ? ' today' : iso < d.today ? ' past' : ''), role: 'button', tabindex: '0' }, [
+          h('div', { cls: 'hb-wk-h' }, [h('span', { text: iso === d.today ? 'Today' : WDAYS[i] }), h('b', { text: (+iso.slice(5, 7)) + '/' + (+iso.slice(8)) }), h('small', { text: list.length ? list.length + ' working' : 'Nobody' })])]);
+        list.forEach(function (s) { col.appendChild(h('div', { cls: 'hb-wk-s' }, [h('b', { text: shortName(s.name) }), h('span', { text: fmtT(s.start) + '–' + fmtT(s.end) })])); });
+        col.addEventListener('click', function () { setView('day', iso === d.today ? null : iso); });
+        grid.appendChild(col);
+      })(i);
     }
     box.appendChild(grid);
+  }
+  function paintMonth(d, box, sum) {
+    var R = monthRange(d.today);
+    $('shiftsH').textContent = MONTHS[+R.key.slice(5) - 1];
+    sum.textContent = 'Published weeks · tap a day for its timeline';
+    if (SCH.missing) { box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
+    if (!SCH.month || SCH.monthKey !== R.key) { box.appendChild(h('p', { cls: 'hb-muted', text: 'Loading the month…' })); loadMonth(d.today); return; }
+    var cal = h('div', { cls: 'hb-mo' });
+    WDAYS.forEach(function (w) { cal.appendChild(h('div', { cls: 'hb-mo-h', text: w })); });
+    for (var iso = R.from; iso <= R.to; iso = addDays(iso, 1)) {
+      (function (iso) {
+        var list = SCH.month.filter(function (s) { return s.date === iso && s.start; }).sort(byTime);
+        var out = iso < R.first || iso > R.last;
+        var cell = h('div', { cls: 'hb-mo-d' + (out ? ' out' : '') + (iso === d.today ? ' today' : iso < d.today ? ' past' : ''), role: 'button', tabindex: '0' }, [
+          h('div', { cls: 'hb-mo-n' }, [h('b', { text: String(+iso.slice(8)) }), list.length ? h('small', { text: list.length + ' on' }) : null])]);
+        list.slice(0, 3).forEach(function (s) { cell.appendChild(h('span', { cls: 'hb-mo-s', text: fmtT(s.start) + ' ' + shortName(s.name) })); });
+        if (list.length > 3) cell.appendChild(h('span', { cls: 'hb-mo-more', text: '+' + (list.length - 3) + ' more' }));
+        cell.addEventListener('click', function () { setView('day', iso === d.today ? null : iso); });
+        cal.appendChild(cell);
+      })(iso);
+    }
+    box.appendChild(cal);
   }
 
   var TYPE = { private: 'Private event', supper: 'Supper Club', catering: 'Catering', meeting: 'Meeting', closed: 'Closed', other: '' };

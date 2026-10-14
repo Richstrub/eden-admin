@@ -460,6 +460,94 @@ end $$;
 revoke all on function public.checklist_save(text, text, jsonb) from public, anon;
 grant execute on function public.checklist_save(text, text, jsonb) to authenticated;
 
+-- 10. Pre-shift as a whole page on the Hub (tap the Pre-shift card): today's reservations (no guest spend, no raw email),
+--     menu changes, notes and the education PDFs, to read only. The staff site's Pre-shift page uses these when it's on the Hub.
+create or replace function public.hub_preshift_today() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r record; res jsonb;
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then return null; end if;
+  if to_regclass('public.preshift_days') is null then return null; end if;
+  select * into r from public.preshift_days where service_date = (now() at time zone 'America/New_York')::date;
+  if not found then return null; end if;
+  res := coalesce(r.reservations, '{}'::jsonb) - 'text';
+  if jsonb_typeof(res -> 'list') = 'array' then
+    res := jsonb_set(res, '{list}', (select coalesce(jsonb_agg(case when jsonb_typeof(x -> 'guest') = 'object' then jsonb_set(x, '{guest}', (x -> 'guest') - 'spend') else x end), '[]'::jsonb)
+                                     from jsonb_array_elements(res -> 'list') x));
+  end if;
+  if jsonb_typeof(res -> 'sections') = 'array' then
+    res := jsonb_set(res, '{sections}', (select coalesce(jsonb_agg(case when jsonb_typeof(sx -> 'lines') = 'array' then jsonb_set(sx, '{lines}',
+             (select coalesce(jsonb_agg(to_jsonb(regexp_replace(l, ',?\s*\$\s?[0-9,]+(\.[0-9]+)?\s*(average|avg\.?)\s+spend[a-z ]*', '', 'gi'))), '[]'::jsonb)
+              from jsonb_array_elements_text(sx -> 'lines') l)) else sx end), '[]'::jsonb)
+           from jsonb_array_elements(res -> 'sections') sx));
+  end if;
+  return jsonb_build_object('service_date', r.service_date, 'source_subject', r.source_subject, 'source_received', r.source_received,
+    'source_forwarded', r.source_forwarded, 'reservations', res, 'updated_at', r.updated_at);
+end $$;
+revoke all on function public.hub_preshift_today() from public, anon;
+grant execute on function public.hub_preshift_today() to authenticated;
+
+do $hubps$ begin
+  if to_regclass('public.activity_log') is not null then
+    execute $fn$
+create or replace function public.hub_menu_changes(p_hours int default 24) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with l as (
+    select * from public.activity_log
+    where tbl = 'site_docs' and row_key like 'site/menu/groups/%'
+      and at > now() - make_interval(hours => greatest(1, least(coalesce(p_hours, 24), 168)))
+  ), g as (
+    select row_key,
+      (array_agg(old_row order by at asc))[1] as first_old,
+      (array_agg(new_row order by at desc))[1] as last_new,
+      (array_agg(action order by at asc))[1] as first_action,
+      (array_agg(action order by at desc))[1] as last_action,
+      (array_agg(who order by at desc))[1] as who,
+      max(at) as at
+    from l group by row_key
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('key', row_key, 'before', first_old -> 'data', 'after', last_new -> 'data',
+           'first', first_action, 'last', last_action, 'who', who, 'at', at) order by at desc), '[]'::jsonb)
+  from g where coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)
+$$;
+    $fn$;
+    execute 'revoke all on function public.hub_menu_changes(int) from public, anon';
+    execute 'grant execute on function public.hub_menu_changes(int) to authenticated';
+  end if;
+  if to_regclass('public.preshift_notes') is not null then
+    execute 'drop policy if exists "hub reads pre-shift notes" on public.preshift_notes';
+    execute $p$create policy "hub reads pre-shift notes" on public.preshift_notes for select to authenticated using (coalesce(public.staff_role() = 'hub', false))$p$;
+  end if;
+  if to_regclass('public.preshift_education') is not null then
+    execute 'drop policy if exists "hub reads education" on public.preshift_education';
+    execute $p$create policy "hub reads education" on public.preshift_education for select to authenticated using (coalesce(public.staff_role() = 'hub', false))$p$;
+  end if;
+  if to_regclass('storage.objects') is not null then
+    execute 'drop policy if exists "hub opens education pdfs" on storage.objects';
+    execute $p$create policy "hub opens education pdfs" on storage.objects for select to authenticated
+      using (bucket_id = 'preshift-education' and name not like 'resources/%' and coalesce(public.staff_role() = 'hub', false))$p$;
+  end if;
+end $hubps$;
+
+-- 11. The schedule for any stretch of days (the Hub's month view): published weeks only; names, positions and times.
+create or replace function public.hub_schedule(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regclass('public.schedule_weeks') is null or p_to < p_from or p_to - p_from > 62 then return '[]'::jsonb; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object('date', w.week_start + (s ->> 'day')::int,
+      'name', coalesce(nullif(trim(e.name), ''), 'Team member'), 'position', coalesce(e.position, ''),
+      'start', s ->> 'start', 'end', s ->> 'end', 'role', coalesce(s ->> 'role', ''), 'note', coalesce(s ->> 'note', ''))
+      order by w.week_start + (s ->> 'day')::int, s ->> 'start', e.name), '[]'::jsonb)
+    from public.schedule_weeks w
+    cross join lateral jsonb_array_elements(coalesce(w.published, '[]'::jsonb)) s
+    left join public.employees e on e.id::text = s ->> 'emp'
+    where w.status = 'published' and w.week_start between p_from - 6 and p_to
+      and w.week_start + (s ->> 'day')::int between p_from and p_to);
+end $$;
+revoke all on function public.hub_schedule(date, date) from public, anon;
+grant execute on function public.hub_schedule(date, date) to authenticated;
+
 -- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
 -- insert into public.staff (user_id, name, role)
