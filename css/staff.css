@@ -2345,3 +2345,15 @@ body.nt-open #app{visibility:hidden!important}
 .ck-etitle,.ck-etext{width:100%;font:inherit;font-size:1rem;color:var(--text);background:#fff;border:1px solid var(--line);padding:10px 12px;border-radius:0}
 .ck-etext{line-height:1.6;resize:vertical}
 .ck-ebtns{display:grid;grid-auto-flow:column;justify-content:start;grid-gap:10px}
+
+/* end of day report: the closing checklists must be done first */
+.eo-closing{margin-top:4px}
+.eo-cl{list-style:none;margin:6px 0 14px;display:grid;grid-gap:8px}
+.eo-cl li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;grid-gap:10px;padding:10px 12px;border:1px solid rgba(15,18,21,.1);border-radius:10px}
+.eo-cl li.ok{background:#eef7f0;border-color:#a9d3b5}
+.eo-cl li.todo{background:#fbf3e2;border-color:#e6c98f}
+.eo-cl-mark{width:24px;height:24px;border-radius:50%;border:2px solid #b9a47a;display:grid;place-items:center;font-size:.8rem;color:#fff}
+.eo-cl li.ok .eo-cl-mark{background:#2f7a45;border-color:#2f7a45}
+.eo-cl b{font-weight:500}
+.eo-cl li span:last-child{font-size:.88rem;color:#5d5952}
+.eo-btn:disabled{opacity:.45;cursor:not-allowed}

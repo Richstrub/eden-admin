@@ -126,10 +126,13 @@
     }
     var form = h('form', { cls: 'eo-form' + (ro ? ' eo-ro' : ''), novalidate: true, on: { submit: function (e) { e.preventDefault(); } } });
     // date and shift
-    var date = h('input', { type: 'date', cls: 'eo-in', value: r.report_date, disabled: ro, required: true, 'aria-label': 'Date', on: { change: function () { r.report_date = this.value || today(); changed(); } } });
+    var date = h('input', { type: 'date', cls: 'eo-in', value: r.report_date, disabled: ro, required: true, 'aria-label': 'Date', on: { change: function () { r.report_date = this.value || today(); changed(); R.closing = null; paintClosing(); loadClosing(); } } });
     form.appendChild(h('section', { cls: 'eo-card eo-head' }, [
       h('label', { cls: 'eo-f eo-date' }, [h('span', { cls: 'eo-l', text: 'Date' }), date]),
       h('div', { cls: 'eo-f' }, [h('span', { cls: 'eo-l', text: 'Shift' }), seg(SHIFTS, r.shift, ro, function (v) { r.shift = v; changed(); }, 'Shift')])]));
+    // the closing checklists (ticked off on the Hub) must be done before this can be submitted
+    R.submitBtn = null;
+    if (!submitted) { R.closingEl = h('section', { cls: 'eo-card eo-closing', 'aria-live': 'polite' }); form.appendChild(R.closingEl); paintClosing(); loadClosing(); }
     // jump between sections (handy on a phone)
     var jump = h('nav', { cls: 'eo-jump', 'aria-label': 'Sections' });
     SECTIONS.forEach(function (s, i) { jump.appendChild(h('a', { href: '#', text: (i + 1) + ' ' + s[0], on: { click: function (e) { e.preventDefault(); var t = form.querySelector('#eo-s' + i); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } } })); });
@@ -148,7 +151,8 @@
       r.edited_after_submit_at ? h('p', { cls: 'eo-note eo-wide', text: 'Changed after submitting' + (r.edited_after_submit_by ? ' by ' + r.edited_after_submit_by : '') + ', ' + stamp(r.edited_after_submit_at) + '.' }) : null]));
     if (!ro) {
       var acts = h('div', { cls: 'eo-actions' });
-      if (!submitted) acts.appendChild(h('button', { type: 'button', cls: 'eo-btn eo-go', text: 'Submit report', on: { click: submit } }));
+      if (!submitted) acts.appendChild(R.submitBtn = h('button', { type: 'button', cls: 'eo-btn eo-go', text: 'Submit report', on: { click: submit } }));
+      if (!submitted) paintClosing();
       else acts.appendChild(h('button', { type: 'button', cls: 'eo-btn eo-go', text: 'Done editing', on: { click: function () { save().then(function () { R.editing = false; paintForm(); say('Changes saved.', 'ok'); }); } } }));
       if (!submitted && r.id) acts.appendChild(h('button', { type: 'button', cls: 'eo-btn eo-danger', text: 'Delete draft', on: { click: discard } }));
       form.appendChild(acts);
@@ -258,6 +262,9 @@
       : R.ctx.sb.from('eod_reports').insert(Object.assign({ prepared_by_id: R.ctx.uid }, row)).select('id,avg_per_cover,updated_at').maybeSingle();
     R.saving = q.then(function (res) {
       R.saving = null;
+      if (res.error && /closing_checklists/.test(res.error.message || '')) {   // the database said the closing checklists aren't done
+        r.status = 'draft'; R.dirty = true; R.saveErr = ''; R.closingBlocked = true; say('Not submitted: finish both closing checklists on the Hub first.', 'err'); loadClosing(); R.timer = setTimeout(save, 1500); paintState(); return;
+      }
       if (res.error || !res.data) { R.dirty = true; R.saveErr = isMissing(res.error) ? 'Not saved: run supabase/eod-reports.sql in Supabase first.' : 'Not saved yet. Check your connection; it will try again.'; paintState(); if (!isMissing(res.error)) R.timer = setTimeout(save, 8000); return; }
       r.id = res.data.id; R.savedAt = Date.now();
       if (res.data.edited_after_submit_at) r.edited_after_submit_at = res.data.edited_after_submit_at;
@@ -266,14 +273,44 @@
     paintState();
     return R.saving;
   }
+  /* ---------- the closing checklists (ticked off on the Hub) must be done before submitting ---------- */
+  function loadClosing() {
+    var r = R.rep, day = r.report_date;
+    clearTimeout(R.closingTimer);
+    R.ctx.sb.rpc('eod_closing_status', { p_date: day }).then(function (x) {
+      if (R.rep !== r || r.report_date !== day) return;
+      if (x.error) { R.closing = /eod_closing_status|function|schema cache/i.test(x.error.message || '') ? { missing: true } : R.closing; paintClosing(); return; }
+      if (x.data && !x.data.error) { R.closing = x.data; paintClosing(); }
+    }, function () {});
+    // keep it current while the report is open (staff are ticking the lists off on the Hub)
+    R.closingTimer = setTimeout(function () { if (R.closingEl && document.body.contains(R.closingEl)) loadClosing(); }, 15000);
+  }
+  function paintClosing() {
+    var el = R.closingEl; if (!el) return;
+    var c = R.closing, ready = !c || c.missing || c.ready;
+    el.innerHTML = '';
+    el.appendChild(h('h2', { cls: 'eo-h' }, 'Closing checklists'));
+    if (!c) el.appendChild(h('p', { cls: 'eo-note', text: 'Checking…' }));
+    else if (c.missing) el.appendChild(h('p', { cls: 'eo-note', text: 'Once the latest supabase/hub.sql is run, the closing checklists must be finished on the Hub before this report can be submitted.' }));
+    else {
+      el.appendChild(h('ul', { cls: 'eo-cl' }, (c.lists || []).map(function (l) {
+        var done = l.done >= l.total;
+        return h('li', { cls: done ? 'ok' : 'todo' }, [h('span', { cls: 'eo-cl-mark', text: done ? '✓' : '' }), h('b', { text: l.title }), h('span', { text: l.done + ' of ' + l.total + ' done' })]);
+      })));
+      el.appendChild(h('p', { cls: 'eo-note', text: c.ready ? 'Both closing checklists are done. You can submit the report.' : 'Finish both closing checklists on the Hub before submitting. This updates by itself as they’re ticked off.' }));
+    }
+    if (R.submitBtn) { R.submitBtn.disabled = !ready; R.submitBtn.title = ready ? '' : 'Finish both closing checklists on the Hub first'; }
+  }
   function submit() {
     var r = R.rep;
     if (!r.report_date || !r.shift) { say('Choose the date and the shift.', 'err'); return; }
+    if (R.closing && !R.closing.missing && !R.closing.ready) { say('Finish both closing checklists on the Hub before submitting.', 'err'); return; }
     var gaps = [];
     if (r.net_sales == null) gaps.push('net sales'); if (r.total_covers == null && r.actual_covers == null) gaps.push('covers');
     if (gaps.length && !confirm('Submit without ' + gaps.join(' or ') + '?')) return;
     r.status = 'submitted'; r.prepared_by = R.ctx.name || r.prepared_by || ''; r.prepared_by_id = R.ctx.uid; R.dirty = true;
     save().then(function () {
+      if (R.closingBlocked) { R.closingBlocked = false; return; }
       if (R.dirty || !r.id) { r.status = 'draft'; say('The report couldn’t be submitted. Check your connection and try again.', 'err'); paintState(); return; }
       return R.ctx.sb.from('eod_reports').select('submitted_at').eq('id', r.id).maybeSingle().then(function (x) {
         r.submitted_at = (x && x.data && x.data.submitted_at) || new Date().toISOString();

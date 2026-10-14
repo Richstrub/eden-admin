@@ -614,6 +614,57 @@ end $$;
 revoke all on function public.hub_timeoff_request(uuid, date, date, boolean, text, text, text) from public, anon;
 grant execute on function public.hub_timeoff_request(uuid, date, date, boolean, text, text, text) to authenticated;
 
+-- 13. The end of day report can only be submitted once both closing checklists (Front of house closing and Back of
+--     house closing) are fully ticked off for that night. Checked here in the database, so it can't be skipped;
+--     the report page shows where they stand. Submitting also ticks the report's "Closing checklist completed".
+--     Reopening and editing a report that's already submitted isn't affected.
+create or replace function public.eod_closing_lists(p_date date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'title', c.title,
+      'total', (select count(*) from jsonb_array_elements(c.items) i where not coalesce((i ->> 'head')::boolean, false)),
+      'done', (select count(*) from jsonb_array_elements(c.items) i where not coalesce((i ->> 'head')::boolean, false)
+                 and coalesce(d.done, '{}'::jsonb) ? (i ->> 'id'))) order by c.sort), '[]'::jsonb)
+  from public.checklists c left join public.checklist_days d on d.list_id = c.id and d.day = p_date
+  where c.id in ('foh-close', 'boh-close')
+$$;
+revoke all on function public.eod_closing_lists(date) from public, anon, authenticated;
+
+create or replace function public.eod_closing_status(p_date date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare l jsonb;
+begin
+  if not public.ck_can('tick') then return jsonb_build_object('error', 'not_allowed'); end if;
+  l := public.eod_closing_lists(coalesce(p_date, public.ck_today()));
+  return jsonb_build_object('day', coalesce(p_date, public.ck_today()), 'lists', l,
+    'ready', not exists (select 1 from jsonb_array_elements(l) x where (x ->> 'done')::int < (x ->> 'total')::int));
+end $$;
+revoke all on function public.eod_closing_status(date) from public, anon;
+grant execute on function public.eod_closing_status(date) to authenticated;
+
+do $eodgate$ begin
+  if to_regclass('public.eod_reports') is not null then
+    execute $fn$
+create or replace function public.eod_closing_gate() returns trigger
+language plpgsql security definer set search_path = public as $g$
+declare l jsonb; missing text;
+begin
+  if new.status = 'submitted' and (tg_op = 'INSERT' or old.status is distinct from 'submitted') then
+    l := public.eod_closing_lists(new.report_date);
+    select string_agg((x ->> 'title') || ' ' || (x ->> 'done') || '/' || (x ->> 'total'), ', ') into missing
+      from jsonb_array_elements(l) x where (x ->> 'done')::int < (x ->> 'total')::int;
+    if missing is not null then
+      raise exception 'closing_checklists: finish %', missing using errcode = 'P0001';
+    end if;
+    new.closing_done := true;
+  end if;
+  return new;
+end $g$
+    $fn$;
+    execute 'drop trigger if exists eod_closing_gate on public.eod_reports';
+    execute 'create trigger eod_closing_gate before insert or update on public.eod_reports for each row execute function public.eod_closing_gate()';
+  end if;
+end $eodgate$;
+
 -- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
 -- insert into public.staff (user_id, name, role)
