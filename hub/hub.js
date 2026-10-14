@@ -20,7 +20,9 @@ if (!Element.prototype.replaceChildren) {
   var sb = window.supabase.createClient(CFG.supabase.url, CFG.supabase.key, { auth: { persistSession: true, autoRefreshToken: true } });
   var session = null, entered = false, started = false;
   var WX = { lat: 43.0481, lon: -76.1474 };   // 118 E. Genesee St., Syracuse
-  var BOARD_MS = 60 * 1000, MENU_MS = 30 * 60 * 1000, WX_MS = 20 * 60 * 1000;
+  // Near real time: every 5 s the Hub asks for a tiny fingerprint of the board (hub_stamp) and only downloads the
+  // board when it changed. Without hub_stamp (hub.sql not rerun yet) it falls back to the full board every minute.
+  var POLL_MS = 5 * 1000, BOARD_MS = 60 * 1000, MENU_MS = 30 * 60 * 1000, WX_MS = 10 * 60 * 1000, PAGE_MS = 60 * 1000;
 
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -92,13 +94,14 @@ if (!Element.prototype.replaceChildren) {
     tick(); setInterval(tick, 1000);
     net(); window.addEventListener('online', function () { net(); board(); weather(); }); window.addEventListener('offline', net);
     wake();
-    loadMenu().then(board);
-    setInterval(board, BOARD_MS); setInterval(loadMenu, MENU_MS);
+    loadMenu().then(poll);   // the first check downloads the board
+    setInterval(poll, POLL_MS); setInterval(loadMenu, MENU_MS);
+    setInterval(repaint, 60 * 1000);   // keep the 'now' line and 'minutes ago' current between changes
     weather(); setInterval(weather, WX_MS);
     watchForUpdates();
   }
 
-  /* ---------- update itself: when a new version of the Hub is published, reload within 5 minutes ---------- */
+  /* ---------- update itself: when a new version of the Hub is published, reload within a minute ---------- */
   var PAGE_SIG = null;
   function pageSig() {
     // the page's own HTML names every script and stylesheet with a version, so it changes whenever the Hub does
@@ -114,7 +117,7 @@ if (!Element.prototype.replaceChildren) {
         if (!PAGE_SIG) { PAGE_SIG = s; return; }
         if (s !== PAGE_SIG && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) location.reload();
       });
-    }, 5 * 60 * 1000);
+    }, PAGE_MS);
   }
 
   /* ---------- clock ---------- */
@@ -131,7 +134,18 @@ if (!Element.prototype.replaceChildren) {
   }
 
   /* ---------- everything from Eden: pre-shift, prep, calendar ---------- */
-  var MENU = null, LAST = null;
+  var MENU = null, LAST = null, STAMP = null, lastBoard = 0, polling = false;
+  function poll() {
+    if (document.hidden || polling || !navigator.onLine) return;
+    polling = true;
+    sb.rpc('hub_stamp').then(function (r) {
+      polling = false;
+      if (r.error || typeof r.data !== 'string') { if (Date.now() - lastBoard >= BOARD_MS) board(); return; }
+      if (r.data !== STAMP) { STAMP = r.data; board(); }
+      else if (Date.now() - lastBoard >= 10 * 60 * 1000) board();   // a full refresh every 10 minutes anyway
+    }, function () { polling = false; });
+  }
+  function repaint() { if (LAST) { paintPreshift(LAST); paintShifts(LAST); } }
   function loadMenu() {
     if (!window.EdenPrep || !window.EdenPrep.fetchMenu) return Promise.resolve();
     return window.EdenPrep.fetchMenu(sb).then(function (m) { MENU = m; if (LAST) paintPrep(LAST); });
@@ -143,7 +157,9 @@ if (!Element.prototype.replaceChildren) {
         if (r.error && /hub_board|function/i.test(r.error.message || '')) $('preBody').replaceChildren(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' }));
         return;
       }
-      LAST = r.data;
+      var menuChanged = LAST && JSON.stringify(LAST.menu || []) !== JSON.stringify(r.data.menu || []);
+      LAST = r.data; lastBoard = Date.now();
+      if (menuChanged) loadMenu();   // a menu section was edited: pick up new prep lines now
       paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintCal(r.data);
       $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }, function () {});

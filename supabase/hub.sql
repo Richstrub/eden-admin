@@ -150,6 +150,15 @@ end $$;
 revoke all on function public.hub_board() from public, anon;
 grant execute on function public.hub_board() to authenticated;
 
+-- 5b. A tiny fingerprint of the board. The Hub checks it every few seconds and downloads the board only when it changes,
+--     so updates show up almost immediately without using much data.
+create or replace function public.hub_stamp() returns text
+language sql stable security definer set search_path = public as $$
+  select md5(public.hub_board()::text)
+$$;
+revoke all on function public.hub_stamp() from public, anon;
+grant execute on function public.hub_stamp() to authenticated;
+
 -- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
 -- insert into public.staff (user_id, name, role)
