@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="hub.css?v=20261014b">
+<link rel="stylesheet" href="hub.css?v=20261014c">
 </head>
 <body>
 
@@ -73,6 +73,11 @@
     <div class="hb-tl-wrap" id="shiftsBody"><p class="hb-muted">Loading…</p></div>
   </section>
 
+  <section class="hb-card hb-week" aria-labelledby="weekH">
+    <div class="hb-card-h"><h2 id="weekH">This week</h2><span class="hb-tag" id="weekWhen"></span></div>
+    <div class="hb-wk-wrap" id="weekBody"><p class="hb-muted">Loading…</p></div>
+  </section>
+
   <section class="hb-card hb-cal" aria-labelledby="calH">
     <div class="hb-card-h"><h2 id="calH">Calendar</h2><span class="hb-tag">Next two weeks</span></div>
     <ul class="hb-events" id="calBody"><li class="hb-muted">Loading…</li></ul>
@@ -99,6 +104,6 @@
 <script src="../js/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script src="../js/prep.js?v=20261013v"></script>
-<script src="hub.js?v=20261014c"></script>
+<script src="hub.js?v=20261014d"></script>
 </body>
 </html>

@@ -69,7 +69,7 @@ revoke all on function public.hub_ok() from public, anon;
 grant execute on function public.hub_ok() to authenticated;
 
 -- 5. What the Hub shows, in one read-only call: today's pre-shift (no guest spend), pre-shift notes, menu changes,
---    the kitchen prep list (not the bar list), today's published schedule and the calendar for the next two weeks. Only the Hub login, the Owner
+--    the kitchen prep list (not the bar list), today's and this week's published schedule and the calendar for the next two weeks. Only the Hub login, the Owner
 --    and managers get anything back. Each part is skipped (null) until its own SQL file has been run.
 create or replace function public.hub_board() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -127,6 +127,13 @@ begin
     select w.published into sh from public.schedule_weeks w
       where w.week_start = today - extract(dow from today)::int and w.status = 'published';
     if found then
+      -- the whole week (Sunday to Saturday), for the week view
+      out := out || jsonb_build_object('week_start', today - extract(dow from today)::int, 'week_shifts', (select coalesce(jsonb_agg(jsonb_build_object(
+          'day', (s ->> 'day')::int, 'name', coalesce(nullif(trim(e.name), ''), 'Team member'), 'position', coalesce(e.position, ''),
+          'start', s ->> 'start', 'end', s ->> 'end', 'role', coalesce(s ->> 'role', ''))
+          order by (s ->> 'day')::int, s ->> 'start', e.name), '[]'::jsonb)
+        from jsonb_array_elements(coalesce(sh, '[]'::jsonb)) s
+        left join public.employees e on e.id::text = s ->> 'emp'));
       out := out || jsonb_build_object('shifts_posted', true, 'shifts', (select coalesce(jsonb_agg(jsonb_build_object(
           'name', coalesce(nullif(trim(e.name), ''), 'Team member'), 'position', coalesce(e.position, ''),
           'start', s ->> 'start', 'end', s ->> 'end', 'role', coalesce(s ->> 'role', ''), 'note', coalesce(s ->> 'note', ''))
@@ -135,7 +142,8 @@ begin
         left join public.employees e on e.id::text = s ->> 'emp'
         where (s ->> 'day')::int = extract(dow from today)::int));
     else
-      out := out || jsonb_build_object('shifts_posted', false, 'shifts', '[]'::jsonb);
+      out := out || jsonb_build_object('shifts_posted', false, 'shifts', '[]'::jsonb,
+        'week_start', today - extract(dow from today)::int, 'week_shifts', '[]'::jsonb);
     end if;
   end if;
 

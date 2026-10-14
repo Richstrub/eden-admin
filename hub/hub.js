@@ -145,7 +145,7 @@ if (!Element.prototype.replaceChildren) {
       else if (Date.now() - lastBoard >= 10 * 60 * 1000) board();   // a full refresh every 10 minutes anyway
     }, function () { polling = false; });
   }
-  function repaint() { if (LAST) { paintPreshift(LAST); paintShifts(LAST); } }
+  function repaint() { if (LAST) { paintPreshift(LAST); paintShifts(LAST); paintWeek(LAST); } }
   function loadMenu() {
     if (!window.EdenPrep || !window.EdenPrep.fetchMenu) return Promise.resolve();
     return window.EdenPrep.fetchMenu(sb).then(function (m) { MENU = m; if (LAST) paintPrep(LAST); });
@@ -160,7 +160,7 @@ if (!Element.prototype.replaceChildren) {
       var menuChanged = LAST && JSON.stringify(LAST.menu || []) !== JSON.stringify(r.data.menu || []);
       LAST = r.data; lastBoard = Date.now();
       if (menuChanged) loadMenu();   // a menu section was edited: pick up new prep lines now
-      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintCal(r.data);
+      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintWeek(r.data); paintCal(r.data);
       $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }, function () {});
   }
@@ -292,6 +292,32 @@ if (!Element.prototype.replaceChildren) {
     if (nowM >= lo && nowM <= hi) grid.appendChild(h('b', { cls: 'hb-tl-now', style: 'left:' + pct(nowM) }));
     tl.appendChild(grid);
     box.appendChild(tl);
+  }
+
+  /* ---------- this week: seven day columns, like the staff page's week view ---------- */
+  var WDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function shortName(n) { var p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : (p[0] || ''); }
+  function paintWeek(d) {
+    var box = $('weekBody'), when = $('weekWhen');
+    box.replaceChildren(); when.textContent = '';
+    if (d.week_shifts == null) { box.appendChild(h('p', { cls: 'hb-muted', text: 'One step left: run the updated supabase/hub.sql in Supabase.' })); return; }
+    var ws = d.week_start ? new Date(d.week_start + 'T12:00:00') : null;
+    var dateOf = function (i) { var x = new Date(ws); x.setDate(x.getDate() + i); return x; };
+    if (ws) { var we = dateOf(6), sameM = ws.getMonth() === we.getMonth();
+      when.textContent = ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' + (sameM ? we.getDate() : we.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); }
+    if (!d.shifts_posted) { box.appendChild(h('p', { cls: 'hb-muted', text: 'This week’s schedule hasn’t been published yet.' })); return; }
+    var todayI = ws ? Math.round((new Date(d.today + 'T12:00:00') - ws) / 864e5) : -1;
+    var grid = h('div', { cls: 'hb-wk' });
+    for (var i = 0; i < 7; i++) {
+      var list = d.week_shifts.filter(function (s) { return s.day === i && s.start; }).sort(function (a, b) { return mins(a.start) - mins(b.start) || endMin(a) - endMin(b) || String(a.name).localeCompare(String(b.name)); });
+      var col = h('div', { cls: 'hb-wk-col' + (i === todayI ? ' today' : i < todayI ? ' past' : '') }, [
+        h('div', { cls: 'hb-wk-h' }, [h('span', { text: i === todayI ? 'Today' : WDAYS[i] }), h('b', { text: ws ? (dateOf(i).getMonth() + 1) + '/' + dateOf(i).getDate() : '' }), h('small', { text: list.length ? list.length + ' working' : 'Nobody' })])]);
+      list.forEach(function (s) {
+        col.appendChild(h('div', { cls: 'hb-wk-s' }, [h('b', { text: shortName(s.name) }), h('span', { text: fmtT(s.start) + '–' + fmtT(s.end) })]));
+      });
+      grid.appendChild(col);
+    }
+    box.appendChild(grid);
   }
 
   var TYPE = { private: 'Private event', supper: 'Supper Club', catering: 'Catering', meeting: 'Meeting', closed: 'Closed', other: '' };
