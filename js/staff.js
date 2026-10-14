@@ -272,7 +272,7 @@
     b.hidden = !(from && view !== 'home');
     b.textContent = '\u2190 Today' + (todayLeft ? ' \u00b7 ' + todayLeft + ' left' : '');
   }
-  function todayCtx() { return { sb: sb, el: $('viewHome'), status: status, role: role, name: staffName, isMgr: isMgr(), isOwner: role === 'owner', canPrep: canPrep(), site: CFG.publicSite || '', onCounts: paintCounts }; }
+  function todayCtx() { return { sb: sb, el: $('viewHome'), status: status, role: role, name: staffName, isMgr: isMgr(), isOwner: role === 'owner', canPrep: canPrep(), site: CFG.publicSite || '', onCounts: paintCounts, menu: currentMenu }; }
   function paintCounts(c) {
     todayLeft = c.total || 0;
     var set = function (k, v, on) { document.querySelectorAll('[data-badge="' + k + '"]').forEach(function (el) { el.textContent = v || ''; el.hidden = !v; el.classList.toggle('on', !!on); }); };
@@ -313,6 +313,11 @@
   }
   window.addEventListener('hashchange', route);
   $('notesBtn').addEventListener('click', function () { if (window.EdenNotes) window.EdenNotes.open(); });
+  // the live menu, for printing from the dashboard (loads it first if the menu hasn't been read yet)
+  function currentMenu() {
+    if (store.loaded) return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] };
+    return loadAll().then(function () { return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] }; });
+  }
   function renderHome() { if (window.EdenToday) window.EdenToday.show(todayCtx()); }
 
   /* ---------------- data: read all website rows, keep them live ---------------- */

@@ -2357,3 +2357,20 @@ body.nt-open #app{visibility:hidden!important}
 .eo-cl b{font-weight:500}
 .eo-cl li span:last-child{font-size:.88rem;color:#5d5952}
 .eo-btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* print menus: dashboard button + choice dialog */
+.td-tools{margin:2px 0 6px}
+.td-print{font-family:var(--sans);font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;padding:10px 16px;border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer}
+.td-print:hover,.td-print:focus-visible{border-color:var(--ember);color:var(--ember)}
+.mp-back{position:fixed;top:0;right:0;bottom:0;left:0;z-index:200;background:rgba(15,18,21,.55);display:grid;place-items:center;padding:16px}
+.mp-card{background:var(--paper,#f7f4ee);color:var(--text);width:min(520px,100%);padding:24px 26px 18px;box-shadow:0 16px 50px rgba(0,0,0,.3)}
+.mp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.mp-h h2{font-family:var(--serif);font-weight:400;font-size:1.7rem;margin:0}
+.mp-x{font:inherit;font-size:1.1rem;background:none;border:0;color:var(--stone);cursor:pointer;padding:6px 8px}
+.mp-lead{font-size:.88rem;color:#4a4e53;margin:0 0 16px}
+.mp-opts{display:grid;grid-gap:10px}
+.mp-opt{display:grid;grid-gap:3px;text-align:left;font:inherit;background:#fff;border:1px solid var(--line);padding:14px 16px;cursor:pointer;color:var(--text)}
+.mp-opt b{font-family:var(--serif);font-weight:500;font-size:1.25rem}
+.mp-opt span{font-size:.82rem;color:#4a4e53}
+.mp-opt:hover,.mp-opt:focus-visible{border-color:var(--ember);background:#fbf3e9}
+.mp-msg{min-height:1.2em;font-size:.85rem;color:#4a4e53;margin:10px 0 0}
