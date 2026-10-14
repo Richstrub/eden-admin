@@ -6,6 +6,13 @@
  * Made for a kiosk browser: no zooming or long-press menus, the screen kept awake, a reload at 4 am to pick up
  * updates, and settings (full screen, reload, sign out) behind a 3-second press on the EDEN logo.
  */
+// The Hearth's built-in browser is Chrome 83, which doesn't have replaceChildren (Chrome 86+).
+if (!Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function () {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    this.append.apply(this, arguments);
+  };
+}
 (function () {
   'use strict';
   var CFG = window.EDEN_STAFF_CONFIG || {};
