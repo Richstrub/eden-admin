@@ -553,6 +553,67 @@ end $$;
 revoke all on function public.hub_schedule(date, date) from public, anon;
 grant execute on function public.hub_schedule(date, date) to authenticated;
 
+-- 12. Time off from the Hub: someone picks their name, then asks for days off. It goes into the schedule's time-off
+--     requests as pending, exactly like a request from the staff page, for the Owner or a manager to approve.
+--     The Hub only sees active names and positions, and each person's own requests (dates and status, not reasons).
+--     Anyone whose time-off requests are switched off in Team > Permissions isn't listed.
+create or replace function public.hub_timeoff_ok(p_emp uuid) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare lvl text; v boolean;
+begin
+  select case when e.access in ('cook', 'server', 'bartender') then e.access else 'employee' end into lvl from public.employees e where e.id = p_emp;
+  if lvl is null then return false; end if;
+  if to_regclass('public.section_people') is null or to_regclass('public.section_rules') is null then return true; end if;
+  execute 'select coalesce((select allowed from public.section_people where employee_id = $1 and section = ''timeoff''),
+                           (select allowed from public.section_rules where level = $2 and section = ''timeoff''), true)' into v using p_emp, lvl;
+  return v;
+end $$;
+revoke all on function public.hub_timeoff_ok(uuid) from public, anon, authenticated;
+
+create or replace function public.hub_timeoff_people() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if to_regclass('public.time_off') is null then return jsonb_build_object('error', 'no_timeoff'); end if;
+  return jsonb_build_object('people', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'name', e.name, 'position', coalesce(e.position, ''))
+      order by coalesce(nullif(e.position, ''), '~'), e.name), '[]'::jsonb)
+    from public.employees e where e.active and trim(coalesce(e.name, '')) <> '' and public.hub_timeoff_ok(e.id)));
+end $$;
+revoke all on function public.hub_timeoff_people() from public, anon;
+grant execute on function public.hub_timeoff_people() to authenticated;
+
+-- one person's requests from 30 days ago on: dates and status only
+create or replace function public.hub_timeoff_list(p_emp uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then return jsonb_build_object('error', 'not_allowed'); end if;
+  return jsonb_build_object('requests', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'start_date', t.start_date, 'end_date', t.end_date,
+      'all_day', t.all_day, 'start_time', t.start_time, 'end_time', t.end_time, 'status', t.status, 'created_at', t.created_at) order by t.start_date), '[]'::jsonb)
+    from public.time_off t where t.emp = p_emp and t.end_date >= (now() at time zone 'America/New_York')::date - 30));
+end $$;
+revoke all on function public.hub_timeoff_list(uuid) from public, anon;
+grant execute on function public.hub_timeoff_list(uuid) to authenticated;
+
+create or replace function public.hub_timeoff_request(p_emp uuid, p_from date, p_to date, p_all_day boolean, p_start text, p_end text, p_reason text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare today date := (now() at time zone 'America/New_York')::date;
+begin
+  if not (coalesce(public.staff_role() in ('hub', 'owner', 'manager'), false) or coalesce(public.can_schedule(), false)) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if not exists (select 1 from public.employees where id = p_emp and active) or not public.hub_timeoff_ok(p_emp) then return jsonb_build_object('error', 'not_allowed'); end if;
+  if p_from is null or p_to is null or p_to < p_from then return jsonb_build_object('error', 'bad_dates'); end if;
+  if p_from < today then return jsonb_build_object('error', 'past'); end if;
+  if p_to - p_from > 60 then return jsonb_build_object('error', 'too_long'); end if;
+  if not coalesce(p_all_day, true) and (coalesce(p_start, '') !~ '^\d{2}:\d{2}$') then return jsonb_build_object('error', 'bad_time'); end if;
+  insert into public.time_off (emp, start_date, end_date, all_day, start_time, end_time, reason, status)
+  values (p_emp, p_from, p_to, coalesce(p_all_day, true),
+          case when coalesce(p_all_day, true) then '' else p_start end,
+          case when coalesce(p_all_day, true) then '' else coalesce(p_end, '') end,
+          left(trim(coalesce(p_reason, '')) || case when public.staff_role() = 'hub' then ' (requested on the Hub)' else '' end, 500), 'pending');
+  return public.hub_timeoff_list(p_emp);
+end $$;
+revoke all on function public.hub_timeoff_request(uuid, date, date, boolean, text, text, text) from public, anon;
+grant execute on function public.hub_timeoff_request(uuid, date, date, boolean, text, text, text) to authenticated;
+
 -- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
 -- insert into public.staff (user_id, name, role)
