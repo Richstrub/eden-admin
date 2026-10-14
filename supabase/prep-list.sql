@@ -26,7 +26,7 @@ grant execute on function public.is_cook() to authenticated;
 create or replace function public.can_prep() returns boolean
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if coalesce(public.staff_role() in ('owner', 'manager'), false) or coalesce(public.can_schedule(), false) then return true; end if;
+  if coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.can_schedule(), false) then return true; end if;   -- 'hub': the Hub screen (supabase/hub.sql)
   if to_regprocedure('public.section_ok(text)') is not null then   -- Team > Permissions decides, once permissions.sql is run
     return coalesce(public.is_team(), false) and coalesce(public.section_ok('prep'), false);
   end if;

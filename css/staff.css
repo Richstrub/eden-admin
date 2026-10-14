@@ -2265,3 +2265,83 @@ body.nt-open #app{visibility:hidden!important}
 .pp-roinfo{margin:4px 0 10px;padding:8px 12px;border-radius:8px;background:#f3efe6;color:#5a5346;font-size:.88rem}
 .pp-ro .pp-add,.pp-ro .pp-x,.pp-ro .pp-resetbtn{display:none}
 .pp-ro .pp-sheet input:disabled,.pp-ro .pp-sheet select:disabled,.pp-ro .pp-sheet button:disabled{opacity:1;cursor:default;color:inherit}
+
+/* ---------- order list (js/orders.js): staff site, staff page and the Hub. No flex gap or inset: the Hub runs Chrome 83 ---------- */
+.od,.ck{max-width:980px;margin:0 auto;padding:40px 32px 120px}
+@media (max-width:760px){.od,.ck{padding:22px 16px 100px}}
+.od-top{margin-bottom:18px}
+.od-help{color:#4a4e53;font-size:.92rem;margin-top:8px;max-width:680px;line-height:1.55}
+.od-setup{background:#fbf3e9;border-left:3px solid var(--ember);padding:12px 14px;color:var(--text)}
+.od-empty{color:var(--stone);padding:10px 0}
+.od-form{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,2fr) auto;grid-gap:8px;align-items:stretch}
+.od-form input{font:inherit;font-size:1rem;color:var(--text);background:#fff;border:1px solid var(--line);padding:11px 12px;min-width:0;border-radius:0}
+.od-form input:focus{outline:none;border-color:var(--ember)}
+.od-form .od-by{grid-column:1/2}
+.od-form .od-add{white-space:nowrap}
+.od-hub .od-form{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1.6fr)}
+.od-hub .od-form .od-by{grid-column:1/3}
+.od-hub .od-form .od-add{grid-column:3/4}
+.od-msg{min-height:1.4em;margin:8px 0 4px;font-size:.9rem;color:var(--stone)}
+.od-msg.err{color:#a3392b}.od-msg.ok{color:#2f7a45}
+.od-h{font-family:var(--serif);font-weight:400;font-size:1.5rem;margin:10px 0 8px}
+.od-h2{font-size:1.2rem;color:var(--stone);margin-top:22px}
+.od-list{list-style:none;border-top:1px solid var(--line)}
+.od-line{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-gap:12px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line)}
+.od-what b{font-weight:500;font-size:1.05rem;color:var(--text)}
+.od-q{display:inline-block;margin-left:10px;padding:1px 8px;border:1px solid var(--line);font-size:.82rem;color:#4a4e53;vertical-align:1px}
+.od-n,.od-meta{display:block;font-size:.82rem;color:#4a4e53;margin-top:2px}
+.od-meta{color:var(--stone)}
+.od-acts{display:grid;grid-auto-flow:column;grid-gap:8px;align-items:center}
+.od-recv{background:#2f7a45;border-color:#2f7a45}
+.od-recv:hover{background:#245f36}
+.od-x{border:1px solid var(--line);background:#fff;color:#a3392b;width:36px;height:36px;cursor:pointer;font-size:.9rem}
+.od-x:hover{background:#a3392b;color:#fff}
+.od-rec .od-what b{color:var(--stone);text-decoration:line-through;text-decoration-color:rgba(127,122,113,.6)}
+/* bigger targets on the Hub's touch screen */
+.od-hub .od-form input{font-size:1.25rem;padding:16px 14px}
+.od-hub .ed-btn{font-size:.85rem;padding:16px 22px}
+.od-hub .ed-btn.small{font-size:.75rem;padding:12px 16px}
+.od-hub .od-what b{font-size:1.3rem}
+.od-hub .od-x{width:52px;height:52px}
+@media (max-width:640px){.od-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.od-form .od-item,.od-form .od-note{grid-column:1/-1}.od-form .od-add{grid-column:1/-1}}
+
+/* ---------- checklists (js/checklists.js) ---------- */
+.ck-tabs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));grid-gap:8px;margin:4px 0 22px}
+.ck-tab{text-align:left;background:#fff;border:1px solid var(--line);padding:12px 14px;cursor:pointer;font:inherit;color:var(--text)}
+.ck-tab b{display:block;font-weight:500}
+.ck-tab span{display:block;font-size:.8rem;color:var(--stone)}
+.ck-tab[aria-selected="true"]{border-color:var(--ember);box-shadow:inset 0 -3px 0 var(--ember)}
+.ck-tab.full span{color:#2f7a45}
+.ck-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;grid-gap:12px;margin-bottom:10px}
+.ck-title{font-family:var(--serif);font-weight:400;font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.1}
+.ck-day{color:var(--stone);font-size:.88rem}
+.ck-prog{position:relative;height:30px;background:#ece7de;overflow:hidden;margin-bottom:12px}
+.ck-prog i{position:absolute;top:0;bottom:0;left:0;background:var(--ember);transition:width .5s ease}
+.ck-prog.full i{background:#2f7a45}
+.ck-prog span{position:relative;display:block;text-align:center;line-height:30px;font-size:.85rem;font-weight:500;color:var(--ink)}
+.ck-who{display:grid;grid-template-columns:auto minmax(0,220px);justify-content:start;grid-gap:14px;align-items:center;margin:4px 0 6px}
+.ck-who span{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.ck-who input{font:inherit;font-size:1.2rem;padding:10px 12px;border:1px solid var(--line);background:#fff;color:var(--text);text-transform:uppercase;border-radius:0}
+.ck-who input:focus{outline:none;border-color:var(--ember)}
+.ck-msg{min-height:1.3em;font-size:.88rem;color:var(--stone);margin-bottom:4px}
+.ck-msg.err{color:#a3392b}.ck-msg.ok{color:#2f7a45}
+.ck-list{list-style:none;border-top:1px solid var(--line)}
+.ck-hd{font-size:.68rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ember);padding:18px 2px 6px;border-bottom:1px solid var(--line)}
+.ck-item{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-gap:14px;align-items:center;text-align:left;font:inherit;color:var(--text);background:none;border:0;border-bottom:1px solid var(--line);padding:12px 4px;cursor:pointer}
+.ck-item:hover{background:rgba(176,112,63,.05)}
+.ck-box{width:24px;height:24px;border:2px solid #8a857c;border-radius:4px;position:relative}
+.ck-item.done .ck-box{background:#2f7a45;border-color:#2f7a45}
+.ck-item.done .ck-box::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.ck-item.done .ck-text{color:var(--stone);text-decoration:line-through;text-decoration-color:rgba(127,122,113,.5)}
+.ck-by-at{font-size:.8rem;color:#2f7a45;white-space:nowrap}
+.ck-alldone{font-family:var(--serif);font-size:1.6rem;color:#2f7a45;margin-top:14px}
+.ck-hub .ck-item{padding:18px 6px;font-size:1.25rem}
+.ck-hub .ck-box{width:34px;height:34px}
+.ck-hub .ck-item.done .ck-box::after{left:10px;top:3px;width:9px;height:17px;border-width:0 3px 3px 0}
+.ck-hub .ck-by-at{font-size:1rem}
+.ck-hub .ck-hd{font-size:.85rem;padding-top:22px}
+.ck-edit{display:grid;grid-gap:14px;max-width:760px}
+.ck-elbl span{display:block;font-size:.8rem;color:#4a4e53;margin-bottom:6px}
+.ck-etitle,.ck-etext{width:100%;font:inherit;font-size:1rem;color:var(--text);background:#fff;border:1px solid var(--line);padding:10px 12px;border-radius:0}
+.ck-etext{line-height:1.6;resize:vertical}
+.ck-ebtns{display:grid;grid-auto-flow:column;justify-content:start;grid-gap:10px}

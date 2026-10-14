@@ -115,7 +115,7 @@ if (!Element.prototype.replaceChildren) {
       pageSig().then(function (s) {
         if (!s) return;
         if (!PAGE_SIG) { PAGE_SIG = s; return; }
-        if (s !== PAGE_SIG && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) location.reload();
+        if (s !== PAGE_SIG && !popPage && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) location.reload();   // not while a pop-up is open
       });
     }, PAGE_MS);
   }
@@ -146,6 +146,39 @@ if (!Element.prototype.replaceChildren) {
     }, function () { polling = false; });
   }
   function repaint() { if (LAST) { paintPreshift(LAST); paintShifts(LAST); paintWeek(LAST); } }
+
+  /* ---------- the menu on the left: each page opens in a pop-up over the board ---------- */
+  var POP_IDLE_MS = 3 * 60 * 1000, popTimer = null, popPage = '';
+  function popTouched() { clearTimeout(popTimer); if (popPage) popTimer = setTimeout(closePop, POP_IDLE_MS); }   // nobody's touched it for 3 minutes: back to the board
+  function openPop(page, title) {
+    popPage = page;
+    $('popH').textContent = title || '';
+    $('pop').hidden = false;
+    var f = $('popFrame');
+    f.src = 'panel.html?p=' + encodeURIComponent(page) + '&t=' + Date.now();
+    f.onload = function () { try { f.contentWindow.document.addEventListener('pointerdown', popTouched, { passive: true }); f.contentWindow.document.addEventListener('keydown', popTouched); } catch (e) {} };
+    markNav(page); popTouched();
+  }
+  function closePop() {
+    clearTimeout(popTimer); popPage = '';
+    $('pop').hidden = true; $('popFrame').src = 'about:blank';
+    markNav(''); STAMP = null; poll();   // show anything just changed right away
+  }
+  function markNav(page) { [].forEach.call(document.querySelectorAll('.hb-nb'), function (b) { b.setAttribute('aria-current', b.getAttribute('data-p') === page ? 'true' : 'false'); }); }
+  [].forEach.call(document.querySelectorAll('.hb-nb'), function (b) {
+    b.addEventListener('click', function () { var pg = b.getAttribute('data-p'); if (!pg) closePop(); else if (pg !== popPage) openPop(pg, b.getAttribute('data-title')); });
+  });
+  $('popClose').addEventListener('click', closePop);
+  $('pop').addEventListener('pointerdown', popTouched, { passive: true });
+  function paintNav(d) {
+    $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';
+    var ps = $('prepSub').textContent, m = /(\d+) of (\d+) done/.exec(ps);
+    $('navPrep').textContent = m ? Math.round(+m[1] / +m[2] * 100) + '% done' : '';
+    (d.checklists || []).forEach(function (l) {
+      var el = document.querySelector('[data-ck="' + l.id + '"]'); if (!el) return;
+      el.textContent = l.done + ' / ' + l.total; el.classList.toggle('full', l.total > 0 && l.done === l.total);
+    });
+  }
   function loadMenu() {
     if (!window.EdenPrep || !window.EdenPrep.fetchMenu) return Promise.resolve();
     return window.EdenPrep.fetchMenu(sb).then(function (m) { MENU = m; if (LAST) paintPrep(LAST); });
@@ -160,7 +193,7 @@ if (!Element.prototype.replaceChildren) {
       var menuChanged = LAST && JSON.stringify(LAST.menu || []) !== JSON.stringify(r.data.menu || []);
       LAST = r.data; lastBoard = Date.now();
       if (menuChanged) loadMenu();   // a menu section was edited: pick up new prep lines now
-      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintWeek(r.data); paintCal(r.data);
+      paintPreshift(r.data); paintPrep(r.data); paintShifts(r.data); paintWeek(r.data); paintCal(r.data); paintNav(r.data);
       $('updated').textContent = ' · updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }, function () {});
   }

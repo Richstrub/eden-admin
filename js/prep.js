@@ -23,6 +23,11 @@
     var ent = {}; try { ent = JSON.parse(localStorage.getItem(EKEY) || '{}') || {}; } catch (e) {}
     return { for_date: iso(new Date()), entries: ent, extra: P.saved.extra, removed: P.saved.removed, can_reset: true, me: (P.ctx && P.ctx.name) || '' };
   }
+  // whose initials go on a line: the person signed in, or on the shared Hub screen whoever typed theirs in (ctx.who)
+  function myIni() {
+    if (P.ctx && P.ctx.who) { var w = String(P.ctx.who() || '').trim(); return w.length <= 3 ? w.toUpperCase() : initials(w); }
+    return initials(P.st && P.st.me);
+  }
   function initials(n) { return String(n || '').split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join(''); }
   function gone(e) { return !!(e && (e.code === 'PGRST202' || e.code === '42883' || e.code === 'PGRST205' || /could not find the function|does not exist|schema cache/i.test(e.message || ''))); }
 
@@ -243,8 +248,8 @@
     var v = entry(k).ini || '';
     var b = h('button', { type: 'button', cls: 'pp-inibtn', 'data-f': 'ini', 'aria-label': 'Initials: ' + label + (v ? ' (' + v + ')' : ''), title: 'Tap to put your initials here', text: v });
     b.addEventListener('click', function () {
-      var mine = initials(P.st.me), cur = entry(k).ini || '';
-      if (!mine) { say('Couldn’t tell who you are to add your initials.', 'err'); return; }
+      var mine = myIni(), cur = entry(k).ini || '';
+      if (!mine) { say(P.ctx.who ? 'Type your initials in the box at the top first.' : 'Couldn’t tell who you are to add your initials.', 'err'); return; }
       var nv = cur === mine ? '' : mine;
       setField(k, 'ini', nv); b.textContent = nv; b.setAttribute('aria-label', 'Initials: ' + label + (nv ? ' (' + nv + ')' : ''));
     });
@@ -266,7 +271,7 @@
       setField(k, 'done', on);
       // ticking a line signs it with your initials, if nobody has
       var ini = tr.querySelector('.pp-inibtn');
-      if (on && ini && !ini.textContent.trim() && P.st.me) { ini.textContent = initials(P.st.me); setField(k, 'ini', ini.textContent); }
+      if (on && ini && !ini.textContent.trim() && myIni()) { ini.textContent = myIni(); setField(k, 'ini', ini.textContent); }
       chk.setAttribute('aria-checked', on ? 'true' : 'false'); tr.classList.toggle('is-done', on); paintCount();
     });
     return tr;
@@ -406,7 +411,7 @@
     chk.addEventListener('click', function () {
       var on = !entry(k).done;
       setField(k, 'done', on);
-      if (on && !(entry(k).ini || '').trim() && P.st.me) { ini.textContent = initials(P.st.me); setField(k, 'ini', ini.textContent); }
+      if (on && !(entry(k).ini || '').trim() && myIni()) { ini.textContent = myIni(); setField(k, 'ini', ini.textContent); }
       chk.setAttribute('aria-checked', on ? 'true' : 'false'); row.classList.toggle('is-done', on); appCount();
     });
     return row;

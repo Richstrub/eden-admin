@@ -221,7 +221,7 @@
 
   /* ---------- your to-dos (given to you by the Owner or a manager) ---------- */
   var todos = [], canPrep = false, opened = false, SEC = null;
-  var TAB_PG = { tabSched: 'sched', tabPreshift: 'preshift', tabResources: 'resources', tabPrep: 'prep', tabRecipes: 'recipes', tabCalendar: 'calendar' };
+  var TAB_PG = { tabSched: 'sched', tabPreshift: 'preshift', tabResources: 'resources', tabPrep: 'prep', tabOrders: 'orders', tabRecipes: 'recipes', tabCalendar: 'calendar' };
   function applySections() {
     if (!SEC) return;
     var off = function (k) { return SEC[k] === false; };
@@ -281,18 +281,19 @@
   /* ---------- pages: Schedule (with the board) and Recipes ---------- */
   function page() {
     if ($('app').hidden || !me) return;
-    var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : location.hash === '#preshift' ? 'preshift' : location.hash === '#resources' ? 'resources' : location.hash === '#prep' && canPrep ? 'prep' : 'sched';
+    var pg = location.hash === '#recipes' ? 'recipes' : location.hash === '#calendar' ? 'calendar' : location.hash === '#preshift' ? 'preshift' : location.hash === '#resources' ? 'resources' : location.hash === '#prep' && canPrep ? 'prep' : location.hash === '#orders' ? 'orders' : 'sched';
     // a page this person's permissions don't include: open the first one they do have
-    var tabFor = { sched: 'tabSched', preshift: 'tabPreshift', resources: 'tabResources', prep: 'tabPrep', recipes: 'tabRecipes', calendar: 'tabCalendar' };
+    var tabFor = { sched: 'tabSched', preshift: 'tabPreshift', resources: 'tabResources', prep: 'tabPrep', orders: 'tabOrders', recipes: 'tabRecipes', calendar: 'tabCalendar' };
     if (SEC && $(tabFor[pg]).hidden) { pg = firstPage(); var want = pg === 'sched' ? '' : '#' + pg; if (location.hash !== want) history.replaceState(null, '', location.pathname + want); }
-    $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; $('preshiftView').hidden = pg !== 'preshift'; $('resourcesView').hidden = pg !== 'resources'; $('prepView').hidden = pg !== 'prep'; document.querySelector('.tm-main').hidden = pg !== 'sched';
+    $('recipesView').hidden = pg !== 'recipes'; $('calendarView').hidden = pg !== 'calendar'; $('preshiftView').hidden = pg !== 'preshift'; $('resourcesView').hidden = pg !== 'resources'; $('prepView').hidden = pg !== 'prep'; $('ordersView').hidden = pg !== 'orders'; document.querySelector('.tm-main').hidden = pg !== 'sched';
     $('tabPreshift').setAttribute('aria-current', pg === 'preshift' ? 'page' : 'false');
     $('tabResources').setAttribute('aria-current', pg === 'resources' ? 'page' : 'false');
     $('tabPrep').setAttribute('aria-current', pg === 'prep' ? 'page' : 'false');
+    $('tabOrders').setAttribute('aria-current', pg === 'orders' ? 'page' : 'false');
     $('tabSched').setAttribute('aria-current', pg === 'sched' ? 'page' : 'false');
     $('tabRecipes').setAttribute('aria-current', pg === 'recipes' ? 'page' : 'false');
     $('tabCalendar').setAttribute('aria-current', pg === 'calendar' ? 'page' : 'false');
-    document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : pg === 'prep' ? 'Prep List · Eden Team' : 'Eden Team';
+    document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : pg === 'prep' ? 'Prep List · Eden Team' : pg === 'orders' ? 'Ordering · Eden Team' : 'Eden Team';
     var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
     if (pg === 'recipes' && window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('recipesView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('recipesView')) });
@@ -302,6 +303,7 @@
     var tmRole = me.role || (me.access === 'owner' ? 'owner' : me.access === 'manager' ? 'scheduler' : 'employee');
     // cooks: no Print button or how-to text at the top of the Prep List
     if (pg === 'prep' && window.EdenPrep) window.EdenPrep.show({ sb: sb, el: $('prepBody'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole, cook: !admin, viewOnly: !admin && !!SEC && SEC['prep.edit'] === false });
+    if (pg === 'orders' && window.EdenOrders) window.EdenOrders.show({ sb: sb, el: $('ordersView'), mode: admin ? 'admin' : 'staff' });
     if (pg === 'resources' && window.EdenResources) window.EdenResources.show({ sb: sb, el: $('resourcesView'), status: function () {}, name: (me.employee && me.employee.name) || '', role: tmRole });
     if (pg === 'calendar' && window.EdenCal) window.EdenCal.show({ sb: sb, el: $('calendarView'), name: (me.employee && me.employee.name) || '', canEdit: admin, status: st($('calendarView')) });
   }

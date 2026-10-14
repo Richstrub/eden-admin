@@ -73,6 +73,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare parent text := split_part(p_section, '.', 1);
 begin
   if coalesce(public.access_level() in ('owner', 'manager'), false) or coalesce(public.staff_role() in ('owner', 'manager'), false) then return true; end if;
+  if coalesce(public.staff_role() = 'hub', false) then return p_section in ('prep', 'prep.edit', 'prep.kitchen'); end if;   -- the Hub screen: the kitchen prep list only
   if p_section <> parent and not public.section_ok(parent) then return false; end if;
   return coalesce(
     (select p.allowed from public.section_people p where p.employee_id = public.my_employee_id() and p.section = p_section),

@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/editor-base.css">
-<link rel="stylesheet" href="css/staff.css?v=20261013t">
+<link rel="stylesheet" href="css/staff.css?v=20261014a">
 </head>
 <body>
 
@@ -65,6 +65,7 @@
         <p class="sb-g">Service</p>
         <a href="#preshift" data-view="preshift">Pre-shift meeting</a>
         <a href="#resources" data-view="resources">Resources</a>
+        <a href="#checklists" data-view="checklists">Checklists</a>
         <span class="sb-soon" title="Coming in a later phase">Reservations <small>Soon</small></span>
       </div>
       <div class="sb-group">
@@ -77,6 +78,7 @@
         <p class="sb-g">Kitchen &amp; bar</p>
         <a href="#prep" data-view="prep" data-prep>Prep List</a>
         <a href="#inventory" data-view="inventory" data-prep>Inventory <span class="sb-badge" data-badge="inventory" hidden></span></a>
+        <a href="#orders" data-view="orders">Ordering</a>
         <a href="#recipes" data-view="recipes">Recipes</a>
       </div>
       <div class="sb-group">
@@ -144,6 +146,8 @@
   <section class="view payroll" id="viewPayroll" hidden></section>
   <section class="view" id="viewPreshift" hidden></section>
   <section class="view" id="viewResources" hidden></section>
+  <section class="view" id="viewOrders" hidden></section>
+  <section class="view" id="viewChecklists" hidden></section>
   <section class="view" id="viewPromo" hidden></section>
   <section class="view" id="viewEmployees" hidden><div id="empPeople"></div><div id="empPerms" hidden></div></section>
   <section class="view soonpage" id="viewEod" hidden></section>
@@ -156,7 +160,7 @@
 <script src="js/menu-seed.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script src="js/schedule.js?v=20261013s"></script>
-<script src="js/prep.js?v=20261013v"></script>
+<script src="js/prep.js?v=20261014a"></script>
 <script src="js/inventory.js"></script>
 <script src="js/notes.js?v=20261012w"></script>
 <script src="js/recipes.js?v=20261013e"></script>
@@ -170,10 +174,12 @@
 <script src="js/email.js?v=20261012v"></script>
 <script src="js/eod.js?v=20261012m"></script>
 <script src="js/resources.js?v=20261012y"></script>
+<script src="js/orders.js?v=20261014a"></script>
+<script src="js/checklists.js?v=20261014a"></script>
 <script src="js/promo.js?v=20261013p"></script>
 <script src="js/perms.js?v=20261013t"></script>
 <script src="js/preshift.js?v=20261013r"></script>
 <script src="js/account.js?v=20261012r"></script>
-<script src="js/staff.js?v=20261013s"></script>
+<script src="js/staff.js?v=20261014a"></script>
 </body>
 </html>

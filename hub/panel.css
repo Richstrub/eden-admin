@@ -1,0 +1,13 @@
+/* Eden Hub pop-up pages (panel.html): the staff site's light look, sized for the Hub's touch screen. */
+html,body{background:var(--paper);color:var(--text);height:auto;min-height:100%}
+body{-webkit-tap-highlight-color:transparent;touch-action:manipulation;overscroll-behavior:contain}
+.hp{padding:26px 30px 60px;max-width:none}
+.hp .od,.hp .ck{max-width:none;padding:0;margin:0}
+.hp .sc-week{font-family:var(--serif);font-weight:400}
+/* the prep list sheet, for the touch screen: bigger ticks and initials */
+.hp-who{margin:0 0 10px}
+.hp-prep .pp-box{width:30px;height:30px}
+.hp-prep .pp-inibtn{min-width:52px;min-height:40px;font-size:1rem}
+.hp-prep .pp-sheet td{padding-top:6px;padding-bottom:6px}
+.hp-prep .pp-item span{font-size:1.02rem}
+.hp-prep .pp-sheet{box-shadow:none}

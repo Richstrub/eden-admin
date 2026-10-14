@@ -7,7 +7,8 @@
 -- staff site, and it never sees pay, phone numbers or guest spend. The Owner and managers can open the Hub too.
 -- To make the Hub's login: run this file, then Authentication > Users > Add user (hub@edencny.com), then the insert at the bottom.
 -- Using a different email for the Hub? Change hub@edencny.com in section 3 and at the bottom.
--- If you run team.sql or staff-signup.sql again later, run this file again afterwards.
+-- Also sets up the order list and the shift checklists (sections 8 and 9), and lets the Hub work the kitchen prep list (7).
+-- If you run team.sql, staff-signup.sql, prep-list.sql or permissions.sql again later, run this file again afterwards.
 
 -- 1. 'hub' is a staff role
 alter table public.staff drop constraint if exists staff_role_check;
@@ -147,6 +148,15 @@ begin
     end if;
   end if;
 
+  -- open orders and today's checklist progress, for the Hub's menu
+  if to_regclass('public.order_items') is not null then
+    out := out || jsonb_build_object('orders_open', (select count(*) from public.order_items where received_at is null),
+      'orders_stamp', (select md5(coalesce(string_agg(id::text || coalesce(received_at::text, ''), ',' order by id), '')) from public.order_items where received_at is null or received_at > now() - interval '3 days'));
+  end if;
+  if to_regclass('public.checklists') is not null then
+    out := out || jsonb_build_object('checklists', public.checklist_get(null) -> 'lists');
+  end if;
+
   -- the calendar: today and the next 13 days (no notes)
   if to_regclass('public.events') is not null then
     out := out || jsonb_build_object('events', (select coalesce(jsonb_agg(jsonb_build_object('title', e.title, 'type', e.type, 'date', e.date, 'all_day', e.all_day,
@@ -166,6 +176,289 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.hub_stamp() from public, anon;
 grant execute on function public.hub_stamp() to authenticated;
+
+-- 7. The Hub can work the kitchen prep list like a cook: tick lines, fill in On hand / Prep / initials, and add items.
+--    It can't take lines off (Owner only), reset the list (Owner and managers) or see the bar list.
+--    These are the same functions as in prep-list.sql and permissions.sql, with the Hub added (kept in step with them).
+do $hubprep$ begin
+  if to_regprocedure('public.can_prep()') is not null then
+    execute $fn$
+create or replace function public.can_prep() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.can_schedule(), false) then return true; end if;   -- 'hub': the Hub screen (supabase/hub.sql)
+  if to_regprocedure('public.section_ok(text)') is not null then   -- Team > Permissions decides, once permissions.sql is run
+    return coalesce(public.is_team(), false) and coalesce(public.section_ok('prep'), false);
+  end if;
+  return coalesce(public.staff_role() = 'kitchen', false) or coalesce(public.is_cook(), false);
+end $$;
+    $fn$;
+  end if;
+  if to_regprocedure('public.section_ok(text)') is not null then
+    execute $fn$
+create or replace function public.section_ok(p_section text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare parent text := split_part(p_section, '.', 1);
+begin
+  if coalesce(public.access_level() in ('owner', 'manager'), false) or coalesce(public.staff_role() in ('owner', 'manager'), false) then return true; end if;
+  if coalesce(public.staff_role() = 'hub', false) then return p_section in ('prep', 'prep.edit', 'prep.kitchen'); end if;   -- the Hub screen: the kitchen prep list only
+  if p_section <> parent and not public.section_ok(parent) then return false; end if;
+  return coalesce(
+    (select p.allowed from public.section_people p where p.employee_id = public.my_employee_id() and p.section = p_section),
+    (select r.allowed from public.section_rules r where r.level = public.my_level() and r.section = p_section),
+    case p_section when 'prep' then public.my_level() in ('cook', 'bartender')
+                   when 'prep.kitchen' then public.my_level() <> 'bartender'
+                   when 'prep.bar' then public.my_level() <> 'cook'
+                   else true end);
+end $$;
+    $fn$;
+  end if;
+end $hubprep$;
+
+-- 8. The order list: anyone on the staff (and the Hub) can add what needs ordering. Only the Hub, the Owner and
+--    managers can mark an order received, and only the Owner and managers can delete one. Read and changed only
+--    through the functions below.
+create table if not exists public.order_items (
+  id uuid primary key default gen_random_uuid(),
+  item text not null check (length(trim(item)) between 1 and 200),
+  qty text not null default '' check (length(qty) <= 60),
+  note text not null default '' check (length(note) <= 300),
+  added_by text not null default '',
+  added_at timestamptz not null default now(),
+  received_at timestamptz,
+  received_by text not null default ''
+);
+alter table public.order_items enable row level security;
+revoke all on public.order_items from anon, authenticated;
+
+create or replace function public.hub_me() returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce((select nullif(trim(s.name), '') from public.staff s where s.user_id = auth.uid() limit 1),
+                  (select nullif(trim(e.name), '') from public.employees e where e.email <> '' and lower(e.email) = lower(coalesce(auth.jwt() ->> 'email', '')) limit 1),
+                  nullif(auth.jwt() ->> 'email', ''), '')
+$$;
+revoke all on function public.hub_me() from public, anon, authenticated;
+
+create or replace function public.order_can(p_what text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select case p_what
+    when 'add' then coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.is_team(), false) or coalesce(public.can_schedule(), false)
+    when 'receive' then coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.access_level() in ('owner', 'manager'), false)
+    when 'delete' then coalesce(public.staff_role() in ('owner', 'manager'), false) or coalesce(public.access_level() in ('owner', 'manager'), false)
+    else false end
+$$;
+revoke all on function public.order_can(text) from public, anon;
+grant execute on function public.order_can(text) to authenticated;
+
+create or replace function public.order_list() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.order_can('add') then return jsonb_build_object('error', 'not_allowed'); end if;
+  return jsonb_build_object(
+    'open', (select coalesce(jsonb_agg(to_jsonb(o) order by o.added_at), '[]'::jsonb) from public.order_items o where o.received_at is null),
+    'received', (select coalesce(jsonb_agg(to_jsonb(o) order by o.received_at desc), '[]'::jsonb) from public.order_items o
+                 where o.received_at > now() - interval '3 days'),
+    'can_receive', public.order_can('receive'), 'can_delete', public.order_can('delete'), 'me', public.hub_me());
+end $$;
+revoke all on function public.order_list() from public, anon;
+grant execute on function public.order_list() to authenticated;
+
+-- p_by: on the Hub (one shared login), the name typed in; everyone else is named from their own login
+create or replace function public.order_add(p_item text, p_qty text, p_note text, p_by text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.order_can('add') then return jsonb_build_object('error', 'not_allowed'); end if;
+  if length(trim(coalesce(p_item, ''))) = 0 then return jsonb_build_object('error', 'empty'); end if;
+  insert into public.order_items (item, qty, note, added_by)
+  values (left(trim(p_item), 200), left(trim(coalesce(p_qty, '')), 60), left(trim(coalesce(p_note, '')), 300),
+          case when coalesce(public.staff_role() = 'hub', false) and length(trim(coalesce(p_by, ''))) > 0 then left(trim(p_by), 60) else public.hub_me() end);
+  return public.order_list();
+end $$;
+revoke all on function public.order_add(text, text, text, text) from public, anon;
+grant execute on function public.order_add(text, text, text, text) to authenticated;
+
+create or replace function public.order_receive(p_id uuid, p_on boolean, p_by text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.order_can('receive') then return jsonb_build_object('error', 'hub_only'); end if;
+  update public.order_items set
+    received_at = case when p_on then now() else null end,
+    received_by = case when not p_on then ''
+                       when coalesce(public.staff_role() = 'hub', false) and length(trim(coalesce(p_by, ''))) > 0 then left(trim(p_by), 60)
+                       else public.hub_me() end
+  where id = p_id;
+  return public.order_list();
+end $$;
+revoke all on function public.order_receive(uuid, boolean, text) from public, anon;
+grant execute on function public.order_receive(uuid, boolean, text) to authenticated;
+
+create or replace function public.order_delete(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.order_can('delete') then return jsonb_build_object('error', 'not_allowed'); end if;
+  delete from public.order_items where id = p_id;
+  return public.order_list();
+end $$;
+revoke all on function public.order_delete(uuid) from public, anon;
+grant execute on function public.order_delete(uuid) to authenticated;
+
+-- 9. Checklists: Front of house opening, first cut and closing, and Back of house closing. Ticked off on the Hub,
+--    one fresh copy per service day (a day runs until 4 am, so closing after midnight still counts for that night).
+--    The Owner and managers change the items on the staff site (Service > Checklists). Starter items are put in once.
+create table if not exists public.checklists (
+  id text primary key,
+  title text not null,
+  sort int not null default 0,
+  items jsonb not null default '[]'::jsonb,   -- [{id, text, head}]  head = a heading line
+  updated_at timestamptz not null default now()
+);
+create table if not exists public.checklist_days (
+  list_id text not null references public.checklists(id) on delete cascade,
+  day date not null,
+  done jsonb not null default '{}'::jsonb,     -- item id -> {by, at}
+  primary key (list_id, day)
+);
+alter table public.checklists enable row level security;
+alter table public.checklist_days enable row level security;
+revoke all on public.checklists, public.checklist_days from anon, authenticated;
+
+create or replace function public.ck_items(p_lines text[]) returns jsonb
+language sql immutable as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', 'i' || n, 'text', regexp_replace(l, '^#\s*', ''), 'head', l like '#%') order by n), '[]'::jsonb)
+  from unnest(p_lines) with ordinality as t(l, n)
+$$;
+insert into public.checklists (id, title, sort, items) values
+('foh-open', 'Front of house opening', 1, public.ck_items(array[
+  '# Dining room',
+  'Lights, music and dimmers set for service',
+  'Restrooms clean and stocked (paper, soap, towels); trash emptied',
+  'Tables wiped, steady and set: linens, flatware, glassware',
+  'Glassware and flatware polished',
+  'Entry, windows and front walk clean',
+  'Candles set (light at 4:45)',
+  '# Host stand',
+  'Tonight''s reservations and notes reviewed in OpenTable',
+  'Floor plan printed and sections assigned',
+  'Menus clean, current and enough copies',
+  '# Bar and service stations',
+  'Service stations stocked: napkins, silverware, check presenters',
+  'Water pitchers filled; ice in bins',
+  'Garnishes cut and bar fruit stocked',
+  'Wines by the glass open, dated and chilled',
+  'POS on and working; cash drawer counted',
+  'Pre-shift meeting'])),
+('foh-cut', 'Front of house first cut', 2, public.ck_items(array[
+  'All your tickets closed and checkout printed',
+  'Open tables handed off to the server staying on',
+  'Station restocked: napkins, silverware, glassware',
+  'Silverware rolled',
+  'Glassware polished and back at the bar',
+  'Your section''s tables cleaned and reset',
+  'Menus wiped',
+  'Side work from the schedule done',
+  'Checked out with the manager'])),
+('foh-close', 'Front of house closing', 3, public.ck_items(array[
+  '# Dining room',
+  'All tables cleared, wiped and reset for tomorrow',
+  'Floors swept under tables and booths',
+  'Candles out; holders cleaned',
+  'Bus tubs and trays to dish',
+  '# Host stand',
+  'Reservations closed out; no-shows noted',
+  'Menus wiped; host stand restocked',
+  '# Bar',
+  'Bar top, rails and back bar wiped down',
+  'Open wine and mixers capped, dated and refrigerated',
+  'Garnishes wrapped and stored; fruit trays cleaned',
+  'Speed rails, tins and tools cleaned; bar mats through dish',
+  'Ice wells emptied',
+  'Beer, wine and liquor restocked to par (low items on the order list)',
+  '# Close out',
+  'End-of-day reports run; cash counted',
+  'Restrooms cleaned and restocked',
+  'Trash and recycling out',
+  'Music and lights off; doors locked'])),
+('boh-close', 'Back of house closing', 4, public.ck_items(array[
+  '# Line',
+  'Stations broken down',
+  'All prep wrapped, labeled, dated and in the walk-in',
+  'Surfaces and cutting boards cleaned and sanitized',
+  'Flat-top and fryer cleaned (oil filtered when due)',
+  'Wood-fire grill cleaned; ash out to the metal bin',
+  'Ovens and burners off',
+  '# Walk-in and storage',
+  'Walk-in and reach-in temperatures logged',
+  'Stock rotated (first in, first out); anything past date tossed',
+  'Low items added to the order list',
+  '# Dish and floors',
+  'Dish machine run, drained and screens cleaned',
+  'Trash, recycling and compost out',
+  'Floors swept and mopped; drains squeegeed',
+  '# Before you leave',
+  'Prep list ticked; notes left for tomorrow',
+  'Gas off and back door locked']))
+on conflict (id) do nothing;
+
+create or replace function public.ck_today() returns date
+language sql stable as $$ select ((now() at time zone 'America/New_York') - interval '4 hours')::date $$;
+
+create or replace function public.ck_can(p_what text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select case p_what
+    when 'tick' then coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.is_team(), false) or coalesce(public.can_schedule(), false)
+    when 'edit' then coalesce(public.staff_role() in ('owner', 'manager'), false) or coalesce(public.access_level() in ('owner', 'manager'), false)
+    else false end
+$$;
+revoke all on function public.ck_can(text) from public, anon;
+grant execute on function public.ck_can(text) to authenticated;
+
+-- one list with today's ticks; with p_list null, every list with today's progress
+create or replace function public.checklist_get(p_list text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare c public.checklists; d jsonb;
+begin
+  if not public.ck_can('tick') then return jsonb_build_object('error', 'not_allowed'); end if;
+  if p_list is null then
+    return jsonb_build_object('day', public.ck_today(), 'can_edit', public.ck_can('edit'), 'lists', (select coalesce(jsonb_agg(jsonb_build_object(
+      'id', c2.id, 'title', c2.title,
+      'total', (select count(*) from jsonb_array_elements(c2.items) i where not coalesce((i ->> 'head')::boolean, false)),
+      'done', (select count(*) from jsonb_array_elements(c2.items) i where not coalesce((i ->> 'head')::boolean, false)
+                 and coalesce(cd.done, '{}'::jsonb) ? (i ->> 'id'))) order by c2.sort), '[]'::jsonb)
+      from public.checklists c2 left join public.checklist_days cd on cd.list_id = c2.id and cd.day = public.ck_today()));
+  end if;
+  select * into c from public.checklists where id = p_list;
+  if not found then return jsonb_build_object('error', 'no_list'); end if;
+  select done into d from public.checklist_days where list_id = p_list and day = public.ck_today();
+  return jsonb_build_object('id', c.id, 'title', c.title, 'items', c.items, 'day', public.ck_today(), 'done', coalesce(d, '{}'::jsonb),
+    'can_edit', public.ck_can('edit'), 'me', public.hub_me());
+end $$;
+revoke all on function public.checklist_get(text) from public, anon;
+grant execute on function public.checklist_get(text) to authenticated;
+
+create or replace function public.checklist_tick(p_list text, p_item text, p_on boolean, p_by text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare who text;
+begin
+  if not public.ck_can('tick') then return jsonb_build_object('error', 'not_allowed'); end if;
+  who := case when coalesce(public.staff_role() = 'hub', false) and length(trim(coalesce(p_by, ''))) > 0 then left(trim(p_by), 60) else public.hub_me() end;
+  insert into public.checklist_days (list_id, day) values (p_list, public.ck_today()) on conflict do nothing;
+  update public.checklist_days set done = case when p_on then done || jsonb_build_object(p_item, jsonb_build_object('by', who, 'at', now())) else done - p_item end
+  where list_id = p_list and day = public.ck_today();
+  return public.checklist_get(p_list);
+end $$;
+revoke all on function public.checklist_tick(text, text, boolean, text) from public, anon;
+grant execute on function public.checklist_tick(text, text, boolean, text) to authenticated;
+
+create or replace function public.checklist_save(p_list text, p_title text, p_items jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.ck_can('edit') then return jsonb_build_object('error', 'not_allowed'); end if;
+  if jsonb_typeof(p_items) <> 'array' then return jsonb_build_object('error', 'bad_items'); end if;
+  update public.checklists set title = coalesce(nullif(trim(p_title), ''), title), items = p_items, updated_at = now() where id = p_list;
+  return public.checklist_get(p_list);
+end $$;
+revoke all on function public.checklist_save(text, text, jsonb) from public, anon;
+grant execute on function public.checklist_save(text, text, jsonb) to authenticated;
 
 -- 6. Make the Hub's login (do this once, after adding the user in Authentication > Users):
 --    change the email below to the one you used, then run just these three lines.
