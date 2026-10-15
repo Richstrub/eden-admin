@@ -153,7 +153,7 @@ dialog textarea{min-height:80px}
   <div class="fields">
     <label class="f">BEO #<input data-k="ev.beo"></label>
     <label class="f">Event name<input data-k="ev.name"></label>
-    <label class="f">Event type<select data-k="ev.type"><option></option><option>Wedding</option><option>Corporate</option><option>Social</option><option>Brunch</option><option>Lunch</option><option>Dinner</option><option>Other</option></select></label>
+    <label class="f">Event type<input data-k="ev.type" list="evTypeList" placeholder="e.g., Wedding, Dinner" autocomplete="off"><datalist id="evTypeList"><option>Wedding</option><option>Corporate</option><option>Social</option><option>Brunch</option><option>Lunch</option><option>Dinner</option><option>Other</option></datalist></label>
     <label class="f">Event date<input type="date" data-k="ev.date"></label>
     <label class="f">Start time<input type="time" data-k="ev.start"></label>
     <label class="f">End time<input type="time" data-k="ev.end"></label>
