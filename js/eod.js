@@ -5,11 +5,12 @@
  *   #eod/past      Past reports: open any report, and reopen a submitted one to change it.
  *   #eod/download  Owner only: an Excel file of the last 1, 3, 6 or 12 months, with a ready-made prompt at the top
  *                  to give Claude for an analysis of how the restaurant is doing.
- * The table and its rules are in supabase/eod-reports.sql.
+ * The table and its rules are in supabase/eod-reports.sql. Tips (cash and credit card, split by hours among the tip pool,
+ * emailed to each person when the report is submitted, with a copy to the Owner) are in supabase/eod-tips.sql.
  */
 (function () {
   'use strict';
-  var SECTIONS = [["Service summary", [["reservations", "Reservations", "int"], ["actual_covers", "Actual covers", "int"], ["walk_ins", "Walk-ins", "int"], ["cancellations", "Cancellations / no-shows", "int"], ["private_events", "Private events", "text"], ["service_rating", "Overall service rating", "rating"], ["overview", "General overview", "long"]]], ["Sales & financials", [["net_sales", "Net sales", "money"], ["food_sales", "Food sales", "money"], ["beverage_sales", "Beverage sales", "money"], ["total_covers", "Total covers", "int"], ["avg_per_cover", "Average spend per cover", "calc"], ["comps", "Discounts / comps and reasons", "text"], ["voids", "Voids / refunds", "text"], ["payment_discrepancies", "Cash or payment discrepancies", "text"], ["cash_deposit", "Cash deposit owed", "money"]]], ["Guest experience", [["compliments", "Compliments and positive feedback", "text"], ["complaints", "Complaints and service recovery", "text"], ["vips", "VIPs / repeat guests / special occasions", "text"], ["dietary", "Dietary accommodations", "text"], ["guest_followups", "Guest follow-ups required", "text"]]], ["Food & beverage", [["dishes_returned", "Dishes returned or remade", "text"], ["quality_concerns", "Quality or presentation concerns", "text"], ["sold_out", "Sold-out items / menu changes", "text"], ["beverage_notes", "Beverage or wine service notes", "text"], ["coordination_issues", "Kitchen and service coordination issues", "text"]]], ["Staff & team performance", [["attendance", "Attendance / staffing changes", "text"], ["exceptional", "Exceptional performance", "text"], ["training_needs", "Training or coaching needs", "text"], ["conduct_issues", "Communication or conduct issues", "text"], ["staff_followup", "Follow-up required", "text"]]], ["Operations & maintenance", [["equipment_issues", "Equipment / POS issues", "text"], ["maintenance", "Maintenance requests", "text"], ["supplies", "Linen / glassware / service supplies", "text"], ["safety_concerns", "Cleanliness or safety concerns", "text"], ["lost_found", "Lost and found", "text"], ["incidents", "Incidents", "text"]]], ["Inventory & closing", [["stock_shortages", "Stock shortages", "text"], ["waste", "Waste / breakage", "text"], ["inventory_discrepancies", "High-value inventory discrepancies", "text"], ["closing_done", "Closing checklist completed", "bool"], ["closing_outstanding", "Outstanding closing tasks", "text"]]], ["Next-shift handover", [["next_reservations", "Upcoming reservations / VIPs", "text"], ["next_dietary", "Dietary or special requests", "text"], ["next_menu", "Menu / stock updates", "text"], ["next_staffing", "Staffing considerations", "text"], ["next_followups", "Guest follow-ups", "text"], ["next_priorities", "Prep or operational priorities", "text"]]], ["Action items", [["action_items", "Action items", "actions"]]], ["Manager’s final comments", [["went_well", "What went well", "long"], ["needs_improvement", "What needs improvement", "long"], ["final_priorities", "Priorities for next shift", "long"]]]];
+  var SECTIONS = [["Service summary", [["reservations", "Reservations", "int"], ["actual_covers", "Actual covers", "int"], ["walk_ins", "Walk-ins", "int"], ["cancellations", "Cancellations / no-shows", "int"], ["private_events", "Private events", "text"], ["service_rating", "Overall service rating", "rating"], ["overview", "General overview", "long"]]], ["Sales & financials", [["net_sales", "Net sales", "money"], ["food_sales", "Food sales", "money"], ["beverage_sales", "Beverage sales", "money"], ["total_covers", "Total covers", "int"], ["avg_per_cover", "Average spend per cover", "calc"], ["comps", "Discounts / comps and reasons", "text"], ["voids", "Voids / refunds", "text"], ["payment_discrepancies", "Cash or payment discrepancies", "text"], ["cash_deposit", "Cash deposit owed", "money"]]], ["Tips", [["tips", "Tips", "tips"]]], ["Guest experience", [["compliments", "Compliments and positive feedback", "text"], ["complaints", "Complaints and service recovery", "text"], ["vips", "VIPs / repeat guests / special occasions", "text"], ["dietary", "Dietary accommodations", "text"], ["guest_followups", "Guest follow-ups required", "text"]]], ["Food & beverage", [["dishes_returned", "Dishes returned or remade", "text"], ["quality_concerns", "Quality or presentation concerns", "text"], ["sold_out", "Sold-out items / menu changes", "text"], ["beverage_notes", "Beverage or wine service notes", "text"], ["coordination_issues", "Kitchen and service coordination issues", "text"]]], ["Staff & team performance", [["attendance", "Attendance / staffing changes", "text"], ["exceptional", "Exceptional performance", "text"], ["training_needs", "Training or coaching needs", "text"], ["conduct_issues", "Communication or conduct issues", "text"], ["staff_followup", "Follow-up required", "text"]]], ["Operations & maintenance", [["equipment_issues", "Equipment / POS issues", "text"], ["maintenance", "Maintenance requests", "text"], ["supplies", "Linen / glassware / service supplies", "text"], ["safety_concerns", "Cleanliness or safety concerns", "text"], ["lost_found", "Lost and found", "text"], ["incidents", "Incidents", "text"]]], ["Inventory & closing", [["stock_shortages", "Stock shortages", "text"], ["waste", "Waste / breakage", "text"], ["inventory_discrepancies", "High-value inventory discrepancies", "text"], ["closing_done", "Closing checklist completed", "bool"], ["closing_outstanding", "Outstanding closing tasks", "text"]]], ["Next-shift handover", [["next_reservations", "Upcoming reservations / VIPs", "text"], ["next_dietary", "Dietary or special requests", "text"], ["next_menu", "Menu / stock updates", "text"], ["next_staffing", "Staffing considerations", "text"], ["next_followups", "Guest follow-ups", "text"], ["next_priorities", "Prep or operational priorities", "text"]]], ["Action items", [["action_items", "Action items", "actions"]]], ["Manager’s final comments", [["went_well", "What went well", "long"], ["needs_improvement", "What needs improvement", "long"], ["final_priorities", "Priorities for next shift", "long"]]]];
   var SHIFTS = [['dinner', 'Dinner'], ['private', 'Private event'], ['both', 'Both']];
   var PRIORITY = ['High', 'Medium', 'Low'];
   var R = { ctx: null, el: null, rep: null, dirty: false, saving: null, timer: null, missing: false, people: [], editing: false, list: null, filter: { month: '', q: '' } };
@@ -41,13 +42,18 @@
   function isMissing(err) { return !!err && (/eod_reports|does not exist|schema cache|not find/i.test(err.message || '') || err.code === '42P01' || err.code === 'PGRST205'); }
   function avg(r) { var n = Number(r.net_sales), c = Number(r.total_covers); return r.net_sales != null && r.net_sales !== '' && c > 0 ? Math.round(n / c * 100) / 100 : null; }
   function blank() {
-    var r = { id: null, report_date: today(), shift: 'dinner', status: 'draft', action_items: [{}, {}], prepared_by: '' };
-    fields().forEach(function (f) { if (!(f[0] in r)) r[f[0]] = f[2] === 'int' || f[2] === 'money' || f[2] === 'rating' || f[2] === 'bool' || f[2] === 'calc' ? null : f[2] === 'actions' ? [{}, {}] : ''; });
+    var r = { id: null, report_date: today(), shift: 'dinner', status: 'draft', action_items: [{}, {}], prepared_by: '', tips_cash: null, tips_card: null, tip_staff: [] };
+    fields().forEach(function (f) { if (f[2] === 'tips') return; if (!(f[0] in r)) r[f[0]] = f[2] === 'int' || f[2] === 'money' || f[2] === 'rating' || f[2] === 'bool' || f[2] === 'calc' ? null : f[2] === 'actions' ? [{}, {}] : ''; });
     return r;
   }
   var COLS = null;   // the columns written to the database (everything except what it works out itself)
-  function cols() { if (!COLS) { COLS = ['report_date', 'shift', 'status', 'prepared_by', 'prepared_by_id', 'edited_after_submit_by']; fields().forEach(function (f) { if (f[2] !== 'calc') COLS.push(f[0]); }); } return COLS; }
-  function rowFor(r) { var o = {}; cols().forEach(function (k) { if (k in r) o[k] = r[k]; }); o.action_items = (r.action_items || []).filter(function (a) { return a && (a.task || a.assigned || a.deadline); }); return o; }
+  function cols() {
+    if (!COLS) { COLS = ['report_date', 'shift', 'status', 'prepared_by', 'prepared_by_id', 'edited_after_submit_by']; fields().forEach(function (f) { if (f[2] !== 'calc' && f[2] !== 'tips') COLS.push(f[0]); }); }
+    return R.tipsOn ? COLS.concat(['tips_cash', 'tips_card', 'tip_staff']) : COLS;   // tips only once supabase/eod-tips.sql has been run
+  }
+  function rowFor(r) { var o = {}; cols().forEach(function (k) { if (k in r) o[k] = r[k]; }); o.action_items = (r.action_items || []).filter(function (a) { return a && (a.task || a.assigned || a.deadline); });
+    if ('tip_staff' in o) o.tip_staff = (r.tip_staff || []).filter(function (p) { return p && p.emp; }).map(function (p) { return { emp: p.emp, name: p.name || '', hours: Math.max(0, Number(p.hours) || 0) }; });
+    return o; }
 
   /* ---------- page ---------- */
   function show(ctx) {
@@ -91,7 +97,7 @@
       if (res.error) { R.missing = isMissing(res.error); var w = frame('Office · End of day report', 'End of day report'); if (R.missing) missingNote(w); else w.appendChild(h('p', { cls: 'eo-err', text: 'Couldn’t load reports. Check your connection and reload.' })); return; }
       var rows = res.data || [];
       var draft = rows.filter(function (r) { return r.status === 'draft'; })[0];
-      R.rep = draft ? norm(draft) : blank(); R.editing = true; R.dirty = false;
+      R.tipTouched = false; R.rep = draft ? norm(draft) : blank(); R.editing = true; R.dirty = false;
       R.doneToday = rows.filter(function (r) { return r.status === 'submitted'; });
       return loadPeople().then(paintForm);
     });
@@ -101,11 +107,11 @@
     R.el.innerHTML = ''; R.el.appendChild(h('p', { cls: 'eo-loading', text: 'Opening the report…' }));
     return R.ctx.sb.from('eod_reports').select('*').eq('id', id).maybeSingle().then(function (res) {
       if (res.error || !res.data) { var w = frame('Office · Past reports', 'Report not found'); w.appendChild(h('p', { cls: 'eo-lead', text: 'It may have been deleted.' })); w.appendChild(h('a', { cls: 'ed-btn small', href: '#eod/past', text: 'Back to past reports' })); return; }
-      R.rep = norm(res.data); R.editing = R.rep.status === 'draft'; R.dirty = false; R.doneToday = [];
+      R.tipTouched = true; R.rep = norm(res.data); R.editing = R.rep.status === 'draft'; R.dirty = false; R.doneToday = [];
       return loadPeople().then(paintForm);
     });
   }
-  function norm(r) { var b = blank(); Object.keys(r).forEach(function (k) { if (r[k] !== null && r[k] !== undefined) b[k] = r[k]; else if (k in b) b[k] = null; }); if (!Array.isArray(b.action_items) || !b.action_items.length) b.action_items = [{}, {}]; fields().forEach(function (f) { if ((f[2] === 'text' || f[2] === 'long') && b[f[0]] == null) b[f[0]] = ''; }); return b; }
+  function norm(r) { var b = blank(); Object.keys(r).forEach(function (k) { if (r[k] !== null && r[k] !== undefined) b[k] = r[k]; else if (k in b) b[k] = null; }); if (!Array.isArray(b.action_items) || !b.action_items.length) b.action_items = [{}, {}]; if (!Array.isArray(b.tip_staff)) b.tip_staff = []; if ('tips_cash' in r) R.tipsOn = true; fields().forEach(function (f) { if ((f[2] === 'text' || f[2] === 'long') && b[f[0]] == null) b[f[0]] = ''; }); return b; }
 
   function paintForm() {
     var r = R.rep, ro = !R.editing, isNew = !r.id;
@@ -126,7 +132,7 @@
     }
     var form = h('form', { cls: 'eo-form' + (ro ? ' eo-ro' : ''), novalidate: true, on: { submit: function (e) { e.preventDefault(); } } });
     // date and shift
-    var date = h('input', { type: 'date', cls: 'eo-in', value: r.report_date, disabled: ro, required: true, 'aria-label': 'Date', on: { change: function () { r.report_date = this.value || today(); changed(); R.closing = null; paintClosing(); loadClosing(); } } });
+    var date = h('input', { type: 'date', cls: 'eo-in', value: r.report_date, disabled: ro, required: true, 'aria-label': 'Date', on: { change: function () { r.report_date = this.value || today(); changed(); R.closing = null; paintClosing(); loadClosing(); if (!R.tipTouched) { r.tip_staff = []; loadTipStaff(true); } } } });
     form.appendChild(h('section', { cls: 'eo-card eo-head' }, [
       h('label', { cls: 'eo-f eo-date' }, [h('span', { cls: 'eo-l', text: 'Date' }), date]),
       h('div', { cls: 'eo-f' }, [h('span', { cls: 'eo-l', text: 'Shift' }), seg(SHIFTS, r.shift, ro, function (v) { r.shift = v; changed(); }, 'Shift')])]));
@@ -214,6 +220,7 @@
       return h('div', { cls: 'eo-f eo-num' }, [h('span', { cls: 'eo-l', text: label }), seg([['yes', 'Yes'], ['no', 'No']], r[k] === true ? 'yes' : r[k] === false ? 'no' : '', ro, function (v) { r[k] = v === 'yes'; changed(); }, label)]);
     }
     if (type === 'actions') return actions(ro);
+    if (type === 'tips') return tipsBox(ro);
     var ta = h('textarea', { id: id, cls: 'eo-in eo-ta', rows: type === 'long' ? '3' : '1', disabled: ro, placeholder: ro ? '' : 'Nothing to note', on: { input: function () { r[k] = this.value; grow(this); changed(); } } });
     ta.value = r[k] || '';
     return h('label', { cls: 'eo-f eo-wide', 'for': id }, [h('span', { cls: 'eo-l', text: label }), ta]);
@@ -243,6 +250,109 @@
   }
   function grow(t) { t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight + 2, 40) + 'px'; }
   function autoGrow(root) { setTimeout(function () { root.querySelectorAll('textarea.eo-ta').forEach(grow); }, 0); }
+
+  /* ---------- tips: cash and credit card, pooled and split by hours ---------- */
+  function cents(n) { return Math.round((Number(n) || 0) * 100); }
+  function split(total, people) {   // whole cents; the odd cents go to the largest remainders, so the shares add up exactly
+    var c = cents(total), hrs = people.reduce(function (a, p) { return a + (Number(p.hours) || 0); }, 0);
+    if (!c || !hrs) return people.map(function () { return 0; });
+    var parts = people.map(function (p, i) { var x = c * (Number(p.hours) || 0) / hrs; return { i: i, b: Math.floor(x), r: x - Math.floor(x) }; });
+    var left = c - parts.reduce(function (a, p) { return a + p.b; }, 0);
+    parts.slice().sort(function (a, b) { return b.r - a.r; }).forEach(function (p) { if (left > 0) { p.b++; left--; } });
+    return parts.map(function (p) { return p.b / 100; });
+  }
+  function tipCalc(r) {
+    var ppl = (r.tip_staff || []).filter(function (p) { return Number(p.hours) > 0; });
+    var cash = split(r.tips_cash, ppl), card = split(r.tips_card, ppl), hrs = ppl.reduce(function (a, p) { return a + Number(p.hours); }, 0);
+    var share = {}; ppl.forEach(function (p, i) { share[p.emp] = { cash: cash[i], card: card[i] }; });
+    return { share: share, hours: Math.round(hrs * 100) / 100, cash: Number(r.tips_cash) || 0, card: Number(r.tips_card) || 0 };
+  }
+  function tipsReady(r) { return !!(R.tipsOn && (Number(r.tips_cash) > 0 || Number(r.tips_card) > 0) && (r.tip_staff || []).some(function (p) { return Number(p.hours) > 0; })); }
+  function hrsTxt(n) { n = Math.round(Number(n) * 100) / 100; return n + (n === 1 ? ' hr' : ' hrs'); }
+  function loadTipStaff(fill) {
+    var r = R.rep, day = r.report_date;
+    return R.ctx.sb.rpc('eod_tip_staff', { p_date: day }).then(function (x) {
+      if (x.error) { if (/eod_tip_staff|function|schema cache/i.test(x.error.message || '')) { R.tipsOn = false; paintTips(); } return; }
+      var d = x.data || {}; if (d.error || R.rep !== r || r.report_date !== day) return;
+      R.tipsOn = true; R.tipEveryone = d.everyone || []; R.tipPosted = !!d.posted; R.tipByRates = !!d.by_rates;
+      if (fill && !(r.tip_staff || []).length) { r.tip_staff = (d.staff || []).map(function (p) { return { emp: p.emp, name: p.name, hours: Number(p.hours) || 0 }; }); if (r.tip_staff.length && r.id) changed(); }
+      paintTips();
+    }, function () {});
+  }
+  function tipsBox(ro) {
+    R.tipsEl = h('div', { cls: 'eo-wide eo-tips' }); R.tipsRo = ro;
+    paintTips();
+    if (R.tipsOn !== false) loadTipStaff(!ro);
+    return R.tipsEl;
+  }
+  function paintTips() {
+    var el = R.tipsEl, r = R.rep, ro = R.tipsRo; if (!el) return;
+    el.innerHTML = '';
+    if (R.tipsOn === false) { el.appendChild(h('p', { cls: 'eo-note', text: R.ctx.role === 'owner' ? 'One step to switch on tips: in Supabase, open SQL Editor > New query, paste in supabase/eod-tips.sql and click Run. Then reload this page.' : 'Tips aren’t switched on yet. Ask the Owner.' })); return; }
+    var c = tipCalc(r);
+    function moneyIn(k, label) {
+      var inp = h('input', { cls: 'eo-in', type: 'text', inputmode: 'decimal', autocomplete: 'off', disabled: ro, value: r[k] == null ? '' : Number(r[k]).toFixed(2), 'aria-label': label });
+      inp.addEventListener('input', function () { var v = inp.value.replace(/[$,\s]/g, ''), n = v === '' ? null : Math.round(parseFloat(v) * 100) / 100; inp.classList.toggle('bad', v !== '' && (isNaN(n) || n < 0)); if (inp.classList.contains('bad')) return; r[k] = n; changed(); paintTipRows(); });
+      inp.addEventListener('blur', function () { if (r[k] != null && !inp.classList.contains('bad')) inp.value = Number(r[k]).toFixed(2); });
+      return h('label', { cls: 'eo-f eo-num' }, [h('span', { cls: 'eo-l', text: label }), h('span', { cls: 'eo-money' }, [h('span', { cls: 'eo-cur', text: '$' }), inp])]);
+    }
+    el.appendChild(h('div', { cls: 'eo-grid' }, [moneyIn('tips_cash', 'Cash tips'), moneyIn('tips_card', 'Credit card tips')]));
+    var table = h('div', { cls: 'eo-tiptbl', role: 'table', 'aria-label': 'Tip pool' }); el.appendChild(table);
+    var sum = h('p', { cls: 'eo-note eo-tipsum' }); el.appendChild(sum);
+    function paintTipRows() {
+      c = tipCalc(r); table.innerHTML = '';
+      table.appendChild(h('div', { cls: 'eo-tiprow eo-tiphead', role: 'row' }, ['Tip pool', 'Hours', 'Cash', 'Card', 'Total', ''].map(function (t) { return h('span', { role: 'columnheader', text: t }); })));
+      (r.tip_staff || []).forEach(function (p, i) {
+        var sh = c.share[p.emp] || { cash: 0, card: 0 };
+        var who = (R.tipEveryone || []).filter(function (e) { return e.emp === p.emp; })[0];
+        var hrs = h('input', { cls: 'eo-in', type: 'text', inputmode: 'decimal', disabled: ro, value: p.hours ? String(p.hours) : '', placeholder: '0', 'aria-label': 'Hours for ' + p.name });
+        hrs.addEventListener('input', function () { var n = parseFloat(hrs.value.replace(',', '.')); hrs.classList.toggle('bad', hrs.value !== '' && (isNaN(n) || n < 0 || n > 24)); if (hrs.classList.contains('bad')) return; p.hours = hrs.value === '' ? 0 : Math.round(n * 100) / 100; R.tipTouched = true; changed(); paintNums(); });
+        table.appendChild(h('div', { cls: 'eo-tiprow', role: 'row', 'data-emp': p.emp }, [
+          h('span', { cls: 'eo-tipname', role: 'cell' }, [h('b', { text: p.name || 'Team member' }), who && !who.email ? h('small', { cls: 'eo-tipwarn', text: 'No email on file' }) : null]),
+          h('span', { role: 'cell' }, [hrs]),
+          h('span', { role: 'cell', cls: 'eo-tipn', 'data-k': 'cash', text: money(sh.cash) }), h('span', { role: 'cell', cls: 'eo-tipn', 'data-k': 'card', text: money(sh.card) }), h('span', { role: 'cell', cls: 'eo-tipn eo-tipt', 'data-k': 'total', text: money(Math.round((sh.cash + sh.card) * 100) / 100) }),
+          ro ? h('span') : h('button', { type: 'button', cls: 'eo-x', 'aria-label': 'Remove ' + p.name, title: 'Remove', text: '✕', on: { click: function () { r.tip_staff.splice(i, 1); R.tipTouched = true; changed(); paintTipRows(); } } })]));
+      });
+      if (!(r.tip_staff || []).length) table.appendChild(h('p', { cls: 'eo-empty', text: R.tipEveryone ? (R.tipPosted ? 'Nobody in the tip pool is on the schedule for this day. Add who worked below.' : 'There’s no posted schedule for this day. Add who worked below.') : 'Loading who worked…' }));
+      if (!ro) {
+        var have = {}; (r.tip_staff || []).forEach(function (p) { have[p.emp] = 1; });
+        var opts = (R.tipEveryone || []).filter(function (e) { return !have[e.emp]; }).sort(function (a, b) { return (b.pool ? 1 : 0) - (a.pool ? 1 : 0) || String(a.name).localeCompare(b.name); });
+        var add = h('select', { cls: 'eo-in', 'aria-label': 'Add someone to the tip pool' }, [h('option', { value: '', text: '+ Add someone who worked' })].concat(opts.map(function (e) { return h('option', { value: e.emp, text: e.name + (e.position ? ' · ' + e.position : '') }); })));
+        add.addEventListener('change', function () { var e = opts.filter(function (x) { return x.emp === add.value; })[0]; if (!e) return; r.tip_staff.push({ emp: e.emp, name: e.name, hours: 0 }); R.tipTouched = true; changed(); paintTipRows(); var q = table.querySelector('[data-emp="' + e.emp + '"] input'); if (q) q.focus(); });
+        var refill = h('button', { type: 'button', cls: 'eo-tipfill', text: 'Fill in from the schedule', on: { click: function () { if ((r.tip_staff || []).length && !confirm('Replace this list with the tip-pool staff on the schedule for this day?')) return; r.tip_staff = []; R.tipTouched = false; loadTipStaff(true).then(function () { changed(); }); } } });
+        table.appendChild(h('div', { cls: 'eo-tipadd' }, [add, refill]));
+      }
+      paintNums();
+    }
+    function paintNums() {
+      c = tipCalc(r);
+      table.querySelectorAll('.eo-tiprow[data-emp]').forEach(function (row) { var sh = c.share[row.getAttribute('data-emp')] || { cash: 0, card: 0 }; row.querySelector('[data-k=cash]').textContent = money(sh.cash); row.querySelector('[data-k=card]').textContent = money(sh.card); row.querySelector('[data-k=total]').textContent = money(Math.round((sh.cash + sh.card) * 100) / 100); });
+      sum.textContent = c.hours ? money(c.cash) + ' cash and ' + money(c.card) + ' credit card over ' + hrsTxt(c.hours) + ': ' + money(c.cash / c.hours) + ' cash and ' + money(c.card / c.hours) + ' card per hour.' : 'Enter the tips and each person’s hours. The pool is split by hours worked, cash and card separately.';
+    }
+    paintTipRows();
+    // emailing
+    var sent = r.tips_sent_at ? 'Emailed ' + stamp(r.tips_sent_at) + ': ' + (r.tips_sent || []).map(function (x) { return x.name + (x.ok ? ' ✓' : ' (' + (x.error || 'not sent') + ')'); }).join(', ') + '.' : '';
+    el.appendChild(h('p', { cls: 'eo-note', text: r.status === 'submitted' ? (sent || 'Tips haven’t been emailed for this report.') : 'When you submit the report, each person is emailed their share (cash and card separately) at the email on their login, and the Owner gets a copy of everyone’s.' }));
+    if (r.status === 'submitted' && r.id) {
+      var again = h('button', { type: 'button', cls: 'eo-btn', text: r.tips_sent_at ? 'Email tips again' : 'Email tips now', disabled: !tipsReady(r), on: { click: function () {
+        if (r.tips_sent_at && !confirm('Email everyone their tips again?')) return;
+        again.disabled = true; again.textContent = 'Sending…';
+        save().then(function () { return sendTips(r); }).then(function (m) { say(m.text, m.ok ? 'ok' : 'err'); paintTips(); });
+      } } });
+      el.appendChild(h('div', { cls: 'eo-actions eo-tipacts' }, [again]));
+    }
+  }
+  function sendTips(r) {
+    return R.ctx.sb.auth.getSession().then(function (x) {
+      var jwt = x && x.data && x.data.session && x.data.session.access_token || '';
+      return fetch('admin/tips', { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + jwt }, body: JSON.stringify({ id: r.id }) });
+    }).then(function (x) { return x.json().catch(function () { return {}; }).then(function (j) { return { ok: x.ok && j.ok, j: j }; }); }).then(function (res) {
+      if (!res.ok) return { ok: false, text: (res.j && res.j.message) || 'The tip emails couldn’t be sent.' };
+      r.tips_sent_at = res.j.at; r.tips_sent = (res.j.sent || []).concat([{ name: 'Owner’s copy', ok: !!res.j.copy, error: res.j.copy ? '' : 'Not sent' }]);
+      var good = (res.j.sent || []).filter(function (x) { return x.ok; }), bad = (res.j.sent || []).filter(function (x) { return !x.ok; });
+      return { ok: !bad.length && res.j.copy, text: 'Tips emailed to ' + good.length + (good.length === 1 ? ' person' : ' people') + (res.j.copy ? ', with a copy to the Owner' : '') + '.' + (bad.length ? ' Not sent to ' + bad.map(function (x) { return x.name + ' (' + x.error + ')'; }).join(', ') + '.' : '') + (res.j.copy ? '' : ' The Owner’s copy didn’t send.') };
+    }, function () { return { ok: false, text: 'Couldn’t reach the staff site to email the tips. Open the report and use “Email tips again”.' }; });
+  }
 
   /* ---------- saving ---------- */
   function changed() {
@@ -324,6 +434,11 @@
             h('button', { type: 'button', cls: 'eo-btn', text: 'Start another report', on: { click: function () { R.rep = blank(); R.editing = true; R.coversTouched = false; R.doneToday = [r]; paintForm(); } } })])]));
         say('Report submitted.', 'ok');
         R.list = null;
+        if (tipsReady(r)) {   // email everyone their tips, and the Owner a copy
+          var tipNote = h('p', { cls: 'eo-note eo-tipsent', text: 'Emailing tips…' });
+          w.querySelector('.eo-done').insertBefore(tipNote, w.querySelector('.eo-done .eo-actions'));
+          sendTips(r).then(function (m) { tipNote.textContent = m.text; tipNote.classList.toggle('err', !m.ok); });
+        }
       });
     });
   }
@@ -450,7 +565,7 @@
       XLSX.utils.book_append_sheet(wb, ws0, 'Start here');
       // 2. Reports: one row per report
       var head = ['Date', 'Day', 'Shift', 'Status'], keys = [];
-      fields().forEach(function (f) { if (f[2] !== 'actions') { head.push(f[1] + (f[2] === 'money' || f[2] === 'calc' ? ' ($)' : f[2] === 'rating' ? ' (1-5)' : '')); keys.push(f); } });
+      fields().concat([['tips_cash', 'Cash tips', 'money'], ['tips_card', 'Credit card tips', 'money']]).forEach(function (f) { if (f[2] !== 'actions' && f[2] !== 'tips') { head.push(f[1] + (f[2] === 'money' || f[2] === 'calc' ? ' ($)' : f[2] === 'rating' ? ' (1-5)' : '')); keys.push(f); } });
       head.push('Action items', 'Prepared by', 'Time submitted', 'Changed after submitting');
       var data = [head];
       rows.forEach(function (r) {

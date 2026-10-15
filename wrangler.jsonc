@@ -23,7 +23,10 @@
     "OPENTABLE_MAILBOX": "rich@edencny.com",
     // Promotional emails come from this address; guests' replies go to PROMO_REPLY_TO
     "PROMO_FROM": "Eden <info@edencny.com>",
-    "PROMO_REPLY_TO": "info@edencny.com"
+    "PROMO_REPLY_TO": "info@edencny.com",
+    // End of day report: nightly tip emails come from TIPS_FROM; the Owner's copy of everyone's shares goes to TIPS_COPY_TO
+    "TIPS_FROM": "Eden <info@edencny.com>",
+    "TIPS_COPY_TO": "Rich@edencny.com"
   },
   // every 20 minutes the worker looks for today's OpenTable email (Pre-shift)
   // (the worker runs every 5 minutes: promotional emails that are due each time, Pre-shift and the Prep List every 20 minutes)

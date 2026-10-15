@@ -1571,8 +1571,8 @@ body.nt-open #app{visibility:hidden!important}
 .eo-x{flex:none;margin-top:22px;width:34px;height:34px;border:0;border-radius:17px;background:none;color:#857f75;cursor:pointer}
 .eo-x:hover{background:rgba(15,18,21,.06)}
 .eo-task-meta{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,170px);gap:12px;padding-left:36px;align-items:end}
-.eo-add{justify-self:start;background:none;border:1px dashed rgba(15,18,21,.25);border-radius:18px;padding:8px 16px;font:inherit;font-size:.86rem;color:#5d5952;cursor:pointer}
-.eo-add:hover{border-color:var(--ember);color:var(--ink)}
+.eo-add,.eo-tipfill{justify-self:start;background:none;border:1px dashed rgba(15,18,21,.25);border-radius:18px;padding:8px 16px;font:inherit;font-size:.86rem;color:#5d5952;cursor:pointer}
+.eo-add:hover,.eo-tipfill:hover{border-color:var(--ember);color:var(--ink)}
 .eo-sign{display:flex;flex-wrap:wrap;gap:16px 48px}
 .eo-val{font-size:1rem;color:var(--ink)}
 .eo-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -2374,3 +2374,29 @@ body.nt-open #app{visibility:hidden!important}
 .mp-opt span{font-size:.82rem;color:#4a4e53}
 .mp-opt:hover,.mp-opt:focus-visible{border-color:var(--ember);background:#fbf3e9}
 .mp-msg{min-height:1.2em;font-size:.85rem;color:#4a4e53;margin:10px 0 0}
+/* End of day report: tips */
+.eo-tips{display:grid;gap:14px}
+.eo-tips .eo-grid{grid-template-columns:repeat(auto-fill,minmax(180px,240px))}
+.eo-tiptbl{display:grid;border-top:1px solid rgba(15,18,21,.08)}
+.eo-tiprow{display:grid;grid-template-columns:minmax(0,1.6fr) 84px repeat(3,minmax(70px,.8fr)) 34px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(15,18,21,.06)}
+.eo-tiphead{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#857f75;padding:10px 0 6px}
+.eo-tiphead span:nth-child(n+3){text-align:right}
+.eo-tipname{display:grid;min-width:0}
+.eo-tipname b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eo-tipwarn{font-size:.74rem;color:#a3392b}
+.eo-tipn{text-align:right;font-variant-numeric:tabular-nums;color:#3d4145}
+.eo-tipt{font-weight:600;color:var(--ink)}
+.eo-tiprow .eo-in{padding:8px 10px;text-align:right}
+.eo-tiprow .eo-x{margin:0}
+.eo-tiptbl .eo-empty{padding:14px 0}
+.eo-tipadd{display:grid;grid-template-columns:minmax(0,320px) auto;gap:10px;align-items:center;justify-content:start;padding-top:12px}
+.eo-tipsum{margin:0}
+.eo-tipacts{margin-top:0}
+.eo-tipsent.err{color:#a3392b}
+@media (max-width:640px){
+  .eo-tiprow{grid-template-columns:72px repeat(3,minmax(0,1fr)) 30px;row-gap:6px}
+  .eo-tipname{grid-column:1/-1}
+  .eo-tiphead span:first-child{display:none}
+  .eo-tiphead{grid-template-columns:72px repeat(3,minmax(0,1fr)) 30px}
+  .eo-tipadd{grid-template-columns:1fr}
+}

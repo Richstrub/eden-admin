@@ -97,8 +97,10 @@ begin
   new.title := 'End of day report · ' || to_char(new.report_date, 'Dy Mon FMDD, YYYY') || ' · ' ||
     case new.shift when 'dinner' then 'Dinner' when 'private' then 'Private event' else 'Dinner and private event' end;
   if new.status = 'submitted' and new.submitted_at is null then new.submitted_at := now(); end if;
-  if tg_op = 'UPDATE' and old.status = 'submitted' and new.submitted_at is not distinct from old.submitted_at then
-    new.edited_after_submit_at := now();
+  if tg_op = 'UPDATE' and old.status = 'submitted' and new.submitted_at is not distinct from old.submitted_at
+     and (to_jsonb(new) - array['updated_at', 'tips_sent_at', 'tips_sent', 'edited_after_submit_at', 'edited_after_submit_by'])
+         is distinct from (to_jsonb(old) - array['updated_at', 'tips_sent_at', 'tips_sent', 'edited_after_submit_at', 'edited_after_submit_by']) then
+    new.edited_after_submit_at := now();   -- sending the tip emails alone doesn't count as a change
   end if;
   return new;
 end $$;
