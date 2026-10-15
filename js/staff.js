@@ -179,6 +179,7 @@
     var full = v + (sub ? '/' + sub : ''), exact = !!document.querySelector('#app [data-view="' + full + '"]');
     document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
+    $('printMenusBtn').hidden = v !== 'menu' || !window.EdenMenuPrint;
     var pg = PAGES[v] || ['', ''], subName = v === 'payroll' && sub === 'rates' ? 'Pay rates' : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
@@ -272,7 +273,7 @@
     b.hidden = !(from && view !== 'home');
     b.textContent = '\u2190 Today' + (todayLeft ? ' \u00b7 ' + todayLeft + ' left' : '');
   }
-  function todayCtx() { return { sb: sb, el: $('viewHome'), status: status, role: role, name: staffName, isMgr: isMgr(), isOwner: role === 'owner', canPrep: canPrep(), site: CFG.publicSite || '', onCounts: paintCounts, menu: currentMenu }; }
+  function todayCtx() { return { sb: sb, el: $('viewHome'), status: status, role: role, name: staffName, isMgr: isMgr(), isOwner: role === 'owner', canPrep: canPrep(), site: CFG.publicSite || '', onCounts: paintCounts }; }
   function paintCounts(c) {
     todayLeft = c.total || 0;
     var set = function (k, v, on) { document.querySelectorAll('[data-badge="' + k + '"]').forEach(function (el) { el.textContent = v || ''; el.hidden = !v; el.classList.toggle('on', !!on); }); };
@@ -313,10 +314,10 @@
   }
   window.addEventListener('hashchange', route);
   $('notesBtn').addEventListener('click', function () { if (window.EdenNotes) window.EdenNotes.open(); });
-  // the live menu, for printing from the dashboard (loads it first if the menu hasn't been read yet)
+  // the published menu, for Print menus on the Menu & Supper Club page (loads it first if the menu hasn't been read yet)
   function currentMenu() {
-    if (store.loaded) return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] };
-    return loadAll().then(function () { return menuData || assembleMenu() || window.EDEN_MENU_SEED || { tabs: [] }; });
+    if (store.loaded) return assembleMenu() || menuData || window.EDEN_MENU_SEED || { tabs: [] };
+    return loadAll().then(function () { return assembleMenu() || menuData || window.EDEN_MENU_SEED || { tabs: [] }; });
   }
   function renderHome() { if (window.EdenToday) window.EdenToday.show(todayCtx()); }
 
@@ -1041,5 +1042,7 @@
     return Promise.resolve();
   }
   $('edSave').onclick = function () { ed.dirty = true; save(); };
+  // print the published menu (what the website shows), not unsaved edits
+  $('printMenusBtn').onclick = function () { window.EdenMenuPrint.choose(currentMenu); };
   window.addEventListener('beforeunload', function (e) { if (ed.dirty || ed.saving) { save(); e.preventDefault(); e.returnValue = ''; } });
 })();

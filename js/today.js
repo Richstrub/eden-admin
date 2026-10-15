@@ -149,10 +149,7 @@
     var grid = h('div', { cls: 'td-in' });
     grid.appendChild(h('header', { cls: 'td-head' }, [
       h('p', { cls: 'home-eyebrow', text: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }),
-      h('h1', { cls: 'td-title', id: 'homeHello', text: (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '') }),
-      (ctx.isMgr && ctx.menu && window.EdenMenuPrint) ? h('div', { cls: 'td-tools' }, [
-        h('button', { type: 'button', cls: 'td-print', id: 'printMenusBtn', text: 'Print menus', on: { click: function () { window.EdenMenuPrint.choose(ctx.menu); } } })
-      ]) : null
+      h('h1', { cls: 'td-title', id: 'homeHello', text: (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '') })
     ]));
     // needs you
     var needs = h('section', { cls: 'td-needs', 'aria-labelledby': 'tdNeedsH' });
