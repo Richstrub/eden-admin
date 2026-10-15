@@ -31,6 +31,9 @@ h2{font-family:'Jost',system-ui,sans-serif;font-weight:400;font-size:24px;margin
 h3{font-size:15px;font-weight:600;margin:22px 0 6px}
 .note{color:var(--muted);font-size:14px;margin:0 0 14px;max-width:72ch}
 .warn{color:var(--warn);font-size:14px;margin:8px 0 0}
+.callout{font-size:14px;line-height:1.5;margin:10px 0 0;padding:10px 14px;background:var(--moss-soft);border-left:3px solid var(--brass);max-width:72ch}
+.inline label.off{opacity:.5}
+.callout[hidden]{display:none}
 .warn:empty{display:none}
 .ok{color:var(--moss);font-size:14px;margin:8px 0 0}
 .fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 16px}
@@ -166,10 +169,12 @@ dialog textarea{min-height:80px}
   </div>
   <p class="note" style="margin-top:12px">The final guarantee is due by 11:00 am, 5 business days before the event. If it isn't received, the expected count becomes the minimum guarantee.</p>
   <div class="inline">
-    <label><input type="checkbox" data-k="ev.alacarte"> À la carte dinner</label>
+    <label id="alaLbl"><input type="checkbox" data-k="ev.alacarte"> À la carte dinner <span class="item-desc">(Restaurant or 3rd floor only)</span></label>
     <label><input type="checkbox" data-k="ev.third"> Held in the third-floor space</label>
     <label><input type="checkbox" data-k="ev.waive"> Waive third-floor rental fee</label>
   </div>
+  <p class="warn" id="w-ala"></p>
+  <p class="callout" id="n-ala" hidden><b>À la carte on the 3rd floor:</b> the 3rd Floor Event Space has a <b>$2,500 food and beverage minimum</b>, or a <b>$250 room fee</b>. The room fee is on the bill below until you tick “Waive third-floor rental fee” once the minimum is met.</p>
 </section>
 
 <section class="block">
@@ -579,7 +584,17 @@ const unitPrice=it=>it.price==null?num(it.key+'.price'):it.price;
 function sumItems(items){let s=0;items.forEach(it=>{const q=num(it.key+'.qty');const tot=q*unitPrice(it);s+=tot;const cell=document.querySelector(`[data-total="${it.key}"]`);if(cell)cell.textContent=tot?fmt(tot):'—';const row=document.querySelector(`tr[data-row="${it.key}"]`);if(row)row.classList.toggle('on',q>0);});return s;}
 
 let LAST={};
+// À la carte dinner is offered only in the Restaurant and the 3rd Floor Event Space
+const ALA_ROOMS=['Restaurant',THIRD];
+function alaCheck(){
+  const ok=ALA_ROOMS.includes(String(S['ev.room']||'')),on=!!S['ev.alacarte'];
+  const cb=document.querySelector('[data-k="ev.alacarte"]');if(cb)cb.disabled=!ok&&!on;
+  $('alaLbl').classList.toggle('off',!ok&&!on);
+  $('w-ala').textContent=on&&!ok?'À la carte is only offered in the Restaurant or the 3rd Floor Event Space. Change the location or untick à la carte.':'';
+  $('n-ala').hidden=!(on&&S['ev.room']===THIRD);
+}
 function calc(){
+  alaCheck();
   const G=num('ev.guar')||num('ev.expected');
   const suiteT=sumItems(suite);
   const brunchT=sumItems(brunch)+sumItems(stations);
@@ -1007,6 +1022,8 @@ function clientPdf(){
    ...(tier&&pre?[`Pre-selected entree counts are due 14 days before the event${DL?` (${DL.entrees})`:''}.`]:[]),
    `The final guaranteed guest count is due by 11:00 am, 5 business days before the event${DL?` (${DL.guar})`:''}. If it isn't received, the expected count becomes the minimum guarantee.`,
    'Buffets and reception stations run 90 minutes, plated dinners 120 to 180 minutes, and breaks 30 minutes. Longer service carries an additional fee.',
+   ...(S['ev.alacarte']?['À la carte dinner is billed on what guests order.']:[]),
+   ...(S['ev.alacarte']&&S['ev.third']?['The 3rd Floor Event Space has a $2,500 food and beverage minimum, or a $250 room fee.']:[]),
    'Changes after signing must be made in writing and approved by the event manager.'
   ].forEach(t=>{const lines=d.wrap(t,CW-14,false,9.5);d.room(lines.length*12.5+3);const y3=d.get();d.text(M+2,y3-9.5,'•',{size:9.5,color:C.moss});lines.forEach((l,n)=>d.text(M+14,y3-9.5-n*12.5,l,{size:9.5}));d.down(lines.length*12.5+3);});
 
