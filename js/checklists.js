@@ -2,7 +2,8 @@
  * Ticked off on the Hub, a fresh copy each service day (a day runs until 4 am). The Owner and managers change the
  * items on the staff site (Service > Checklists), where they also see today's progress and who ticked what.
  * Data: supabase/hub.sql (checklists, checklist_days; checklist_get / checklist_tick / checklist_save).
- * Modes: 'hub' (one list, big rows to tap) and 'admin' (all lists: progress and editing).
+ * Modes: 'hub' (one list, big rows to tap) and 'admin' (all lists: today's progress).
+ * EdenChecklists.edit(ctx): the Owner and managers' editor (Service > Edit checklists, #checklists/edit).
  */
 (function () {
   'use strict';
@@ -70,7 +71,7 @@
     if (C.missing) { wrap.appendChild(h('p', { cls: 'od-setup', text: 'Checklists aren’t set up yet: run the latest supabase/hub.sql in Supabase.' })); return; }
     if (!isHub()) {
       wrap.appendChild(h('header', { cls: 'od-top' }, [h('p', { cls: 'sc-eyebrow', text: 'Service' }), h('h1', { cls: 'sc-week', text: 'Checklists' }),
-        h('p', { cls: 'od-help', text: 'Staff tick these off on the Hub (the screen in the restaurant). Each one starts fresh every day; a day runs until 4 am, so closing after midnight counts for that night. Tap Edit items to change a list: one item per line, and a line starting with # is a heading.' })]));
+        h('p', { cls: 'od-help', text: 'Staff tick these off on the Hub (the screen in the restaurant). Each one starts fresh every day; a day runs until 4 am, so closing after midnight counts for that night. The Owner and managers change the items in Edit checklists.' })]));
       wrap.appendChild(h('div', { cls: 'ck-tabs', role: 'tablist' }));
       paintTabs(wrap);
     }
@@ -81,7 +82,7 @@
     var n = real.filter(function (i) { return done[i.id]; }).length, pct = real.length ? Math.round(n / real.length * 100) : 0;
     wrap.appendChild(h('div', { cls: 'ck-head' }, [
       h('div', null, [isHub() ? h('p', { cls: 'sc-eyebrow', text: 'Checklist' }) : null, h('h2', { cls: 'ck-title', text: d.title }), h('p', { cls: 'ck-day', text: 'For ' + longDay(d.day) })]),
-      !isHub() && d.can_edit ? h('button', { type: 'button', cls: 'ed-btn small', text: C.editing ? 'Cancel' : 'Edit items', on: { click: function () { C.editing = !C.editing; render(); } } }) : null
+      !isHub() && d.can_edit ? h('a', { cls: 'ed-btn small', href: '#checklists/edit', text: 'Edit checklists', on: { click: function () { E.pick = C.pick; } } }) : null
     ]));
     wrap.appendChild(h('div', { cls: 'ck-prog' + (n === real.length && real.length ? ' full' : '') }, [h('i', { style: 'width:' + pct + '%' }), h('span', { text: n + ' of ' + real.length + ' done' })]));
     if (isHub()) wrap.appendChild(h('label', { cls: 'ck-who' }, [h('span', { text: 'Your initials' }), h('input', { type: 'text', cls: 'ck-by', maxlength: '20', autocomplete: 'off', placeholder: 'e.g. MS', value: draftBy != null ? draftBy : hubName() })]));
@@ -135,7 +136,97 @@
     ]);
   }
 
+  /* ---------- the editor: Service > Edit checklists ---------- */
+  var E = { ctx: null, el: null, all: null, pick: null, list: null, rows: null, dirty: false, seq: 0 };
+  function eSay(t2, k) { var m = E.el && E.el.querySelector('.ck-msg'); if (m) { m.textContent = t2 || ''; m.className = 'ck-msg' + (k ? ' ' + k : ''); } }
+  function eLoad() {
+    var sb = E.ctx.sb;
+    return sb.rpc('checklist_get', { p_list: null }).then(function (r) {
+      if (r.error) { E.missing = gone(r.error); ePaint(); return; }
+      E.all = (r.data && r.data.lists) || [];
+      if (!E.pick || !E.all.some(function (l) { return l.id === E.pick; })) E.pick = E.all.length ? E.all[0].id : null;
+      return eOpen(E.pick);
+    }, function () { E.err = true; ePaint(); });
+  }
+  function eOpen(id) {
+    E.pick = id; E.list = null; E.rows = null; E.dirty = false; ePaint();
+    if (!id) return;
+    return E.ctx.sb.rpc('checklist_get', { p_list: id }).then(function (r) {
+      if (r.error || !r.data || r.data.error) { E.err = true; ePaint(); return; }
+      E.list = r.data; E.title = r.data.title;
+      E.rows = (r.data.items || []).map(function (i) { return { id: i.id, text: i.text, head: !!i.head, key: ++E.seq }; });
+      ePaint();
+    });
+  }
+  function eDirty() { E.dirty = true; var b = E.el.querySelector('.cke-save'); if (b) b.disabled = false; var d = E.el.querySelector('.cke-discard'); if (d) d.disabled = false; eSay('Unsaved changes'); }
+  function ePaint(focusKey) {
+    var el = E.el; if (!el) return; clear(el);
+    var wrap = h('div', { cls: 'ck cke' }); el.appendChild(wrap);
+    wrap.appendChild(h('header', { cls: 'od-top' }, [h('p', { cls: 'sc-eyebrow', text: 'Service' }), h('h1', { cls: 'sc-week', text: 'Edit checklists' }),
+      h('p', { cls: 'od-help', text: 'Change the opening and closing checklists the staff tick off on the Hub. Saved changes show on the Hub right away. Items you don’t change keep today’s ticks.' }),
+      h('a', { cls: 'cke-back', href: '#checklists', text: 'See today’s progress →' })]));
+    if (E.missing) { wrap.appendChild(h('p', { cls: 'od-setup', text: 'Checklists aren’t set up yet: run the latest supabase/hub.sql in Supabase.' })); return; }
+    if (!E.all) { wrap.appendChild(h('p', { cls: 'od-empty', text: E.err ? 'Couldn’t load the checklists. Check your connection.' : 'Loading…' })); return; }
+    var tabs = h('div', { cls: 'ck-tabs', role: 'tablist', 'aria-label': 'Checklists' });
+    E.all.forEach(function (l) {
+      tabs.appendChild(h('button', { type: 'button', role: 'tab', cls: 'ck-tab', 'aria-selected': l.id === E.pick ? 'true' : 'false',
+        on: { click: function () { if (l.id === E.pick) return; if (E.dirty && !confirm('Discard your unsaved changes to ' + (E.title || 'this list') + '?')) return; eOpen(l.id); } } },
+        [h('b', { text: l.title }), h('span', { text: l.total + (l.total === 1 ? ' item' : ' items') })]));
+    });
+    wrap.appendChild(tabs);
+    if (!E.rows) { wrap.appendChild(h('p', { cls: 'od-empty', text: 'Loading…' })); return; }
+    if (E.list && E.list.can_edit === false) { wrap.appendChild(h('p', { cls: 'od-empty', text: 'Only the Owner and managers can change checklists.' })); return; }
+    var card = h('section', { cls: 'cke-card' }); wrap.appendChild(card);
+    var title = h('input', { type: 'text', cls: 'ck-etitle', maxlength: '80', value: E.title || '', 'aria-label': 'Checklist name', on: { input: function () { E.title = this.value; eDirty(); } } });
+    card.appendChild(h('label', { cls: 'ck-elbl' }, [h('span', { text: 'Checklist name' }), title]));
+    var list = h('ol', { cls: 'cke-rows' }); card.appendChild(list);
+    var nItems = 0;
+    E.rows.forEach(function (row, i) {
+      if (!row.head) nItems++;
+      var inp = h('input', { type: 'text', cls: 'cke-text', maxlength: '200', value: row.text, placeholder: row.head ? 'Heading, e.g. Dining room' : 'What needs doing', 'aria-label': (row.head ? 'Heading ' : 'Item ') + (i + 1), 'data-key': row.key,
+        on: { input: function () { row.text = this.value; eDirty(); }, keydown: function (e) { if (e.key === 'Enter') { e.preventDefault(); var nr = { id: null, text: '', head: false, key: ++E.seq }; E.rows.splice(i + 1, 0, nr); eDirty(); ePaint(nr.key); } } } });
+      function move(d) { var j = i + d; if (j < 0 || j >= E.rows.length) return; E.rows.splice(i, 1); E.rows.splice(j, 0, row); eDirty(); ePaint(); var b = E.el.querySelector('[data-key="' + row.key + '"]'); if (b) b.closest('li').querySelector(d < 0 ? '.cke-up' : '.cke-down').focus(); }
+      list.appendChild(h('li', { cls: 'cke-row' + (row.head ? ' head' : '') }, [
+        h('span', { cls: 'cke-n', text: row.head ? '' : String(nItems) }),
+        inp,
+        h('label', { cls: 'cke-hd', title: 'Show this line as a heading (not something to tick off)' }, [h('input', { type: 'checkbox', checked: row.head, on: { change: function () { row.head = this.checked; eDirty(); ePaint(); } } }), h('span', { text: 'Heading' })]),
+        h('button', { type: 'button', cls: 'cke-ic cke-up', 'aria-label': 'Move up', title: 'Move up', disabled: i === 0, text: '↑', on: { click: function () { move(-1); } } }),
+        h('button', { type: 'button', cls: 'cke-ic cke-down', 'aria-label': 'Move down', title: 'Move down', disabled: i === E.rows.length - 1, text: '↓', on: { click: function () { move(1); } } }),
+        h('button', { type: 'button', cls: 'cke-ic cke-del', 'aria-label': 'Delete', title: 'Delete', text: '✕', on: { click: function () { E.rows.splice(i, 1); eDirty(); ePaint(); } } })]));
+    });
+    if (!E.rows.length) list.appendChild(h('li', { cls: 'od-empty', text: 'No items yet.' }));
+    function add(head) { var nr = { id: null, text: '', head: head, key: ++E.seq }; E.rows.push(nr); eDirty(); ePaint(nr.key); }
+    card.appendChild(h('div', { cls: 'cke-adds' }, [
+      h('button', { type: 'button', cls: 'eo-add', text: '+ Add item', on: { click: function () { add(false); } } }),
+      h('button', { type: 'button', cls: 'eo-add', text: '+ Add heading', on: { click: function () { add(true); } } })]));
+    card.appendChild(h('div', { cls: 'ck-ebtns' }, [
+      h('button', { type: 'button', cls: 'ed-btn cke-save', text: 'Save changes', disabled: !E.dirty, on: { click: eSave } }),
+      h('button', { type: 'button', cls: 'ed-btn small cke-discard', text: 'Discard changes', disabled: !E.dirty, on: { click: function () { if (confirm('Discard your changes?')) eOpen(E.pick); } } }),
+      h('p', { cls: 'ck-msg', role: 'status', text: E.dirty ? 'Unsaved changes' : '' })]));
+    if (focusKey) { var f = E.el.querySelector('[data-key="' + focusKey + '"]'); if (f) f.focus(); }
+  }
+  function eSave() {
+    var used = {}, next = 1;
+    E.rows.forEach(function (r) { var m = /^i(\d+)$/.exec(r.id || ''); if (m) next = Math.max(next, +m[1] + 1); });
+    var items = E.rows.map(function (r) { return { id: r.id, text: String(r.text || '').trim(), head: !!r.head }; }).filter(function (r) { return r.text; })
+      .map(function (r) { var id = r.id && !used[r.id] ? r.id : 'i' + (next++); used[id] = 1; return { id: id, text: r.text, head: r.head }; });
+    if (!String(E.title || '').trim()) { eSay('Give the checklist a name.', 'err'); return; }
+    if (!items.some(function (i) { return !i.head; })) { eSay('Add at least one item to tick off.', 'err'); return; }
+    var btn = E.el.querySelector('.cke-save'); if (btn) btn.disabled = true; eSay('Saving…');
+    E.ctx.sb.rpc('checklist_save', { p_list: E.pick, p_title: String(E.title).trim(), p_items: items }).then(function (r) {
+      if (r.error || !r.data || r.data.error) { if (btn) btn.disabled = false; eSay(r.data && r.data.error === 'not_allowed' ? 'Only the Owner and managers can change checklists.' : 'Couldn’t save. Check your connection.', 'err'); return; }
+      E.dirty = false; E.list = r.data; E.title = r.data.title;
+      E.rows = (r.data.items || []).map(function (i) { return { id: i.id, text: i.text, head: !!i.head, key: ++E.seq }; });
+      E.all.forEach(function (l) { if (l.id === E.pick) { l.title = r.data.title; l.total = (r.data.items || []).filter(function (i) { return !i.head; }).length; } });
+      ePaint(); eSay('Saved. The Hub shows the new list right away.', 'ok');
+      if (E.ctx.status) E.ctx.status('Checklist saved.', 'ok');
+    }, function () { if (btn) btn.disabled = false; eSay('Couldn’t save. Check your connection.', 'err'); });
+  }
+  window.addEventListener('beforeunload', function (e) { if (E.dirty && E.el && E.el.offsetParent !== null) { e.preventDefault(); e.returnValue = ''; } });
+
   window.EdenChecklists = {
+    edit: function (ctx) { clearInterval(C.timer); E.ctx = ctx; E.el = ctx.el; E.all = null; E.err = false; E.missing = false; ePaint(); eLoad(); },
+    dirty: function () { return !!(E.dirty && E.el && E.el.offsetParent !== null); },
     show: function (ctx) {
       C.ctx = ctx; C.el = ctx.el; C.editing = false;
       if (ctx.list) { C.pick = ctx.list; C.data = null; }

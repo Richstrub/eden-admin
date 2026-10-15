@@ -2400,3 +2400,33 @@ body.nt-open #app{visibility:hidden!important}
   .eo-tiphead{grid-template-columns:72px repeat(3,minmax(0,1fr)) 30px}
   .eo-tipadd{grid-template-columns:1fr}
 }
+/* Service > Edit checklists */
+.cke .od-help{max-width:760px}
+.cke-back{display:inline-block;margin-top:6px;font-size:.88rem;color:#8a5226}
+.cke-card{background:#fff;border:1px solid var(--line);padding:22px 24px;display:grid;grid-gap:16px;max-width:860px}
+.cke-rows{list-style:none;margin:0;padding:0;display:grid;border-top:1px solid var(--line)}
+.cke-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto 34px 34px 34px;grid-gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(15,18,21,.06)}
+.cke-n{font-size:.8rem;color:var(--stone);text-align:right;font-variant-numeric:tabular-nums}
+.cke-text{width:100%;min-width:0;font:inherit;font-size:1rem;color:var(--text);background:#fbfaf7;border:1px solid rgba(15,18,21,.1);padding:9px 11px;border-radius:0}
+.cke-text:focus{outline:none;border-color:var(--ember);background:#fff}
+.cke-row.head .cke-text{font-family:var(--serif);font-size:1.15rem;background:#f6efe5;font-weight:500}
+.cke-row.head{padding-top:14px}
+.cke-hd{display:grid;grid-template-columns:auto auto;justify-content:start;grid-gap:6px;align-items:center;font-size:.8rem;color:#4a4e53;cursor:pointer;white-space:nowrap}
+.cke-hd input{width:16px;height:16px;margin:0;accent-color:var(--ember)}
+.cke-ic{width:34px;height:34px;border:1px solid transparent;background:none;color:#5d5952;cursor:pointer;font-size:1rem;border-radius:17px}
+.cke-ic:hover:not(:disabled){background:rgba(15,18,21,.06)}
+.cke-ic:disabled{opacity:.25;cursor:default}
+.cke-del:hover{color:#a3392b}
+.cke-adds{display:grid;grid-template-columns:auto auto;justify-content:start;grid-gap:10px}
+.cke .ck-ebtns{display:grid;grid-template-columns:auto auto 1fr;grid-gap:12px;align-items:center}
+.cke .ck-ebtns .ed-btn:disabled{opacity:.45;cursor:default}
+.cke .ck-msg{margin:0}
+@media (max-width:640px){
+  .cke-card{padding:16px 14px}
+  .cke .ck-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cke-row{grid-template-columns:minmax(0,1fr) 30px 30px 30px;grid-template-areas:"t t t t" "h u d x"}
+  .cke-n{display:none}
+  .cke-text{grid-area:t;font-size:16px}
+  .cke-hd{grid-area:h}.cke-up{grid-area:u}.cke-down{grid-area:d}.cke-del{grid-area:x}
+  .cke .ck-ebtns{grid-template-columns:1fr 1fr}.cke .ck-ebtns .ck-msg{grid-column:1/-1}
+}

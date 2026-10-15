@@ -155,6 +155,7 @@
   function mailCounts() { if (canMail() && window.EdenMail) window.EdenMail.counts(mailCtx()); }
   setInterval(function () { if (!$('app').hidden && view !== 'email') mailCounts(); }, 180000);
   function route() {
+    if (window.EdenChecklists && window.EdenChecklists.dirty() && location.hash !== '#checklists/edit' && !confirm('Leave without saving your checklist changes?')) { history.replaceState(null, '', '#checklists/edit'); return; }
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, ''), sub = '';
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
@@ -162,6 +163,7 @@
     if (v.indexOf('payroll/') === 0) { sub = v.slice(8) === 'rates' ? 'rates' : ''; v = 'payroll'; }
     if (v.indexOf('eod/') === 0) { sub = v.slice(4); v = 'eod'; if (!/^(past|download|r\/[0-9a-f-]{36})$/.test(sub) || (sub === 'download' && role !== 'owner')) sub = sub === 'download' ? 'past' : ''; }
     if (v.indexOf('employees/') === 0) { sub = v.slice(10) === 'permissions' && role === 'owner' ? 'permissions' : ''; v = 'employees'; }
+    if (v.indexOf('checklists/') === 0) { sub = v.slice(11) === 'edit' && isMgr() ? 'edit' : ''; v = 'checklists'; }
     if (v.indexOf('promo/') === 0) { sub = v.slice(6); v = 'promo'; if (!/^(list|e\/[0-9a-f-]{36})$/.test(sub)) sub = ''; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
@@ -244,7 +246,7 @@
       if (window.EdenOrders) window.EdenOrders.show({ sb: sb, el: $('viewOrders'), mode: 'admin' });
     } else if (v === 'checklists') {
       status('');
-      if (window.EdenChecklists) window.EdenChecklists.show({ sb: sb, el: $('viewChecklists'), mode: 'admin' });
+      if (window.EdenChecklists) { if (sub === 'edit') window.EdenChecklists.edit({ sb: sb, el: $('viewChecklists'), status: status }); else window.EdenChecklists.show({ sb: sb, el: $('viewChecklists'), mode: 'admin' }); }
     } else if (v === 'resources') {
       status('');
       if (window.EdenResources) window.EdenResources.show({ sb: sb, el: $('viewResources'), status: status, role: role, name: staffName });
