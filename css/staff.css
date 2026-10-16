@@ -2430,3 +2430,7 @@ body.nt-open #app{visibility:hidden!important}
   .cke-hd{grid-area:h}.cke-up{grid-area:u}.cke-down{grid-area:d}.cke-del{grid-area:x}
   .cke .ck-ebtns{grid-template-columns:1fr 1fr}.cke .ck-ebtns .ck-msg{grid-column:1/-1}
 }
+/* calendar: time off (pending requests, shown to managers, are striped) */
+.cl-mev.pending{background:repeating-linear-gradient(135deg,#efe9f4 0 4px,#fff 4px 8px);font-style:italic}
+.cl-ev.pending{border-left-style:dashed;font-style:italic}
+.cl-tl-bar.pending{background:repeating-linear-gradient(135deg,var(--c) 0 6px,#a48dbb 6px 12px)}

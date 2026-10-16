@@ -6,7 +6,8 @@
  * same room at overlapping times get a double-booking warning. Later, BEOs will add events here
  * automatically (each event has a source and an optional beo_id for that).
  *
- * Data: Supabase table events (supabase/calendar.sql).
+ * Data: Supabase table events (supabase/calendar.sql). Time off (who's off) comes from calendar_time_off
+ * (supabase/calendar-timeoff.sql): approved for everyone, plus pending requests for the Owner and managers. Read-only here.
  */
 (function () {
   'use strict';
@@ -16,12 +17,13 @@
     { id: 'catering', label: 'Catering / off-site', color: '#2f5f8a' },
     { id: 'meeting', label: 'Meeting / tasting', color: '#6b6f74' },
     { id: 'closed', label: 'Closed / holiday', color: '#a33a2c' },
+    { id: 'timeoff', label: 'Time off', color: '#7a5c99', auto: true },
     { id: 'other', label: 'Other', color: '#2b3035' }
   ];
   var ROOMS = ['Main dining room', 'Bar', 'Private dining room', 'Patio', 'Whole restaurant', 'Off-site'];
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  var C = { ctx: null, el: null, view: 'month', day: today(), events: [], range: null, loading: false, missing: false };
+  var C = { ctx: null, el: null, view: 'month', day: today(), events: [], off: [], range: null, loading: false, missing: false };
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -58,7 +60,15 @@
     var x = mins(e.end); if (x <= mins(e.start)) x += 1440; return x;
   }
   function timeText(e) { return e.all_day ? 'All day' : fmtT(e.start) + (e.end ? '–' + fmtT(e.end) : ''); }
-  function onDay(d) { var k = iso(d); return C.events.filter(function (e) { return e.date === k; }).sort(function (a, b) { return (b.all_day ? 1 : 0) - (a.all_day ? 1 : 0) || startM(a) - startM(b) || String(a.title).localeCompare(b.title); }); }
+  // time off on a day, drawn like events (all day, or the hours they're off)
+  function offOn(k) {
+    return C.off.filter(function (t) { return t.start_date <= k && t.end_date >= k; }).map(function (t) {
+      var whole = t.all_day !== false || !t.start_time;
+      return { id: 'off-' + t.id + '-' + k, off: t, type: 'timeoff', date: k, all_day: whole, start: whole ? '' : t.start_time, end: whole ? '' : (t.end_time || ''),
+        title: t.name + (t.status === 'pending' ? ' off (requested)' : ' off'), room: '', guests: null, notes: '' };
+    });
+  }
+  function onDay(d) { var k = iso(d); return C.events.filter(function (e) { return e.date === k; }).concat(offOn(k)).sort(function (a, b) { return (b.all_day ? 1 : 0) - (a.all_day ? 1 : 0) || startM(a) - startM(b) || String(a.title).localeCompare(b.title); }); }
   function clashes(e, list) { // same room, overlapping time, same day
     if (!e.room) return [];
     return (list || C.events).filter(function (o) {
@@ -82,7 +92,10 @@
       C.loading = false;
       if (res.error) { C.missing = isMissing(res.error); C.events = []; if (!C.missing) status(isPerm(res.error) ? 'Your login can’t open the calendar.' : 'Couldn’t load the calendar.', 'err'); return; }
       C.missing = false; C.events = res.data || []; C.range = key;
-    }, function () { C.loading = false; });
+    }, function () { C.loading = false; }).then(function () {
+      if (C.missing) return;
+      return C.ctx.sb.rpc('calendar_time_off', { p_from: iso(r[0]), p_to: iso(r[1]) }).then(function (x) { C.off = (!x.error && Array.isArray(x.data)) ? x.data : []; }, function () { C.off = []; });
+    });
   }
   function go() { render(); load().then(render); }
 
@@ -134,7 +147,7 @@
 
   function chip(e) {
     var t = typeOf(e.type), warn = clashes(e).length;
-    return h('button', { type: 'button', cls: 'cl-ev' + (warn ? ' clash' : ''), style: '--c:' + t.color, title: e.title + ' · ' + timeText(e) + (e.room ? ' · ' + e.room : ''), on: { click: function (ev) { ev.stopPropagation(); showEvent(e); } } }, [
+    return h('button', { type: 'button', cls: 'cl-ev' + (warn ? ' clash' : '') + (e.off ? ' cl-off' + (e.off.status === 'pending' ? ' pending' : '') : ''), style: '--c:' + t.color, title: e.title + ' · ' + timeText(e) + (e.room ? ' · ' + e.room : ''), on: { click: function (ev) { ev.stopPropagation(); showEvent(e); } } }, [
       h('span', { cls: 'cl-ev-t', text: timeText(e) }),
       h('b', { text: e.title || 'Untitled' }),
       h('span', { cls: 'cl-ev-m', text: [e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') }),
@@ -170,10 +183,10 @@
           h('span', { cls: 'cl-mn', text: String(date.getDate()) })
         ]);
         list.slice(0, 4).forEach(function (e) {
-          cell.appendChild(h('span', { cls: 'cl-mev' + (clashes(e).length ? ' clash' : ''), style: '--c:' + typeOf(e.type).color }, [h('i'), h('span', { text: (e.all_day ? '' : fmtT(e.start) + ' ') + (e.title || 'Untitled') })]));
+          cell.appendChild(h('span', { cls: 'cl-mev' + (clashes(e).length ? ' clash' : '') + (e.off && e.off.status === 'pending' ? ' pending' : ''), style: '--c:' + typeOf(e.type).color }, [h('i'), h('span', { text: (e.all_day ? '' : fmtT(e.start) + ' ') + (e.title || 'Untitled') })]));
         });
         if (list.length > 4) cell.appendChild(h('span', { cls: 'cl-more', text: '+' + (list.length - 4) + ' more' }));
-        if (list.length) cell.appendChild(h('span', { cls: 'cl-mc', text: list.length + ' event' + (list.length === 1 ? '' : 's') }));
+        if (list.length) cell.appendChild(h('span', { cls: 'cl-mc', text: list.length + (list.every(function (e) { return e.off; }) ? ' off' : ' event' + (list.length === 1 ? '' : 's')) }));
         cal.appendChild(cell);
       })(new Date(d));
     }
@@ -203,7 +216,7 @@
       tl.appendChild(h('div', { cls: 'cl-tl-row' }, [
         h('div', { cls: 'cl-tl-who' }, [h('b', { text: e.title || 'Untitled' }), h('span', { text: [e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') || t.label })]),
         h('div', { cls: 'cl-tl-lane' }, [
-          h('button', { type: 'button', cls: 'cl-tl-bar' + (e.end ? '' : ' open') + (warn ? ' clash' : ''), style: '--c:' + t.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: e.title + ' · ' + timeText(e) + (e.room ? ' · ' + e.room : ''), on: { click: function () { showEvent(e); } } },
+          h('button', { type: 'button', cls: 'cl-tl-bar' + (e.end ? '' : ' open') + (warn ? ' clash' : '') + (e.off && e.off.status === 'pending' ? ' pending' : ''), style: '--c:' + t.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: e.title + ' · ' + timeText(e) + (e.room ? ' · ' + e.room : ''), on: { click: function () { showEvent(e); } } },
             [h('span', { text: timeText(e) + (warn ? ' · double-booked' : '') + (e.notes ? ' · ' + e.notes.split('\n')[0] : '') })])
         ])
       ]));
@@ -230,6 +243,7 @@
     return close;
   }
   function showEvent(e) {
+    if (e.off) return showOff(e);
     var t = typeOf(e.type), cl = clashes(e), d = parseDay(e.date);
     modal(e.title || 'Event', [
       h('p', { cls: 'cl-dtype', style: '--c:' + t.color }, [h('i'), t.label + (e.source === 'beo' ? ' · from a BEO' : e.source === 'note' ? ' · from a note' : e.source === 'inquiry' ? ' · from a catering inquiry' : '')]),
@@ -247,12 +261,31 @@
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn', text: 'Edit', on: { click: function () { close(); editEvent(e); } } }) : h('button', { type: 'button', cls: 'ed-btn', text: 'Close', on: { click: close } })];
     });
   }
+  function showOff(e) {
+    var t = e.off, a = parseDay(t.start_date), b = parseDay(t.end_date), d = parseDay(e.date);
+    var o = { weekday: 'long', month: 'long', day: 'numeric' };
+    var when = (t.start_date === t.end_date ? a.toLocaleDateString(undefined, o) : a.toLocaleDateString(undefined, o) + ' – ' + b.toLocaleDateString(undefined, o)) +
+      (t.all_day !== false || !t.start_time ? ' · all day' : ' · ' + fmtT(t.start_time) + (t.end_time ? '–' + fmtT(t.end_time) : ' to close'));
+    modal(t.name + ' is off', [
+      h('p', { cls: 'cl-dtype', style: '--c:' + typeOf('timeoff').color }, [h('i'), t.status === 'pending' ? 'Time off · requested, waiting for a decision' : 'Time off · approved']),
+      h('dl', { cls: 'cl-dl' }, [
+        h('dt', { text: 'Who' }), h('dd', { text: t.name + (t.position ? ' · ' + t.position : '') }),
+        h('dt', { text: 'When' }), h('dd', { text: when }),
+        t.reason ? h('dt', { text: 'Reason' }) : null, t.reason ? h('dd', { cls: 'cl-notes', text: t.reason }) : null
+      ])
+    ], function (close) {
+      return [h('button', { type: 'button', cls: 'ed-btn small', text: 'Day view', on: { click: function () { close(); openDay(d); } } }),
+        h('span', { cls: 'sc-sp' }),
+        canEdit() && document.querySelector('a[href="#schedule"]') ? h('a', { cls: 'ed-btn small', href: '#schedule', text: t.status === 'pending' ? 'Approve or deny in Schedule' : 'Open Schedule', on: { click: close } }) : null,
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Close', on: { click: close } })];
+    });
+  }
   function editEvent(e, onDate) {
     var isNew = !e || !!e._new;
     e = e || { id: uid(), title: '', type: 'private', date: iso(onDate || (C.view === 'month' && !isCurrent() ? firstOfMonth(C.day) : today())), all_day: false, start: '18:00', end: '21:00', room: '', guests: null, notes: '', source: 'manual' };
     var f = {
       title: h('input', { type: 'text', value: e.title || '', placeholder: 'e.g. Smith rehearsal dinner' }),
-      type: h('select', null, TYPES.map(function (t) { return h('option', { value: t.id, text: t.label }); })),
+      type: h('select', null, TYPES.filter(function (t) { return !t.auto; }).map(function (t) { return h('option', { value: t.id, text: t.label }); })),
       date: h('input', { type: 'date', value: e.date }),
       allDay: h('input', { type: 'checkbox' }),
       start: h('input', { type: 'time', value: e.start || '', step: '900' }),
