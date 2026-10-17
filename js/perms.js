@@ -29,13 +29,16 @@
         { k: 'prep.kitchen', name: 'Kitchen prep list', desc: 'The food prep list, built from the Kitchen menu.', does: 'see the kitchen prep list' },
         { k: 'prep.bar', name: 'Bar prep list', desc: 'The bar prep list, built from the cocktail menu.', does: 'see the bar prep list' },{ k: 'prep.edit', name: 'Fill it in', desc: 'Tick lines, fill in On hand, choose Do or X, sign with their initials, and add or remove lines. When this is off, the list is read only.', does: 'fill in the Prep List', off: 'They can still read it.' }] },
     { k: 'recipes', name: 'Recipes', icon: 'pot', desc: 'The recipe book. Only you and managers can change recipes.', does: 'read the recipe book' },
-    { k: 'calendar', name: 'Calendar', icon: 'flag', desc: 'Upcoming events and private parties.', does: 'see the event calendar' }
+    { k: 'calendar', name: 'Calendar', icon: 'flag', desc: 'Upcoming events and private parties.', does: 'see the event calendar' },
+    { k: 'eod', name: 'End of day report', icon: 'moon', desc: 'Fill in and submit the end of day report from the staff page, and read past reports, including sales. Off for everyone until you turn it on.', does: 'fill in the end of day report',
+      off: 'Only you and managers can fill in the end of day report.',
+      subs: [{ k: 'eod.tips', name: 'Tips', desc: 'Enter the night’s cash and credit card tips and email everyone in the tip pool their share (you still get a copy).', does: 'enter and email the night’s tips', off: 'The report saves without tips; you or a manager enter them.' }] }
   ];
   var ITEM = {}; SECTIONS.forEach(function (s) { ITEM[s.k] = s; (s.subs || []).forEach(function (x) { x.parent = s; ITEM[x.k] = x; }); });
   var ICONS = {
     cal: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4', check: 'M5 12l4 4 10-10', sun: 'M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4M12 8a4 4 0 100 8 4 4 0 000-8z',
     chat: 'M4 5h16v11H9l-5 4z', brief: 'M4 8h16v11H4zM9 8V5h6v3', book: 'M5 4h10l4 4v12H5zM15 4v4h4', list: 'M9 6h11M9 12h11M9 18h11M4 6h1M4 12h1M4 18h1',
-    pot: 'M4 10h16l-1.5 9h-13zM8 10V7M12 10V5M16 10V7', flag: 'M5 21V4M5 4h11l-2 4 2 4H5'
+    pot: 'M4 10h16l-1.5 9h-13zM8 10V7M12 10V5M16 10V7', flag: 'M5 21V4M5 4h11l-2 4 2 4H5', moon: 'M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z'
   };
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -62,7 +65,7 @@
 
   // the rules
   // out of the box: everything on, except the Prep List (cooks get the kitchen list, bartenders the bar list)
-  function dflt(level, k) { return k === 'prep' ? level === 'cook' || level === 'bartender' : k === 'prep.kitchen' ? level !== 'bartender' : k === 'prep.bar' ? level !== 'cook' : true; }
+  function dflt(level, k) { return k === 'eod' || k === 'eod.tips' ? false : k === 'prep' ? level === 'cook' || level === 'bartender' : k === 'prep.kitchen' ? level !== 'bartender' : k === 'prep.bar' ? level !== 'cook' : true; }
   function rule(level, k) { var key = level + '|' + k; return key in X.rules ? X.rules[key] : dflt(level, k); }
   function groupHas(level, k) { var it = ITEM[k]; return it.parent ? rule(level, it.parent.k) && rule(level, k) : rule(level, k); }
   function levelOf(e) { return LV[e.access] ? e.access : 'employee'; }

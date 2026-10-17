@@ -30,6 +30,20 @@ begin
   return new;
 end $$;
 
+-- Who may enter and email tips: the Owner and managers, and staff given "End of day report > Tips" in Permissions
+create or replace function public.eod_tips_ok() returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare ok boolean := false;
+begin
+  if coalesce(public.access_level(), '') in ('owner', 'manager') then return true; end if;
+  if to_regprocedure('public.section_ok(text)') is not null and coalesce(public.is_team(), false) then
+    execute 'select public.section_ok($1)' into ok using 'eod.tips';
+  end if;
+  return coalesce(ok, false);
+end $$;
+revoke all on function public.eod_tips_ok() from public, anon;
+grant execute on function public.eod_tips_ok() to authenticated;
+
 -- Hours of one shift from the schedule: 'HH:MM' start to 'HH:MM' or a cut (1st cut ~8pm, 2nd cut ~9pm, close ~10pm).
 create or replace function public.eod_shift_hours(p_start text, p_end text) returns numeric
 language sql immutable as $$
@@ -44,7 +58,7 @@ create or replace function public.eod_tip_staff(p_date date) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare ws date := p_date - extract(dow from p_date)::int; sh jsonb; by_rates boolean := false; tipped uuid[] := '{}'; out jsonb;
 begin
-  if coalesce(public.access_level(), '') not in ('owner', 'manager') then return jsonb_build_object('error', 'denied'); end if;
+  if not public.eod_tips_ok() then return jsonb_build_object('error', 'denied'); end if;
   if to_regclass('public.pay_rates') is not null then   -- Payroll > Pay rates "Tip pool", if Payroll is set up
     execute 'select coalesce(array_agg(emp), ''{}'') from public.pay_rates where tip_eligible' into tipped;
     by_rates := cardinality(tipped) > 0;
@@ -79,7 +93,7 @@ create or replace function public.eod_tip_mail(p_id uuid) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare r public.eod_reports;
 begin
-  if coalesce(public.access_level(), '') not in ('owner', 'manager') then return jsonb_build_object('error', 'denied'); end if;
+  if not public.eod_tips_ok() then return jsonb_build_object('error', 'denied'); end if;
   select * into r from public.eod_reports where id = p_id;
   if r.id is null then return jsonb_build_object('error', 'not_found'); end if;
   return jsonb_build_object('id', r.id, 'report_date', r.report_date, 'shift', r.shift, 'status', r.status, 'prepared_by', r.prepared_by,

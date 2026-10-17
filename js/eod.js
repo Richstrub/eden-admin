@@ -273,7 +273,8 @@
     var r = R.rep, day = r.report_date;
     return R.ctx.sb.rpc('eod_tip_staff', { p_date: day }).then(function (x) {
       if (x.error) { if (/eod_tip_staff|function|schema cache/i.test(x.error.message || '')) { R.tipsOn = false; paintTips(); } return; }
-      var d = x.data || {}; if (d.error || R.rep !== r || r.report_date !== day) return;
+      var d = x.data || {}; if (d.error === 'denied') { R.tipsOn = false; R.tipsDenied = true; paintTips(); return; }
+      if (d.error || R.rep !== r || r.report_date !== day) return;
       R.tipsOn = true; R.tipEveryone = d.everyone || []; R.tipPosted = !!d.posted; R.tipByRates = !!d.by_rates;
       if (fill && !(r.tip_staff || []).length) { r.tip_staff = (d.staff || []).map(function (p) { return { emp: p.emp, name: p.name, hours: Number(p.hours) || 0 }; }); if (r.tip_staff.length && r.id) changed(); }
       paintTips();
@@ -288,6 +289,7 @@
   function paintTips() {
     var el = R.tipsEl, r = R.rep, ro = R.tipsRo; if (!el) return;
     el.innerHTML = '';
+    if (R.tipsDenied) { el.appendChild(h('p', { cls: 'eo-note', text: 'Tips are entered by the Owner or a manager. The rest of the report saves and submits as usual.' })); return; }
     if (R.tipsOn === false) { el.appendChild(h('p', { cls: 'eo-note', text: R.ctx.role === 'owner' ? 'One step to switch on tips: in Supabase, open SQL Editor > New query, paste in supabase/eod-tips.sql and click Run. Then reload this page.' : 'Tips aren’t switched on yet. Ask the Owner.' })); return; }
     var c = tipCalc(r);
     function moneyIn(k, label) {

@@ -13,7 +13,9 @@
 --   preshift (the Pre-shift tab)        preshift.education, preshift.reservations, preshift.menu, preshift.notes
 --   resources                           recipes        calendar
 --   prep (seeing the Prep List)         prep.kitchen (the kitchen list), prep.bar (the bar list), prep.edit (filling it in)
--- Out of the box everything is on, except the Prep List: cooks get only the kitchen list, bartenders only the bar list. The Owner and managers always have everything.
+--   eod (the End of day report on the staff page: fill in, submit and read past reports)   eod.tips (enter and email tips)
+-- Out of the box everything is on, except the Prep List (cooks get only the kitchen list, bartenders only the bar list)
+-- and the End of day report, which is off for everyone until you turn it on. The Owner and managers always have everything.
 -- Kitchen logins count as cooks and Front-of-house logins as servers. This is enforced by the database, not just hidden.
 
 -- The Bartender class (set on the Employees page, under Access). Same as an employee unless Permissions says otherwise.
@@ -45,9 +47,9 @@ create table if not exists public.section_people (
 alter table public.section_rules drop constraint if exists section_rules_level_check;
 alter table public.section_rules add constraint section_rules_level_check check (level in ('employee', 'cook', 'server', 'bartender'));
 alter table public.section_rules drop constraint if exists section_rules_section_check;
-alter table public.section_rules add constraint section_rules_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar'));
+alter table public.section_rules add constraint section_rules_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar', 'eod', 'eod.tips'));
 alter table public.section_people drop constraint if exists section_people_section_check;
-alter table public.section_people add constraint section_people_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar'));
+alter table public.section_people add constraint section_people_section_check check (section in ('schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar', 'eod', 'eod.tips'));
 alter table public.section_rules enable row level security;
 alter table public.section_people enable row level security;
 revoke all on public.section_rules, public.section_people from anon;
@@ -81,6 +83,8 @@ begin
     case p_section when 'prep' then public.my_level() in ('cook', 'bartender')
                    when 'prep.kitchen' then public.my_level() <> 'bartender'
                    when 'prep.bar' then public.my_level() <> 'cook'
+                   when 'eod' then false
+                   when 'eod.tips' then false
                    else true end);
 end $$;
 revoke all on function public.my_level(), public.section_ok(text) from public, anon;
@@ -90,7 +94,7 @@ grant execute on function public.my_level(), public.section_ok(text) to authenti
 create or replace function public.my_sections() returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_object_agg(k, public.section_ok(k)) || jsonb_build_object('level', public.my_level())
-  from unnest(array['schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar']) k
+  from unnest(array['schedule', 'schedule.team', 'todos', 'todos.done', 'timeoff', 'board', 'board.post', 'preshift', 'preshift.education', 'preshift.reservations', 'preshift.menu', 'preshift.notes', 'resources', 'prep', 'prep.kitchen', 'prep.bar', 'prep.edit', 'recipes', 'calendar', 'eod', 'eod.tips']) k
 $$;
 revoke all on function public.my_sections() from public, anon;
 grant execute on function public.my_sections() to authenticated;
@@ -469,5 +473,30 @@ drop policy if exists "team reads events" on public.events
 create policy "team reads events" on public.events for select to authenticated using (public.is_team() and public.section_ok('calendar'))
     $q$;
   else raise notice 'Skipped Calendar: run its SQL file first, then run this one again.';
+  end if;
+end $guard$;
+
+-- End of day report: staff the Owner allows can fill in, submit and read reports on the staff page
+do $guard$ begin
+  if to_regclass('public.eod_reports') is not null then
+    execute $q$
+drop policy if exists "team with permission reads reports" on public.eod_reports
+    $q$;
+    execute $q$
+create policy "team with permission reads reports" on public.eod_reports for select to authenticated using (coalesce(public.is_team(), false) and public.section_ok('eod'))
+    $q$;
+    execute $q$
+drop policy if exists "team with permission writes reports" on public.eod_reports
+    $q$;
+    execute $q$
+create policy "team with permission writes reports" on public.eod_reports for insert to authenticated with check (coalesce(public.is_team(), false) and public.section_ok('eod'))
+    $q$;
+    execute $q$
+drop policy if exists "team with permission changes reports" on public.eod_reports
+    $q$;
+    execute $q$
+create policy "team with permission changes reports" on public.eod_reports for update to authenticated using (coalesce(public.is_team(), false) and public.section_ok('eod')) with check (coalesce(public.is_team(), false) and public.section_ok('eod'))
+    $q$;
+  else raise notice 'Skipped End of day report: run its SQL file first, then run this one again.';
   end if;
 end $guard$;

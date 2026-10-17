@@ -399,7 +399,7 @@ async function adminTips(req, env) {
   if (!/^[0-9a-f-]{36}$/.test(id)) return json({ error: 'bad' }, 400);
   let d;
   try { d = await rpc(env, 'eod_tip_mail', { p_id: id }, jwt); } catch (e) { return json({ error: 'server', message: 'Couldn’t read the report. Has supabase/eod-tips.sql been run?' }, 502); }
-  if (!d || d.error) return json({ error: (d && d.error) || 'server', message: d && d.error === 'denied' ? 'Only the Owner and managers can send tips.' : 'Report not found.' }, d && d.error === 'denied' ? 403 : 404);
+  if (!d || d.error) return json({ error: (d && d.error) || 'server', message: d && d.error === 'denied' ? 'Your login doesn’t have permission to send tips.' : 'Report not found.' }, d && d.error === 'denied' ? 403 : 404);
   const T = tipShares(d);
   if (!T.staff.length || !(T.cash || T.card)) return json({ error: 'empty', message: 'Enter the tips and the hours worked first.' }, 400);
   const day = longDate(d.report_date), from = env.TIPS_FROM || env.MAIL_FROM, copyTo = String(env.TIPS_COPY_TO || '').split(',').map(x => x.trim()).filter(x => EMAIL_RE.test(x));
