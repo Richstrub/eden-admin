@@ -488,6 +488,74 @@
     main.appendChild(b);
   }
 
+  /* ---------- search: find a dish, drink or wine across every tab and jump to it ---------- */
+  function edNorm(x) { return String(x == null ? '' : x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function edSearchFind(q) {
+    var words = edNorm(q).split(/\s+/).filter(Boolean), out = [];
+    if (!words.length || !ed.draft) return out;
+    ed.draft.tabs.forEach(function (t, ti) {
+      (t.groups || []).forEach(function (g, gi) {
+        (g.items || []).forEach(function (it, ii) {
+          var hay = edNorm([it.name, it.src, it.desc, it.grape, it.appellation, it.country, it.pair, it.price, it.bottle, it.glass, g.title, t.label].join(' '));
+          if (words.every(function (w) { return hay.indexOf(w) !== -1; })) out.push({ ti: ti, gi: gi, ii: ii, it: it, t: t, g: g, nameHit: words.every(function (w) { return edNorm(it.name).indexOf(w) !== -1; }) });
+        });
+      });
+    });
+    return out.sort(function (a, b) { return (b.nameHit ? 1 : 0) - (a.nameHit ? 1 : 0); });   // name matches first, otherwise menu order
+  }
+  function edJump(r) {
+    ed.tab = r.ti; edRender();
+    var row = $('edMain').querySelector('.ed-item[data-gi="' + r.gi + '"][data-ii="' + r.ii + '"]');
+    if (!row) return;
+    // jump straight there (a long smooth scroll overshoots while the page is still laying out), then settle it once more
+    row.scrollIntoView({ block: 'center' });
+    row.classList.remove('ed-flash'); void row.offsetWidth; row.classList.add('ed-flash');
+    setTimeout(function () { if (document.body.contains(row)) { row.scrollIntoView({ block: 'center' }); var f = row.querySelector('input,textarea'); if (f) f.focus({ preventScroll: true }); } }, 300);
+  }
+  function edSearch() {
+    var wrap = document.createElement('div'); wrap.className = 'ed-search'; wrap.setAttribute('role', 'search');
+    var inp = document.createElement('input'); inp.type = 'search'; inp.className = 'ed-sin'; inp.value = ed.q || ''; inp.autocomplete = 'off';
+    inp.placeholder = 'Search the menu: dish, drink, wine, grape, farm…'; inp.setAttribute('aria-label', 'Search the menu');
+    var res = document.createElement('div'); res.className = 'ed-sres'; res.setAttribute('role', 'listbox');
+    wrap.appendChild(inp); wrap.appendChild(res);
+    var hits = [];
+    function paint() {
+      res.innerHTML = ''; var q = (ed.q || '').trim();
+      wrap.classList.toggle('open', q.length >= 2);
+      if (q.length < 2) return;
+      hits = edSearchFind(q);
+      var head = document.createElement('p'); head.className = 'ed-scount'; head.textContent = hits.length ? hits.length + (hits.length === 1 ? ' match' : ' matches') + (hits.length > 40 ? ' · showing the first 40' : '') : 'Nothing on the menu matches “' + q + '”.'; res.appendChild(head);
+      hits.slice(0, 40).forEach(function (r, n) {
+        var it = r.it, b = document.createElement('button'); b.type = 'button'; b.className = 'ed-shit'; b.setAttribute('role', 'option');
+        var nm = document.createElement('b'); nm.textContent = it.name || 'Untitled item';
+        var where = document.createElement('span'); where.textContent = [r.t.label, r.g.title].filter(Boolean).join(' › ');
+        var extra = document.createElement('small');
+        extra.textContent = [isWine(it) ? [it.grape, it.appellation].filter(Boolean).join(', ') : it.src, it.price || it.bottle, it.hidden ? 'Hidden from the website' : ''].filter(Boolean).join(' · ');
+        b.appendChild(nm); b.appendChild(where); if (extra.textContent) b.appendChild(extra);
+        if (it.hidden) b.classList.add('is-hidden');
+        b.onclick = function () { edJump(r); };
+        res.appendChild(b);
+      });
+    }
+    inp.addEventListener('input', function () { ed.q = inp.value; paint(); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && hits.length) { e.preventDefault(); edJump(hits[0]); }
+      else if (e.key === 'Escape') { ed.q = ''; inp.value = ''; paint(); }
+      else if (e.key === 'ArrowDown') { var f = res.querySelector('.ed-shit'); if (f) { e.preventDefault(); f.focus(); } }
+    });
+    res.addEventListener('keydown', function (e) {
+      var a = document.activeElement; if (!a || !a.classList.contains('ed-shit')) return;
+      if (e.key === 'ArrowDown' && a.nextElementSibling) { e.preventDefault(); a.nextElementSibling.focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); var pv = a.previousElementSibling; if (pv && pv.classList.contains('ed-shit')) pv.focus(); else inp.focus(); }
+      if (e.key === 'Escape') { ed.q = ''; inp.value = ''; paint(); inp.focus(); }
+    });
+    // close the list when you click elsewhere (the words stay, so you can reopen it)
+    document.addEventListener('mousedown', function off(e) { if (!document.body.contains(wrap)) { document.removeEventListener('mousedown', off); return; } if (!wrap.contains(e.target)) wrap.classList.remove('open'); });
+    inp.addEventListener('focus', function () { if ((ed.q || '').trim().length >= 2) wrap.classList.add('open'); });
+    paint(); wrap.classList.remove('open');
+    return wrap;
+  }
+
   function edRender() {
     var side = $('edTabs'), main = $('edMain');
     side.innerHTML = ''; main.innerHTML = '';
@@ -496,6 +564,7 @@
     if (ed.tab !== 'supper' && ed.tab >= d.tabs.length) ed.tab = 0;
     d.tabs.forEach(function (t, i) { var b = document.createElement('button'); b.type = 'button'; b.textContent = t.label || 'Untitled'; b.setAttribute('aria-current', i === ed.tab); b.onclick = function () { ed.tab = i; edRender(); }; side.appendChild(b); });
     var sb2 = document.createElement('button'); sb2.type = 'button'; sb2.className = 'ed-side-sup'; sb2.textContent = 'Supper Club'; sb2.setAttribute('aria-current', ed.tab === 'supper'); sb2.onclick = function () { ed.tab = 'supper'; edRender(); }; side.appendChild(sb2);
+    main.appendChild(edSearch());
     if (!ed.canWrite) { var ro = document.createElement('p'); ro.className = 'ed-readonly'; ro.textContent = 'View only. Your role (' + (ROLE_NAMES[role] || role) + ') can see the menu but not change it.'; main.appendChild(ro); }
     if (ed.tab === 'supper') { edSupper(main); return; }
     var t = d.tabs[ed.tab];
@@ -535,7 +604,7 @@
       box.appendChild(notes);
       var list = document.createElement('div');
       g.items.forEach(function (it, ii) {
-        var row = document.createElement('div'); row.className = 'ed-item' + (it.hidden ? ' is-hidden' : '');
+        var row = document.createElement('div'); row.className = 'ed-item' + (it.hidden ? ' is-hidden' : ''); row.setAttribute('data-gi', gi); row.setAttribute('data-ii', ii);
         if (isWine(it)) {
           row.classList.add('ed-wine');
           var nm = field('Wine', it.name, function (v) { it.name = v; }); nm.classList.add('wide'); row.appendChild(nm);
