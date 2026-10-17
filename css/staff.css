@@ -2434,3 +2434,25 @@ body.nt-open #app{visibility:hidden!important}
 .cl-mev.pending{background:repeating-linear-gradient(135deg,#efe9f4 0 4px,#fff 4px 8px);font-style:italic}
 .cl-ev.pending{border-left-style:dashed;font-style:italic}
 .cl-tl-bar.pending{background:repeating-linear-gradient(135deg,var(--c) 0 6px,#a48dbb 6px 12px)}
+/* Today: who's working, drawn like the Hub's daily schedule */
+.td-tlbox{display:grid;gap:8px}
+.td-tl{--who:104px;position:relative;padding-bottom:4px}
+.td-tl-row{display:grid;grid-template-columns:var(--who) minmax(0,1fr);align-items:center}
+.td-tl-ruler{height:18px}
+.td-tl-scale{position:relative;height:100%}
+.td-tl-tick{position:absolute;top:0;transform:translateX(-50%);font-size:.66rem;color:var(--soft-dark);white-space:nowrap;opacity:.8}
+.td-tl-tick:first-child{transform:none}
+.td-tl-tick:last-child{transform:translateX(-100%)}
+.td-tl-row+.td-tl-row:not(.td-tl-ruler){border-top:1px solid rgba(243,238,229,.08)}
+.td-tl-who{padding-right:8px;min-width:0;display:grid;line-height:1.2}
+.td-tl-who b{font-weight:400;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ivory)}
+.td-tl-who small{font-size:.66rem;color:var(--soft-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td-tl-lane{position:relative;height:34px}
+.td-tl-bar{position:absolute;top:6px;bottom:6px;z-index:1;display:flex;align-items:center;min-width:6px;padding:0 7px;border-radius:5px;background:#3a4148;color:var(--ivory);font-size:.7rem;white-space:nowrap;overflow:hidden}
+.td-tl-bar span{overflow:hidden;text-overflow:ellipsis}
+.td-tl-bar.approx{background:linear-gradient(to right,#3a4148 0,#3a4148 calc(100% - 34px),rgba(58,65,72,.25) 100%)}
+.td-tl-grid{position:absolute;top:18px;bottom:4px;left:var(--who);right:0;pointer-events:none}
+.td-tl-grid i{position:absolute;top:0;bottom:0;width:1px;background:rgba(243,238,229,.07)}
+.td-tl-now{position:absolute;top:-3px;bottom:0;width:2px;margin-left:-1px;background:var(--ember-hot);z-index:2}
+.td-tl-now::before{content:'';position:absolute;top:-4px;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--ember-hot)}
+.td-tonight .td-tl-more{color:var(--ember-hot)}

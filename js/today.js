@@ -45,7 +45,7 @@
     P.off = mgr ? q(sb.from('time_off').select('id,status,emp,start_date')) : null;
     P.next = mgr ? q(sb.from('schedule_weeks').select('week_start,status').eq('week_start', iso(nextWk)).maybeSingle()) : null;
     P.thisWeek = q(sb.from('schedule_weeks').select('week_start,status,published').eq('week_start', iso(thisWk)).maybeSingle());
-    P.emps = mgr ? q(sb.from('employees').select('id,name')) : null;
+    P.emps = mgr ? q(sb.from('employees').select('id,name,position')) : null;
     P.items = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,par,active')) : null;
     P.counts = ctx.canPrep ? q(sb.from('inventory_counts').select('category,count_date,counts')) : null;
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
@@ -125,13 +125,49 @@
     // who's working today (published schedule)
     var crew = [];
     if (d.thisWeek && d.thisWeek.status === 'published' && d.thisWeek.published && d.emps) {
-      var byId = {}; d.emps.forEach(function (e) { byId[e.id] = e.name; });
-      crew = d.thisWeek.published.filter(function (s) { return s.day === w.now.getDay() && byId[s.emp]; })
+      var byId = {}; d.emps.forEach(function (e) { byId[e.id] = e; });
+      crew = d.thisWeek.published.filter(function (s) { return s.day === w.now.getDay() && byId[s.emp] && s.start; })
         .sort(function (a, b) { return String(a.start).localeCompare(String(b.start)); })
-        .map(function (s) { return shortName(byId[s.emp]) + ' ' + t12(s.start) + (s.end ? '–' + t12(s.end) : ''); });
+        .map(function (s) { var e = byId[s.emp]; return { name: shortName(e.name), position: s.role || e.position || '', start: s.start, end: s.end || '', note: s.note || '' }; });
     }
     var notes = (d.notes || []).slice().sort(function (a, b) { return a.updated_at < b.updated_at ? 1 : -1; }).slice(0, 3);
     return { items: items, counts: counts, tonight: tonight, week: week, crew: crew, crewKnown: !!(d.thisWeek && d.emps), notes: notes, w: w };
+  }
+
+  /* ---------- who's working: the same timeline as the Hub's daily schedule ---------- */
+  var END_AT = { cut1: '20:00', cut2: '21:00', close: '22:00' };   // 1st cut ~8pm, 2nd cut ~9pm, close ~10pm
+  function tm(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
+  function endM(s) { var e = END_AT[s.end] || s.end || ''; if (!e) return tm(s.start) + 60; var b = tm(e); return b <= tm(s.start) ? b + 1440 : b; }
+  function hrClock(m) { m = ((m % 1440) + 1440) % 1440; var H = Math.floor(m / 60), M = m % 60; return (H % 12 || 12) + (M ? ':' + String(M).padStart(2, '0') : '') + (H >= 12 ? 'p' : 'a'); }
+  function endText(s) { return s.end === 'cut1' ? '1st cut' : s.end === 'cut2' ? '2nd cut' : s.end === 'close' ? 'close' : s.end ? hrClock(tm(s.end)) : ''; }
+  function crewTimeline(list, now) {
+    var lo = Infinity, hi = -Infinity;
+    list.forEach(function (s) { lo = Math.min(lo, tm(s.start)); hi = Math.max(hi, endM(s)); });
+    lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
+    if (hi - lo < 6 * 60) hi = Math.min(lo + 6 * 60, 30 * 60);
+    var span = hi - lo, pct = function (m) { return ((m - lo) / span * 100) + '%'; };
+    var step = span > 6 * 60 ? 120 : 60;   // the side column is narrow: label every other hour on a long day
+    var last = list.reduce(function (x, s) { return endM(s) >= endM(x) ? s : x; }, list[0]);
+    var box = h('div', { cls: 'td-tlbox' }, [h('p', { cls: 'td-crew', text: list.length + ' working · first in ' + hrClock(tm(list[0].start)) + ' · last out ' + endText(last) })]);
+    var tl = h('div', { cls: 'td-tl' });
+    var scale = h('div', { cls: 'td-tl-scale' });
+    for (var m = lo; m <= hi; m += step) scale.appendChild(h('span', { cls: 'td-tl-tick', style: 'left:' + pct(m), text: hrClock(m) }));
+    tl.appendChild(h('div', { cls: 'td-tl-row td-tl-ruler' }, [h('div', { cls: 'td-tl-who' }), scale]));
+    list.forEach(function (s) {
+      var a = tm(s.start), b = endM(s), approx = !!END_AT[s.end], hrs = (b - a) / 60;
+      tl.appendChild(h('div', { cls: 'td-tl-row' }, [
+        h('div', { cls: 'td-tl-who', title: s.name + (s.position ? ' · ' + s.position : '') }, [h('b', { text: s.name }), h('small', { text: [s.position, (approx ? '~' : '') + (Math.round(hrs * 4) / 4) + 'h'].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'td-tl-lane' }, [h('div', { cls: 'td-tl-bar' + (approx ? ' approx' : ''), style: 'left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: hrClock(a) + '–' + endText(s) + (s.note ? ' · ' + s.note : '') },
+          [h('span', { text: hrClock(a) + '–' + endText(s) })])])]));
+    });
+    var grid = h('div', { cls: 'td-tl-grid', 'aria-hidden': 'true' });
+    for (var g = lo; g <= hi; g += 60) grid.appendChild(h('i', { style: 'left:' + pct(g) }));
+    var nm = now.getHours() * 60 + now.getMinutes(); if (nm < lo && nm + 1440 <= hi) nm += 1440;
+    if (nm >= lo && nm <= hi) grid.appendChild(h('b', { cls: 'td-tl-now', style: 'left:' + pct(nm) }));
+    tl.appendChild(grid);
+    box.appendChild(tl);
+    box.appendChild(h('a', { cls: 'td-more td-tl-more', href: '#schedule', text: 'Schedule ›' }));
+    return box;
   }
 
   /* ---------- draw ---------- */
@@ -177,7 +213,7 @@
     else tn.appendChild(h('p', { cls: 'td-none', text: 'No events on the calendar today.' }));
     if (ctx.isMgr && r.crewKnown) {
       tn.appendChild(h('p', { cls: 'td-k', text: 'Working today' }));
-      tn.appendChild(h('p', { cls: 'td-crew', text: r.crew.length ? r.crew.join(' · ') : 'Nobody on this week’s published schedule today.' }));
+      tn.appendChild(r.crew.length ? crewTimeline(r.crew, r.w.now) : h('p', { cls: 'td-crew', text: 'Nobody on this week’s published schedule today.' }));
     }
     side.appendChild(tn);
     var wk = h('section', { cls: 'td-card' }, [h('p', { cls: 'td-k', text: 'This week' })]);
