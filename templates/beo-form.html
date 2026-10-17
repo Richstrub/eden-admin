@@ -104,6 +104,18 @@ dialog textarea{min-height:80px}
 }
 /* Staff sheets: hidden on screen, the only thing printed in staff mode */
 #staff{display:none}
+/* Staff view (staff page / Hub): only the sheets, on screen, phone-friendly */
+body.staff-view{background:#fff;color:#000;padding:0}
+body.staff-view > *:not(#staff){display:none!important}
+body.staff-view #staff{display:block;max-width:900px;margin:0 auto;padding:12px 16px 40px;background:#fff}
+body.staff-view .ss{font-size:16px}
+body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid #000}
+.sv-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;padding:8px 0 10px;margin-bottom:8px;border-bottom:1px solid #ddd}
+.sv-bar a{font:500 13px 'Jost',system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#000;text-decoration:none;border:1px solid #bbb;padding:7px 12px;border-radius:16px}
+.sv-bar button{margin-left:auto;font:500 13px 'Jost',system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:7px 14px;border:1px solid #000;background:#000;color:#fff;border-radius:16px;cursor:pointer}
+.ss-prices table td{font-size:15px}.ss-prices tr.tot td{font-weight:600;border-bottom:2px solid #000}
+@media (max-width:640px){body.staff-view .ss .alert{overflow-x:auto}body.staff-view .ss th,body.staff-view .ss td{padding:4px 4px}body.staff-view .ss-kv{grid-template-columns:repeat(2,1fr)}body.staff-view .ss-head{flex-wrap:wrap;gap:6px}body.staff-view .ss-head h1{font-size:18pt}body.staff-view .ss table{font-size:14px}}
+@media print{body.staff-view .sv-bar{display:none}body.staff-view #staff{padding:0;max-width:none}body.staff-view .ss + .ss{border-top:0;margin-top:0;padding-top:0}}
 @media print{
   body.staff-print > *:not(#staff){display:none!important}
   body.staff-print #staff{display:block}
@@ -369,9 +381,11 @@ dialog textarea{min-height:80px}
 const PRISTINE=(()=>{const c=document.documentElement.cloneNode(true);c.querySelectorAll('#beo-data').forEach(n=>n.remove());return '<!doctype html>\n'+c.outerHTML;})();
 // In an event BEO file, the client's selections are built in and edits save under that event's own key
 const DOC=window.__BEO_DOC&&window.__BEO_DOC.id?window.__BEO_DOC:null;
-const STORE=DOC?'eden-beo-doc-'+DOC.id:'eden-beo-draft-v1';
+// Staff view (staff page and Hub): read-only staff sheets from the saved BEO; nothing is kept in this browser
+const STAFF=!!(window.__BEO_STAFF&&DOC);
+const STORE=STAFF?'':DOC?'eden-beo-doc-'+DOC.id:'eden-beo-draft-v1';
 let S=null;
-try{S=JSON.parse(localStorage.getItem(STORE)||'null');}catch(e){S=null;}
+if(!STAFF){try{S=JSON.parse(localStorage.getItem(STORE)||'null');}catch(e){S=null;}}
 const FRESH_DOC=!!(DOC&&!S);
 if(!S||typeof S!=='object')S=DOC?JSON.parse(JSON.stringify(DOC.data||{})):{};
 /* Client questionnaire import: arrives in the link (#import=...) or from a saved answers file */
@@ -380,6 +394,7 @@ const askReplace=()=>!hasEntries(S)||confirm('Replace the current BEO with the c
 let IMPORTED=false;
 (function(){
   let d=window.__BEO_IMPORT||null;
+  if(STAFF)return;
   if(!d){
     const m=location.hash.match(/^#import=(.+)$/);if(!m)return;
     try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
@@ -536,7 +551,7 @@ document.querySelectorAll('[data-k]').forEach(el=>{
 });
 
 let t;
-function save(){clearTimeout(t);t=setTimeout(()=>{try{localStorage.setItem(STORE,JSON.stringify(S));$('saved').textContent='Saved in this browser.';}catch(e){$('saved').textContent='Couldn\u2019t save in this browser; print or keep this tab open.';}},250);}
+function save(){if(STAFF)return;clearTimeout(t);t=setTimeout(()=>{try{localStorage.setItem(STORE,JSON.stringify(S));$('saved').textContent='Saved in this browser.';}catch(e){$('saved').textContent='Couldn\u2019t save in this browser; print or keep this tab open.';}},250);}
 
 document.addEventListener('input',onChange);
 document.addEventListener('change',onChange);
@@ -1213,6 +1228,25 @@ $('clearBtn').addEventListener('click',()=>{
   document.querySelectorAll('[data-k]').forEach(el=>{if(el.type==='checkbox'||el.type==='radio')el.checked=false;else if(el.tagName==='SELECT')el.selectedIndex=0;else el.value=DEFAULTS[el.dataset.k]||'';});
   renderDiet();showAddr();calc();$('saved').textContent='Form cleared.';
 });
+/* ---------- Staff view: the FOH and kitchen sheets on screen (prices only for the Owner and managers) ---------- */
+if(STAFF){
+  calc();buildStaff();
+  const st=$('staff');
+  if(window.__BEO_PRICES&&LAST&&LAST.lines){
+    const L=LAST,row=(a,b,cls)=>`<tr${cls?` class="${cls}"`:''}><td>${esc(a)}</td><td class="n">${esc(b)}</td></tr>`;
+    st.insertAdjacentHTML('beforeend',`<section class="ss ss-prices"><div class="ss-head"><div><div class="ss-dept">Managers only</div><h1>Pricing and billing</h1></div><div class="ss-ev"><b>${esc(val('ev.name')||'Untitled event')}</b><br>${esc(fDate(val('ev.date')))}</div></div>
+      <table><tbody>${L.lines.filter(l=>l[1]).map(l=>row(l[0],fmt(l[1]))).join('')}${row('Subtotal',fmt(L.sub),'tot')}${row('Service charge'+(L.svcPct?` (${L.svcPct}%)`:''),fmt(L.svc))}${row('Sales tax'+(L.taxPct?` (${L.taxPct}%)`:''),fmt(L.tax))}${row('Total',fmt(L.total),'tot')}${row('Deposit received',fmt(L.dep))}${row('Balance due',fmt(L.total-L.dep),'tot')}</tbody></table>
+      <p class="d">Staff without manager access, and the Hub, see these sheets without this page.</p></section>`);
+  }
+  const bar=document.createElement('nav');bar.className='sv-bar';
+  bar.innerHTML='<a href="#sv-foh">Front of house</a><a href="#sv-boh">Kitchen</a>'+(window.__BEO_PRICES?'<a href="#sv-price">Pricing</a>':'')+'<button type="button" id="svPrint">Print</button>';
+  const secs=st.querySelectorAll('.ss');if(secs[0])secs[0].id='sv-foh';if(secs[1])secs[1].id='sv-boh';if(secs[2])secs[2].id='sv-price';
+  st.insertBefore(bar,st.firstChild);
+  bar.addEventListener('click',e=>{const a=e.target.closest('a');if(a){e.preventDefault();const t=document.getElementById(a.getAttribute('href').slice(1));if(t)t.scrollIntoView({behavior:'smooth',block:'start'});}});
+  $('svPrint').addEventListener('click',()=>{try{window.print();}catch(e){}});
+  document.body.classList.add('staff-view');
+  document.title=(val('ev.name')||'Event')+' · BEO';
+}
 })();
 </script>
 </body>

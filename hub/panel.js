@@ -14,6 +14,7 @@
     var session = r && r.data && r.data.session;
     if (!session) { msg('The Hub is signed out. Close this and sign in on the Hub.'); return; }
     if (p === 'orders') { window.EdenOrders.show({ sb: sb, el: el, mode: 'hub' }); return; }
+    if (p === 'beos') { el.classList.add('hp-beos'); window.EdenBEOStaff.show({ sb: sb, el: el, base: '../' }); return; }
     if (p === 'timeoff') { window.EdenHubTimeOff.show({ sb: sb, el: el }); return; }
     if (p === 'calendar') { el.classList.add('hp-cal'); window.EdenCal.show({ sb: sb, el: el, name: 'Hub', canEdit: false, status: function () {} }); return; }
     if (p === 'preshift') { el.classList.add('hp-pre'); window.EdenPreshift.show({ sb: sb, el: el, role: 'hub', name: 'Hub', hub: true, noNotes: true, api: '../' }); return; }
