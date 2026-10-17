@@ -82,6 +82,57 @@
     menuChanges(mc);
     }
     if (on('notes')) wrap.appendChild(notesCard());
+    wrap.appendChild(openingCard());
+  }
+
+  /* ---------- 5. Front of house opening checklist (the same list the Hub ticks off) ---------- */
+  var OPEN_LIST = 'foh-open', HUB_NAME = 'eden-hub-name';
+  function hubWho() { try { var x = JSON.parse(localStorage.getItem(HUB_NAME) || 'null'); return x && Date.now() - x.at < 600000 ? x.name : ''; } catch (e) { return ''; } }
+  function openingCard() {
+    var card = h('section', { cls: 'eo-card ps-open', 'aria-labelledby': 'psOpenH' });
+    var head = h('div', { cls: 'ps-head' }, [h('h2', { cls: 'eo-h', id: 'psOpenH' }, [h('span', { cls: 'eo-n', text: '5' }), 'Front of house opening'])]);
+    if (isMgr() && !P.ctx.hub) head.appendChild(h('a', { cls: 'eo-btn ps-check', href: '#checklists/edit', text: 'Edit list' }));
+    card.appendChild(head);
+    var body = h('div', { cls: 'ps-open-body' }, [h('p', { cls: 'ps-src', text: 'Loading…' })]);
+    card.appendChild(body);
+    P.ctx.sb.rpc('checklist_get', { p_list: OPEN_LIST }).then(function (r) {
+      if (r.error) { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: /checklist_get|function|schema cache/i.test(r.error.message || '') ? 'The opening checklist isn’t set up yet (it comes with supabase/hub.sql).' : 'Couldn’t load the opening checklist.' })); return; }
+      paintOpening(body, r.data);
+    }, function () { body.innerHTML = ''; body.appendChild(h('p', { cls: 'ps-src', text: 'Couldn’t load the opening checklist.' })); });
+    return card;
+  }
+  function paintOpening(body, d) {
+    body.innerHTML = '';
+    if (!d || d.error) { body.appendChild(h('p', { cls: 'ps-src', text: d && d.error === 'not_allowed' ? 'Your login can’t open the checklists.' : 'The opening checklist isn’t set up yet.' })); return; }
+    var items = d.items || [], real = items.filter(function (i) { return !i.head; }), done = d.done || {};
+    var n = real.filter(function (i) { return done[i.id]; }).length, pct = real.length ? Math.round(n / real.length * 100) : 0;
+    body.appendChild(h('div', { cls: 'ck-prog' + (real.length && n === real.length ? ' full' : '') }, [h('i', { style: 'width:' + pct + '%' }), h('span', { text: n + ' of ' + real.length + ' done' })]));
+    var who = null;
+    if (P.ctx.hub) {   // the Hub is one shared login: whoever ticks types their initials (remembered for 10 minutes, same as the Hub's checklists)
+      who = h('input', { type: 'text', cls: 'ck-by', maxlength: '20', autocomplete: 'off', placeholder: 'e.g. MS', value: hubWho(), 'aria-label': 'Your initials' });
+      body.appendChild(h('label', { cls: 'ck-who' }, [h('span', { text: 'Your initials' }), who]));
+    }
+    var msg = h('p', { cls: 'ck-msg', role: 'status' }); body.appendChild(msg);
+    var ul = h('ul', { cls: 'ck-list' });
+    items.forEach(function (it) {
+      if (it.head) { ul.appendChild(h('li', { cls: 'ck-hd', text: it.text })); return; }
+      var x = done[it.id];
+      ul.appendChild(h('li', null, [h('button', { type: 'button', cls: 'ck-item' + (x ? ' done' : ''), role: 'checkbox', 'aria-checked': x ? 'true' : 'false', on: { click: function () {
+        var by = who ? who.value.trim() : '';
+        if (who && by) { try { localStorage.setItem(HUB_NAME, JSON.stringify({ name: by, at: Date.now() })); } catch (e) {} }
+        var on = !(d.done || {})[it.id];
+        d.done = d.done || {}; if (on) d.done[it.id] = { by: by || d.me || '', at: new Date().toISOString() }; else delete d.done[it.id];
+        paintOpening(body, d);
+        P.ctx.sb.rpc('checklist_tick', { p_list: OPEN_LIST, p_item: it.id, p_on: on, p_by: by }).then(function (r) {
+          if (r.error || !r.data || r.data.error) { var m = body.querySelector('.ck-msg'); if (m) { m.textContent = r.data && r.data.error === 'not_allowed' ? 'Your login can’t tick the checklist.' : 'Couldn’t save that. Check your connection.'; m.className = 'ck-msg err'; } return; }
+          paintOpening(body, r.data);
+        }, function () { var m = body.querySelector('.ck-msg'); if (m) { m.textContent = 'Couldn’t save that. Check your connection.'; m.className = 'ck-msg err'; } });
+      } } }, [h('span', { cls: 'ck-box', 'aria-hidden': 'true' }), h('span', { cls: 'ck-text', text: it.text }),
+        x ? h('small', { cls: 'ck-by-at', text: [x.by || '', x.at ? new Date(x.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''].filter(Boolean).join(' · ') }) : null])]));
+    });
+    body.appendChild(ul);
+    if (real.length && n === real.length) body.appendChild(h('p', { cls: 'ck-alldone', text: 'Opening is done. Nice work.' }));
+    body.appendChild(h('p', { cls: 'ps-src', text: 'The same list as the Hub’s Opening checklist: ticks here show there, and the other way round.' }));
   }
 
   /* ---------- 2. Reservations ---------- */
