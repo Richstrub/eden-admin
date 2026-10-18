@@ -2508,3 +2508,23 @@ body.nt-open #app{visibility:hidden!important}
 .ed-ghead .ed-grow{font-family:var(--serif);font-size:1.3rem}
 .ed-growing > input{visibility:hidden}
 @media (max-width:640px){.ed .ed-grow{font-size:16px}}
+
+/* ---------- Owner > Partner stories ---------- */
+.pt{max-width:980px}
+.pt-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pt-state{font-size:.78rem;color:var(--ember);font-style:italic}
+.pt-help{color:var(--stone);font-size:.92rem;line-height:1.6;max-width:62ch;margin:14px 0 6px}
+.pt-card{display:grid;grid-template-columns:120px minmax(0,1fr);gap:24px;padding:26px 0;border-top:1px solid var(--line, rgba(15,18,21,.1))}
+.pt-card:first-of-type{margin-top:18px}
+.pt-face{width:120px;aspect-ratio:4/5;background:#efe9df;overflow:hidden}
+.pt-face img{width:100%;height:100%;object-fit:cover;display:block}
+.pt-who{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pt-who h2{font-family:var(--serif);font-weight:400;font-size:1.5rem;margin:0}
+.pt-role{font-size:.62rem;letter-spacing:.24em;text-transform:uppercase;color:var(--stone)}
+.pt-who .sc-sp{flex:1}
+.pt-count{font-size:.74rem;color:var(--stone);font-variant-numeric:tabular-nums}
+.pt-text{width:100%;box-sizing:border-box;min-height:160px;resize:vertical;padding:14px 16px;font:inherit;font-size:1rem;line-height:1.65;border:1px solid rgba(15,18,21,.18);background:#fff;color:var(--ink)}
+.pt-text:focus{outline:none;border-color:var(--ember);box-shadow:0 0 0 3px rgba(176,112,63,.15)}
+.pt-foot{display:flex;justify-content:flex-end;align-items:center;gap:16px;padding-top:18px;border-top:1px solid var(--line, rgba(15,18,21,.1))}
+.pt-msg{margin:0;font-size:.86rem;color:var(--stone)}
+@media (max-width:640px){.pt-card{grid-template-columns:1fr;gap:14px}.pt-face{width:96px}}

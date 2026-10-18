@@ -132,11 +132,11 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees', partners: 'viewPartners' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], checklists: ['Service', 'Checklists'], orders: ['Kitchen & bar', 'Ordering'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], analytics: ['Owner', 'Analytics'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Team', 'Payroll'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], analytics: ['Owner', 'Analytics'], partners: ['Owner', 'Partner stories'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   // Team > Employees > Permissions: sections switched off for this login (Kitchen and Front-of-house logins)
@@ -167,7 +167,7 @@
     if (v.indexOf('promo/') === 0) { sub = v.slice(6); v = 'promo'; if (!/^(list|e\/[0-9a-f-]{36})$/.test(sub)) sub = ''; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
     var want = '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
@@ -247,6 +247,9 @@
     } else if (v === 'checklists') {
       status('');
       if (window.EdenChecklists) { if (sub === 'edit') window.EdenChecklists.edit({ sb: sb, el: $('viewChecklists'), status: status }); else window.EdenChecklists.show({ sb: sb, el: $('viewChecklists'), mode: 'admin' }); }
+    } else if (v === 'partners') {
+      status('');
+      if (window.EdenPartners) window.EdenPartners.show({ sb: sb, el: $('viewPartners'), status: status });
     } else if (v === 'resources') {
       status('');
       if (window.EdenResources) window.EdenResources.show({ sb: sb, el: $('viewResources'), status: status, role: role, name: staffName });
