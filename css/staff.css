@@ -1346,6 +1346,14 @@ body.nt-open #app{visibility:hidden!important}
 .em-row-t.unread::before{content:"";position:absolute;left:4px;top:24px;width:6px;height:6px;border-radius:50%;background:var(--ember)}
 .em-av{flex:none;width:38px;height:38px;border-radius:50%;border:0;display:flex;align-items:center;justify-content:center;color:#fff;font:inherit;font-size:.8rem;font-weight:500;letter-spacing:.04em;cursor:pointer;margin-left:2px}
 .em-av.on{background:var(--ink);color:#fff}
+.em-chkw{flex:none;display:flex;align-items:center;justify-content:center;width:26px;margin:0 -6px 0 -4px;cursor:pointer}
+.em-row-t .em-chkw{align-self:flex-start;height:38px}
+.em-chkw-all{margin:0 6px 0 -2px;height:36px}
+.em-chk{width:18px;height:18px;margin:0;accent-color:var(--ember);cursor:pointer}
+.em-chk:disabled{opacity:.35;cursor:default}
+.em-selbar .em-ib-wide{border:1px solid rgba(15,18,21,.14);background:#fff;height:32px;margin-left:4px}
+.em-selbar .em-ib-wide:hover{background:#fff;border-color:rgba(15,18,21,.3)}
+.em-selbar .em-ib-wide.em-danger{border-color:rgba(163,57,43,.35)}
 .em-av .em-i{width:18px;height:18px}
 .em-rmain{flex:1;min-width:0;display:grid;gap:1px}
 .em-rtop,.em-rsub{display:flex;align-items:baseline;gap:8px;min-width:0}

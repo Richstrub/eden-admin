@@ -439,7 +439,7 @@
   function loadList(quiet) {
     var list = M.el.querySelector('.em-list'); if (!list || !M.acct) return Promise.resolve();
     var seq = ++M.listSeq, id = M.acct;
-    if (!quiet) { M.threads = []; paintList(null, true); }
+    if (!quiet) { M.threads = []; M.lastPick = null; paintList(null, true); }
     var q = ((M.q || '') + (M.unreadOnly ? ' is:unread' : '')).trim();   // Gmail's own search, so it matches Gmail exactly
     return api('list', { label: M.q ? 'ALL' : M.label, q: q, page: M.page || '' }).then(function (j) {
       if (seq !== M.listSeq || id !== M.acct) return;
@@ -459,7 +459,12 @@
     var a = acct(), ids = selIds(), any = ids.length > 0;
     // heading, search and the All / Unread switch
     var head = h('div', { cls: 'em-lhead' });
+    var allOn = M.threads.length && M.threads.every(function (t) { return M.sel[t.id]; });
+    var all = h('input', { type: 'checkbox', cls: 'em-chk em-chk-all', title: allOn ? 'Unselect all' : 'Select all', 'aria-label': allOn ? 'Unselect all' : 'Select all on this page' });
+    all.checked = !!allOn; all.indeterminate = any && !allOn; all.disabled = !M.threads.length;
+    all.addEventListener('change', function () { if (allOn) M.sel = {}; else M.threads.forEach(function (t) { M.sel[t.id] = 1; }); M.lastPick = null; paintList(); });
     head.appendChild(h('div', { cls: 'em-ltop' }, [
+      h('label', { cls: 'em-chkw em-chkw-all' }, [all]),
       h('h2', { cls: 'em-ltitle', text: M.q ? 'Search' : labelName(M.label) }),
       h('span', { cls: 'em-sp' }),
       M.back.length ? ib('prev', 'Newer', function () { M.page = M.back.pop() || ''; loadList(); }) : null,
@@ -480,7 +485,7 @@
         h('span', { cls: 'em-selcount', text: ids.length + ' selected' }),
         ids.length < M.threads.length ? h('button', { type: 'button', cls: 'em-link', text: 'Select all', on: { click: function () { M.threads.forEach(function (t) { M.sel[t.id] = 1; }); paintList(); } } }) : null,
         h('span', { cls: 'em-sp' })]);
-      actionButtons(ids).forEach(function (b) { bar.appendChild(b); });
+      actionButtons(ids, true).forEach(function (b) { bar.appendChild(b); });
       list.appendChild(bar);
     }
     if (a && a.status === 'reconnect') { list.appendChild(h('div', { cls: 'em-empty' }, [h('p', { text: 'Google no longer lets the staff site into ' + a.address + '. This happens when the password changes or access is removed.' }), btn('Connect it again', function () { reconnect(a); }, 'em-go')])); return; }
@@ -491,23 +496,36 @@
       h('p', { text: M.q ? 'Nothing ' + (M.unreadOnly ? 'unread ' : '') + 'matches “' + M.q + '”.' : M.unreadOnly ? 'No unread email in ' + labelName(M.label) + '.' : (M.label === 'INBOX' ? 'Your inbox is empty.' : 'Nothing in ' + labelName(M.label) + '.') })]));
     if (M.label === 'TRASH' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes email in Trash for good after 30 days.' }));
     if (M.label === 'SPAM' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes spam for good after 30 days.' }));
-    M.threads.forEach(function (t) { rows.appendChild(row(t, any)); });
+    M.threads.forEach(function (t, i) { rows.appendChild(row(t, any, i)); });
     list.appendChild(rows);
     rows.scrollTop = scroll;
     if (hadFocus) { q.focus(); }
   }
-  function row(t, selecting) {
+  // choose an email; shift-click chooses everything between it and the last one chosen
+  function togglePick(t, i, shift) {
+    var on = !M.sel[t.id];
+    if (shift && M.lastPick != null && M.threads[M.lastPick]) {
+      var a = Math.min(M.lastPick, i), b = Math.max(M.lastPick, i);
+      for (var k = a; k <= b; k++) { if (on) M.sel[M.threads[k].id] = 1; else delete M.sel[M.threads[k].id]; }
+    } else if (on) M.sel[t.id] = 1; else delete M.sel[t.id];
+    M.lastPick = i; paintList();
+  }
+  function row(t, selecting, idx) {
     var sent = M.label === 'SENT';
     var name = sent ? 'To ' + splitAddrs(t.to).map(function (x) { return x.name || x.email; }).join(', ') : who(t.from);
     var av = avatar(sent ? (splitAddrs(t.to)[0] ? (splitAddrs(t.to)[0].name || splitAddrs(t.to)[0].email) : '') : t.from);
     var picked = !!M.sel[t.id];
     var pick = h('button', { type: 'button', cls: 'em-av' + (picked ? ' on' : ''), style: picked ? null : 'background:' + av.color, 'aria-pressed': picked ? 'true' : 'false', 'aria-label': picked ? 'Selected. Tap to unselect' : 'Select this email',
-      on: { click: function (e) { e.stopPropagation(); if (M.sel[t.id]) delete M.sel[t.id]; else M.sel[t.id] = 1; paintList(); } } }, picked ? [ico('check')] : [h('span', { text: av.ini })]);
+      on: { click: function (e) { e.stopPropagation(); togglePick(t, idx, e.shiftKey); } } }, picked ? [ico('check')] : [h('span', { text: av.ini })]);
+    var chk = h('input', { type: 'checkbox', cls: 'em-chk', 'aria-label': 'Select email from ' + (name || 'unknown sender') });
+    chk.checked = picked;
+    chk.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); togglePick(t, idx, e.shiftKey); });
+    var chkw = h('label', { cls: 'em-chkw', on: { click: function (e) { e.stopPropagation(); } } }, [chk]);
     var star = h('button', { type: 'button', cls: 'em-star' + (t.starred ? ' on' : ''), 'aria-label': t.starred ? 'Starred' : 'Not starred', 'aria-pressed': t.starred ? 'true' : 'false', title: t.starred ? 'Unstar' : 'Star',
       on: { click: function (e) { e.stopPropagation(); act([t.id], t.starred ? { remove: ['STARRED'] } : { add: ['STARRED'] }); } } }, [ico('star')]);
     return h('div', { cls: 'em-row-t' + (t.unread ? ' unread' : '') + (M.open === t.id ? ' open' : '') + (picked ? ' sel' : ''), role: 'listitem', tabindex: '0',
-      on: { click: function () { if (selecting) { if (M.sel[t.id]) delete M.sel[t.id]; else M.sel[t.id] = 1; paintList(); } else openThread(t.id); }, keydown: function (e) { if (e.key === 'Enter') openThread(t.id); } } }, [
-      pick,
+      on: { click: function (e) { if (selecting || e.shiftKey) { if (e.shiftKey) e.preventDefault(); togglePick(t, idx, e.shiftKey); } else openThread(t.id); }, keydown: function (e) { if (e.key === 'Enter') openThread(t.id); else if (e.key === ' ' || e.key === 'x') { e.preventDefault(); togglePick(t, idx, e.shiftKey); } } } }, [
+      chkw, pick,
       h('div', { cls: 'em-rmain' }, [
         h('div', { cls: 'em-rtop' }, [h('span', { cls: 'em-from' }, [name || '(no sender)', t.n > 1 ? h('span', { cls: 'em-cnt', text: String(t.n) }) : null]), h('span', { cls: 'em-date', text: shortDate(t.date) })]),
         h('div', { cls: 'em-rsub' }, [h('span', { cls: 'em-subj', text: t.subject || '(no subject)' }), t.attach ? h('span', { cls: 'em-clip', title: 'Has attachments' }, [ico('clip')]) : null, star]),
@@ -518,7 +536,8 @@
   function decodeEntities(s) { var d = document.createElement('textarea'); d.innerHTML = String(s || ''); return d.value; }
 
   /* ---------- actions (all done in Gmail) ---------- */
-  function actionButtons(ids) {
+  function actionButtons(ids, wide) {
+    var W = wide ? ' em-ib-wide' : '';
     var inTrash = M.label === 'TRASH', inSpam = M.label === 'SPAM';
     var t = M.threads.filter(function (x) { return ids.indexOf(x.id) !== -1; });
     if (!t.length && M.thread && ids[0] === M.thread.id) t = [{ id: M.thread.id, labels: M.thread.labels, unread: false }];
@@ -528,21 +547,21 @@
     var out = [];
     if (inTrash) {
       out.push(ib('restore', 'Restore', function () { act(ids, 'untrash', 'Moved out of Trash.'); }));
-      out.push(ib('trash', 'Delete forever', function () { if (confirm('Delete ' + many + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'em-danger'));
+      out.push(ib('trash', 'Delete forever', function () { if (confirm('Delete ' + many + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'em-danger' + W));
       return out;
     }
     if (hasInbox) out.push(ib('archive', 'Archive', function () { act(ids, { remove: ['INBOX'] }, 'Archived. It’s still in All mail.'); }));
     else if (!inSpam) out.push(ib('inbox', 'To inbox', function () { act(ids, { add: ['INBOX'] }, 'Moved to the inbox.'); }));
-    out.push(ib('trash', 'Delete', function () { act(ids, 'trash', 'Moved to Trash.'); }));
+    out.push(ib('trash', 'Delete', function () { act(ids, 'trash', ids.length > 1 ? ids.length + ' conversations moved to Trash.' : 'Moved to Trash.'); }, W.trim()));
     if (inSpam) {
       out.push(ib('inbox', 'Not spam', function () { act(ids, { remove: ['SPAM'], add: ['INBOX'] }, 'Moved to the inbox.'); }));
       out.push(ib('trash', 'Delete forever', function () { if (confirm('Delete ' + many + ' forever? This can’t be undone, here or in Gmail.')) act(ids, 'delete', 'Deleted forever.'); }, 'em-danger'));
     } else out.push(ib('spam', 'Spam', function () { act(ids, { add: ['SPAM'], remove: ['INBOX'] }, 'Marked as spam.'); }));
     out.push(anyUnread ? ib('read', 'Mark read', function () { act(ids, { remove: ['UNREAD'] }); }) : ib('unread', 'Mark unread', function () { act(ids, { add: ['UNREAD'] }); }));
-    out.push(moveMenu(ids));
+    out.push(moveMenu(ids, wide));
     return out;
   }
-  function moveMenu(ids) {
+  function moveMenu(ids, wide) {
     var sel = h('select', { cls: 'em-move', 'aria-label': 'Move to folder', title: 'Move to folder' }, [h('option', { value: '', text: 'Move to…' })].concat(
       [h('option', { value: 'INBOX', text: 'Inbox' })], userLabels().map(function (l) { return h('option', { value: l.id, text: l.name }); }), [h('option', { value: '+', text: '+ New folder…' })]));
     sel.addEventListener('change', function () {
@@ -552,10 +571,10 @@
         if (!l) return;
         // like Gmail's "Move to": add the new folder and take it out of the one you're looking at
         var rem = []; if (!M.q && M.label !== l.id && (M.label === 'INBOX' || /^Label_/.test(M.label))) rem.push(M.label);
-        act(ids, { add: [l.id], remove: rem }, 'Moved to ' + l.name + '.');
+        act(ids, { add: [l.id], remove: rem }, (ids.length > 1 ? ids.length + ' conversations moved to ' : 'Moved to ') + l.name + '.');
       });
     });
-    return h('span', { cls: 'em-ib em-movew' }, [ico('folder'), h('span', { cls: 'em-ib-t', text: 'Move' }), sel]);
+    return h('span', { cls: 'em-ib em-movew' + (wide ? ' em-ib-wide' : '') }, [ico('folder'), h('span', { cls: 'em-ib-t', text: wide ? 'Move to…' : 'Move' }), sel]);
   }
   function newFolder() {
     var name = prompt('Name for the new folder (it’s made in Gmail too):', '');
@@ -592,7 +611,8 @@
     if (closing) { M.open = ''; M.thread = null; var r = M.el.querySelector('.em'); if (r) r.classList.remove('em-reading'); paintReader(); }
     else if (M.thread && ids.indexOf(M.thread.id) !== -1) { M.thread.labels = M.thread.labels.filter(function (l) { return rem.indexOf(l) === -1; }).concat(add); paintReader(); }
     paintList();
-    return api(op, body).then(function () {
+    var chunks = []; for (var c = 0; c < ids.length; c += 25) chunks.push(ids.slice(c, c + 25));
+    return chunks.reduce(function (p, part) { return p.then(function () { return api(op, Object.assign({}, body, { ids: part })); }); }, Promise.resolve()).then(function () {
       M.busy = false;
       if (done) say(done, 'ok');
       if (add.indexOf('UNREAD') !== -1 || rem.indexOf('UNREAD') !== -1 || rem.indexOf('INBOX') !== -1 || add.indexOf('INBOX') !== -1 || op !== 'modify') counts();
