@@ -75,6 +75,7 @@
       if (r.error) { I.missing = isMissing(r.error); if (!I.missing) I.ctx.status('Couldn’t load Catering & BEOs.', 'err'); I.rows = []; return; }
       I.missing = false; I.rows = r.data || [];
       syncAllBeos();
+      I.rows.forEach(function (x) { if (x.status === 'beo') calSync(x, true); });   // active BEOs made before this, or on another computer
     }, function () { I.loaded = true; I.ctx.status('Couldn’t reach the database.', 'err'); });
   }
   function loadMsgs(id) {
@@ -84,11 +85,65 @@
     });
   }
   function save(row, patch, msg) {
+    var was = row.status;
     Object.assign(row, patch);
     return I.ctx.sb.from('catering_inquiries').update(patch).eq('id', row.id).then(function (r) {
       if (r.error) { I.ctx.status('Couldn’t save that change. ' + (r.error.message || ''), 'err'); return false; }
-      if (msg) I.ctx.status(msg, 'ok'); return true;
+      if (msg) I.ctx.status(msg, 'ok');
+      if (patch.status === 'beo' && was !== 'beo') calSync(row, false, msg);
+      else if (patch.status && (patch.status === 'declined' || patch.status === 'spam') && was !== patch.status) calRemove(row);
+      return true;
     });
+  }
+
+  /* ---------- an active BEO keeps its own event on the calendar ---------- */
+  // what the calendar event should say, from the BEO (or the inquiry, until the BEO has it)
+  function calFields(r) {
+    var d = r.beo_doc || r.beo || {}, g = function (k) { return String(d[k] == null ? '' : d[k]).trim(); };
+    var date = (g('ev.date') || String(r.event_date || '')).slice(0, 10);
+    var start = (g('ev.start') || String(r.start_time || '')).slice(0, 5), end = (g('ev.end') || String(r.end_time || '')).slice(0, 5);
+    var room = g('ev.room') || r.location || ''; if (room === 'Other') room = g('ev.address') || r.location || 'Off site';
+    var guests = parseInt(g('ev.guar') || g('ev.expected') || r.guests, 10);
+    var title = g('ev.name') || r.event_name || ((r.name || 'Guest') + ' event');
+    return { title: title, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', all_day: !start, start: start, end: start ? end : '', room: room,
+      guests: isFinite(guests) && guests > 0 ? guests : null, type: room && !/3rd Floor|Palladian|Restaurant/i.test(room) ? 'catering' : 'private' };
+  }
+  function calNotes(r) {
+    var bits = [r.name, r.email, r.phone].filter(Boolean).join(' · ');
+    return 'Active BEO' + (bits ? ' for ' + bits : '') + '. Date, time, room and guest count follow the BEO.';
+  }
+  var calBusy = {}, calLast = {};
+  function calSync(r, quiet, said) {
+    if (!I.ctx.sb || calBusy[r.id]) return Promise.resolve();
+    var f = calFields(r), key = JSON.stringify(f);
+    if (calLast[r.id] === key) return Promise.resolve();
+    if (!f.date) { if (!quiet) I.ctx.status((said ? said + ' ' : '') + 'It goes on the calendar once the BEO has an event date.', 'ok'); return Promise.resolve(); }
+    calBusy[r.id] = 1;
+    var sb = I.ctx.sb, done = function () { delete calBusy[r.id]; };
+    return sb.from('events').select('*').eq('beo_id', r.id).then(function (x) {
+      if (x.error) throw x.error;
+      var ev = (x.data || [])[0];
+      if (ev) {   // keep it in step with the BEO; notes someone wrote on the calendar are left alone
+        var patch = {}; Object.keys(f).forEach(function (k) { if (String(ev[k] == null ? '' : ev[k]) !== String(f[k] == null ? '' : f[k])) patch[k] = f[k]; });
+        if (ev.source !== 'beo') patch.source = 'beo';   // one added by hand from the inquiry becomes the BEO's event
+        if (!Object.keys(patch).length) return 'same';
+        var up = Object.assign({}, ev, patch); delete up.created_at; delete up.updated_at;
+        return sb.from('events').upsert(up, { onConflict: 'id' }).then(function (u) { if (u.error) throw u.error; return 'moved'; });
+      }
+      var row = Object.assign({ id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'beo-' + r.id, notes: calNotes(r), source: 'beo', beo_id: r.id, created_by: I.ctx.name || '' }, f);
+      return sb.from('events').upsert(row, { onConflict: 'id' }).then(function (u) { if (u.error) throw u.error; return 'added'; });
+    }).then(function (what) {
+      done(); calLast[r.id] = key;
+      if (what === 'added' && !quiet) I.ctx.status((said ? said + ' ' : '') + 'Added to the calendar on ' + longDate(f.date) + '.', 'ok');
+      else if (what === 'added' || what === 'moved') I.ctx.status('Calendar updated: ' + f.title + ', ' + longDate(f.date) + '.', 'ok');
+    }, function (e) {
+      done();
+      if (!quiet) I.ctx.status(/permission|policy|denied/i.test((e && e.message) || '') ? 'Only the Owner and Managers can add it to the calendar.' : /relation|does not exist/i.test((e && e.message) || '') ? 'Couldn’t add it to the calendar: the calendar isn’t set up yet.' : 'Couldn’t add it to the calendar. ' + ((e && e.message) || ''), 'err');
+    });
+  }
+  function calRemove(r) {
+    delete calLast[r.id];
+    return I.ctx.sb.from('events').delete().eq('beo_id', r.id).eq('source', 'beo').then(function () {}, function () {});
   }
   function addMsg(row, m) {
     var rec = Object.assign({ inquiry_id: row.id, by_name: I.ctx.name || '', at: new Date().toISOString() }, m);
@@ -223,7 +278,7 @@
     d.appendChild(section('Team notes', [note]));
     // more
     var more = h('div', { cls: 'cq-acts cq-more' });
-    if (window.EdenCal) more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Add to calendar', on: { click: function () { toCalendar(r); } } }));
+    if (window.EdenCal && r.status !== 'beo') more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Add to calendar', on: { click: function () { toCalendar(r); } } }));
     if (r.beo_doc || (r.beo && Object.keys(r.beo).length)) more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Open BEO', on: { click: function () { openBEO(r); } } }));
     more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Download answers', on: { click: function () { download(r); } } }));
     if (I.ctx.canDelete) more.appendChild(h('button', { type: 'button', cls: 'cq-del', text: 'Delete', on: { click: function () { del(r); } } }));
@@ -355,7 +410,7 @@
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   function pushBeo(r, text) {
     var data; try { data = JSON.parse(text); } catch (e) { return Promise.resolve(); }
-    return save(r, { beo_doc: data, beo_saved_at: new Date().toISOString() }).then(function (ok) { if (ok) { ls(SYNC + r.id, text); if (I.view === 'beos') paintList(); } });
+    return save(r, { beo_doc: data, beo_saved_at: new Date().toISOString() }).then(function (ok) { if (ok) { ls(SYNC + r.id, text); if (r.status === 'beo') calSync(r, true); if (I.view === 'beos') paintList(); } });
   }
   function syncBeo(r) {   // before opening: settle which copy is newer
     var local = ls(DOCK + r.id), synced = ls(SYNC + r.id), db = r.beo_doc ? JSON.stringify(r.beo_doc) : null;
@@ -390,7 +445,7 @@
     var pre = {
       title: r.event_name || ((r.name || 'Guest') + ' event'), type: r.location && !/3rd Floor|Palladian|Restaurant/i.test(r.location) ? 'catering' : 'private',
       start: (r.start_time || '').slice(0, 5), end: (r.end_time || '').slice(0, 5), all_day: !r.start_time,
-      room: r.location || '', guests: r.guests || null, notes: 'From catering inquiry: ' + (r.name || '') + (bits ? '\n' + bits : ''), source: 'inquiry'
+      room: r.location || '', guests: r.guests || null, notes: 'From catering inquiry: ' + (r.name || '') + (bits ? '\n' + bits : ''), source: 'inquiry', beo_id: r.id
     };
     if (r.event_date) pre.date = String(r.event_date).slice(0, 10);
     window.EdenCal.addEvent({ sb: I.ctx.sb, status: I.ctx.status, name: I.ctx.name, canEdit: true }, pre);
@@ -405,7 +460,7 @@
     if (!window.confirm('Delete ' + (r.name || 'this inquiry') + ', its BEO and its conversation? This can’t be undone.')) return;
     I.ctx.sb.from('catering_inquiries').delete().eq('id', r.id).then(function (x) {
       if (x.error) { I.ctx.status('Couldn’t delete it.', 'err'); return; }
-      I.rows = I.rows.filter(function (y) { return y.id !== r.id; }); I.sel = null; ls(DOCK + r.id, null); ls(SYNC + r.id, null);
+      I.rows = I.rows.filter(function (y) { return y.id !== r.id; }); I.sel = null; ls(DOCK + r.id, null); ls(SYNC + r.id, null); calRemove(r);
       I.ctx.status('Deleted.', 'ok'); render();
     });
   }
