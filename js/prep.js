@@ -543,17 +543,16 @@
     ]));
     if (!secs.length || (!P.bar && secs.length < 2)) sheet.appendChild(h('p', { cls: 'sc-empty', text: P.bar ? 'No cocktails with ingredients on the menu yet.' : 'No dishes on the Kitchen menu yet.' }));
     var built = secs.map(buildSection);
-    var cols = built.length ? partition(built.map(function (b) { return b.weight; }), Math.min(3, built.length)) : [];
-    var body = h('div', { cls: 'pp-body' }); sheet.appendChild(body);
-    var light = -1, lightW = Infinity;
-    var colEls = cols.map(function (r, ci) {
-      var c = h('div', { cls: 'pp-col' }), w = 0;
-      for (var i = r[0]; i < r[1]; i++) { c.appendChild(built[i].el); w += built[i].weight; }
-      if (w < lightW) { lightW = w; light = ci; }
-      body.appendChild(c); return c;
-    });
+    // Notes & 86'd always comes last (bottom of the last column); the columns are balanced with it included
     var notes = h('section', { cls: 'pp-notes' }, [h('header', { cls: 'pp-sec-h' }, [h('h2', { text: 'Notes & 86’d' })]), h('div', { cls: 'pp-lines' })]);
-    (colEls[light] || body).appendChild(notes);
+    var all = built.concat([{ el: notes, weight: 6 }]);
+    var cols = partition(all.map(function (b) { return b.weight; }), Math.min(3, all.length));
+    var body = h('div', { cls: 'pp-body' }); sheet.appendChild(body);
+    cols.forEach(function (r) {
+      var c = h('div', { cls: 'pp-col' });
+      for (var i = r[0]; i < r[1]; i++) c.appendChild(all[i].el);
+      body.appendChild(c);
+    });
     wrap.appendChild(sheet);
     if (P.ctx.viewOnly) viewOnly(wrap);
     paintCount();
