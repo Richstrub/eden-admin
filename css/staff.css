@@ -2528,3 +2528,13 @@ body.nt-open #app{visibility:hidden!important}
 .pt-foot{display:flex;justify-content:flex-end;align-items:center;gap:16px;padding-top:18px;border-top:1px solid var(--line, rgba(15,18,21,.1))}
 .pt-msg{margin:0;font-size:.86rem;color:var(--stone)}
 @media (max-width:640px){.pt-card{grid-template-columns:1fr;gap:14px}.pt-face{width:96px}}
+
+/* ---------- menu editor: Farm or producer drop-down ---------- */
+.ed-src input{padding-right:30px}
+.ed-src-caret{position:absolute;right:2px;bottom:2px;width:28px;height:30px;border:0;background:none;color:var(--stone);font-size:.8rem;cursor:pointer;line-height:1}
+.ed-src-caret:hover{color:var(--ember)}
+.ed-growing .ed-src-caret{visibility:hidden}
+.ed-src-list .ed-src-grp{padding:7px 12px 5px;font-size:.56rem!important;letter-spacing:.22em!important;text-transform:uppercase!important;color:var(--stone);background:#fbf8f2;border-bottom:1px solid rgba(15,18,21,.06)}
+.ed-src-list .ed-ac-tag{font-size:.58rem!important;letter-spacing:.14em!important;text-transform:uppercase!important;color:var(--ember)!important;white-space:nowrap;align-self:center}
+.ed-src-x{margin-left:10px;border:0;background:none;padding:0;font:inherit;font-size:.7rem;color:var(--ember);text-decoration:underline;cursor:pointer}
+.ed-ac-list.ed-src-list{right:auto;width:max(100%,360px);max-width:min(440px,calc(100vw - 32px))}

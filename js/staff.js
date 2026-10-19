@@ -621,7 +621,7 @@
         } else {
           var dn = field(kind ? 'Drink' : 'Dish / drink', it.name, function (v) { it.name = v; }); row.appendChild(dn);
           if (kind) invCombo(dn, it, t, g, row, kind);
-          row.appendChild(field('Farm or producer', it.src, function (v) { it.src = v; }));
+          var sf = field('Farm or producer', it.src, function (v) { it.src = v; }); row.appendChild(sf); srcCombo(sf, isKitchen(t));
           var dsc = field('Description', it.desc, function (v) { it.desc = v; }); dsc.classList.add('desc'); row.appendChild(dsc);
           row.appendChild(field('Price', it.price, function (v) { it.price = v; }));
         }
@@ -779,6 +779,120 @@
     return pr;
   }
 
+  /* ---------- Farm or producer: a drop-down of our partners (the website's Partners section), every producer already on
+   * the menu, and any new one typed in (remembered in site_docs "site/producers", so it's offered from then on). ---------- */
+  // the farms and purveyors in the website's Partners section (keep in step with eden-website index.html #partners)
+  // written the way the menu shows a producer: "Farm · Town, ST"
+  var PARTNERS = ['Grindstone Farm · Pulaski, NY', 'Fresh Herbs of Fabius · Fabius, NY', 'Fruit of the Fungi · Lebanon, NY', 'Dutch Hill Maple · Tully, NY',
+    'Hillside Farm · Truxton, NY', 'Sorrell Hill Milk Co. · Baldwinsville, NY', 'Certified Angus Beef · Wooster, OH', 'Browne Trading Co. · Portland, ME'];
+  function prodKey(n) { return fold(String(n || '').split('·')[0]).replace(/\bfarms\b/g, 'farm').replace(/[^a-z0-9]+/g, ' ').trim(); }
+  // kitchen tabs: farms and food producers; drink tabs (cocktails, beer, spirits…): their own list of makers
+  function savedProducers(kit) { var d = store.rows['site/producers'], a = d && (kit ? d.names : d.drinks); return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string' && x.trim(); }) : []; }
+  function producerList(kit) {
+    var seen = {}, out = [], uses = {}, tabs = (ed.draft && ed.draft.tabs || []).filter(function (t) { return !!isKitchen(t) === !!kit; });
+    tabs.forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) {
+      var v = String(it.src || '').trim(); if (v) uses[prodKey(v)] = (uses[prodKey(v)] || 0) + 1; }); }); });
+    function add(n, kind) { var k = prodKey(n); if (!k || seen[k]) return; seen[k] = 1; out.push({ name: n.trim(), kind: kind, uses: uses[k] || 0 }); }
+    if (kit) PARTNERS.forEach(function (n) { add(n, 'partner'); });
+    savedProducers(kit).forEach(function (n) { add(n, 'saved'); });
+    tabs.forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { if (it.src) add(String(it.src), 'menu'); }); }); });
+    var rank = { partner: 0, saved: 1, menu: 1 };
+    return out.sort(function (a, b) { return rank[a.kind] - rank[b.kind] || a.name.localeCompare(b.name); });
+  }
+  // a producer typed in that we don't know yet: remember it for next time
+  var prodTimer = null;
+  function putProducers(kit, names) {
+    var d = Object.assign({ names: [], drinks: [] }, store.rows['site/producers'] || {});
+    d[kit ? 'names' : 'drinks'] = names; store.rows['site/producers'] = d;
+    clearTimeout(prodTimer);
+    prodTimer = setTimeout(function () { sb.from('site_docs').upsert([{ path: 'site/producers', data: store.rows['site/producers'] }], { onConflict: 'path' }).then(function () {}, function () {}); }, 300);
+  }
+  function rememberProducer(v, kit) {
+    v = String(v || '').trim(); if (!v || v.length > 120 || !ed.canWrite) return;
+    if (producerList(kit).some(function (p) { return prodKey(p.name) === prodKey(v) && p.kind !== 'menu'; })) return;
+    putProducers(kit, savedProducers(kit).concat([v]).filter(function (x, i, a) { return a.map(fold).indexOf(fold(x)) === i; }).sort(function (a, b) { return a.localeCompare(b); }));
+  }
+  function forgetProducer(v, kit) { putProducers(kit, savedProducers(kit).filter(function (x) { return fold(x) !== fold(v); })); }
+  function srcCombo(wf, kit) {
+    var input = wf.querySelector('input'); if (!input || !ed.canWrite) return;
+    input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
+    if (!input.placeholder) input.placeholder = 'Choose…';
+    wf.classList.add('ed-ac', 'ed-src');
+    var caret = document.createElement('button'); caret.type = 'button'; caret.className = 'ed-src-caret'; caret.tabIndex = -1;
+    caret.setAttribute('aria-label', 'Show all farms and producers'); caret.textContent = '▾';
+    caret.addEventListener('mousedown', function (e) { e.preventDefault(); if (box.hidden) { input.focus(); open(true); } else close(); });
+    wf.appendChild(caret);
+    var box = document.createElement('div'); box.className = 'ed-ac-list ed-src-list'; box.setAttribute('role', 'listbox'); box.hidden = true;
+    wf.appendChild(box);
+    var matches = [], active = -1;
+    function close() { box.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); }
+    function set(v) { input.value = v; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); }
+    function choose(p) { set(p.name); if (p.kind === 'new') rememberProducer(p.name, kit); close(); }
+    function paint() {
+      box.querySelectorAll('.ed-ac-opt').forEach(function (o, i) { o.classList.toggle('on', i === active); o.setAttribute('aria-selected', i === active); });
+      var on = box.querySelector('.ed-ac-opt.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+    }
+    function open(all) {
+      var words = all ? [] : fold(input.value).split(/[\s,&+\/]+/).filter(Boolean), cur = prodKey(input.value);
+      // the name in this very cell counts as "on the menu" while it's typed: leave it out unless something else uses it
+      var list = producerList(kit).filter(function (p) { return !(p.kind === 'menu' && p.uses <= 1 && prodKey(p.name) === cur); });
+      matches = list.filter(function (p) { var hay = fold(p.name); return words.every(function (q) { return hay.indexOf(q) !== -1; }); });
+      if (!all && matches.length === 1 && fold(matches[0].name) === fold(input.value)) matches = [];
+      box.innerHTML = '';
+      var head = document.createElement('div'); head.className = 'ed-ac-head';
+      head.textContent = matches.length ? (words.length ? matches.length + ' match' + (matches.length === 1 ? '' : 'es') : 'Farms & producers') : (input.value.trim() ? 'New producer “' + input.value.trim() + '”: it will be added to this list' : 'No producers yet. Type one in.');
+      box.appendChild(head);
+      var lastKind = '';
+      matches.forEach(function (p, i) {
+        var grp = p.kind === 'partner' ? 'Our partners on the website' : kit ? 'Other farms & producers' : 'Producers';
+        if (!words.length && grp !== lastKind) { var gh = document.createElement('div'); gh.className = 'ed-src-grp'; gh.textContent = grp; box.appendChild(gh); lastKind = grp; }
+        var o = document.createElement('div'); o.className = 'ed-ac-opt'; o.setAttribute('role', 'option');
+        var n = document.createElement('span'); n.className = 'ed-ac-name'; n.textContent = p.name;
+        var tg = document.createElement('span'); tg.className = 'ed-ac-tag'; tg.textContent = p.kind === 'partner' ? 'Partner' : '';
+        o.appendChild(n); o.appendChild(tg);
+        var m = document.createElement('span'); m.className = 'ed-ac-meta'; m.textContent = p.uses ? 'On ' + p.uses + ' menu item' + (p.uses === 1 ? '' : 's') : 'Not on the menu right now';
+        o.appendChild(m);
+        if (p.kind === 'saved' && !p.uses) {   // a remembered name nobody uses: can be taken off the list
+          var x = document.createElement('button'); x.type = 'button'; x.className = 'ed-src-x'; x.textContent = 'Remove'; x.setAttribute('aria-label', 'Remove ' + p.name + ' from the list');
+          x.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); forgetProducer(p.name, kit); open(all); });
+          m.appendChild(x);
+        }
+        o.addEventListener('mousedown', function (e) { if (e.target.closest('.ed-src-x')) return; e.preventDefault(); choose(p); });
+        o.addEventListener('mousemove', function () { if (active !== i) { active = i; paint(); } });
+        box.appendChild(o);
+      });
+      // a farm or producer that isn't one of our listed partners: add it to the list
+      var typed = input.value.trim();
+      if (!all && typed && !list.some(function (p) { return prodKey(p.name) === prodKey(typed); })) {
+        var addP = { name: typed, kind: 'new' };
+        var ao = document.createElement('div'); ao.className = 'ed-ac-opt ed-ac-add'; ao.setAttribute('role', 'option');
+        var an = document.createElement('span'); an.className = 'ed-ac-name'; an.textContent = '+ Add “' + typed + '”';
+        var am = document.createElement('span'); am.className = 'ed-ac-meta'; am.textContent = 'A new farm or producer (not one of the website’s partners). It will be offered in this list from now on.';
+        ao.appendChild(an); ao.appendChild(am);
+        ao.addEventListener('mousedown', function (e) { e.preventDefault(); rememberProducer(typed, kit); choose(addP); });
+        var idx = matches.length; ao.addEventListener('mousemove', function () { if (active !== idx) { active = idx; paint(); } });
+        box.appendChild(ao); matches.push(addP);
+        head.textContent = matches.length > 1 ? (matches.length - 1) + ' match' + (matches.length === 2 ? '' : 'es') + ', or add a new one' : 'Not on the list yet';
+      }
+      active = matches.length && words.length ? 0 : -1;
+      box.hidden = false; input.setAttribute('aria-expanded', 'true'); paint();
+    }
+    input.addEventListener('focus', function () { open(!input.value.trim()); });
+    input.addEventListener('input', function () { open(false); });
+    function growing() { var a = document.activeElement; return a && a.classList && a.classList.contains('ed-grow') && wf.contains(a); }
+    input.addEventListener('blur', function () { setTimeout(function () { if (!growing()) { close(); rememberProducer(input.value, kit); } }, 120); });
+    document.addEventListener('focusout', function (e) { if (e.target.classList && e.target.classList.contains('ed-grow') && wf.contains(e.target)) setTimeout(function () { if (!growing() && document.activeElement !== input) { close(); rememberProducer(input.value, kit); } }, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (box.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { open(!input.value.trim()); e.preventDefault(); return; }
+      if (box.hidden) return;
+      if (e.key === 'ArrowDown') { active = Math.min(matches.length - 1, active + 1); paint(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); paint(); e.preventDefault(); }
+      else if (e.key === 'Enter') { if (active >= 0 && matches[active]) { choose(matches[active]); e.preventDefault(); } else close(); }
+      else if (e.key === 'Escape') { close(); e.preventDefault(); }
+    });
+  }
+
   /* ---------- Quick add: one row at the top of each tab; pick which section the item goes in ---------- */
   function quickAdd(t, kind) {
     var wine = hasWine(t), q = ed.qa && ed.qa.tab === t.id ? ed.qa : (ed.qa = { tab: t.id, gid: null });
@@ -816,7 +930,7 @@
       row.appendChild(input('Bottle price', 'bottle', 'ed-qa-num'));
       row.appendChild(input('Glass price', 'glass', 'ed-qa-num'));
     } else {
-      row.appendChild(input(isKitchen(t) ? 'Farm or producer' : 'Producer', 'src'));
+      var qsf = input(isKitchen(t) ? 'Farm or producer' : 'Producer', 'src'); row.appendChild(qsf); srcCombo(qsf, isKitchen(t));
       row.appendChild(input('Description', 'desc', 'desc'));
       row.appendChild(input('Price', 'price', 'ed-qa-num'));
     }
