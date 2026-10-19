@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script id="beo-boot">/* Opened from the staff site (Catering & BEOs): templates/beo-form.html#beo=<id>; the BEO waits in this browser's storage */
+(function(){var m=/[#&]beo=([^&]+)/.exec(location.hash);if(!m||window.__BEO_DOC)return;try{var d=JSON.parse(localStorage.getItem('eden-beo-open-'+decodeURIComponent(m[1]))||'null');if(d&&d.id)window.__BEO_DOC=d;}catch(e){}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Banquet Event Order · Eden Hospitality</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -378,7 +380,7 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
 <script>
 (function(){
 // A clean copy of this page (before it fills in), used to save each event as its own BEO file
-const PRISTINE=(()=>{const c=document.documentElement.cloneNode(true);c.querySelectorAll('#beo-data').forEach(n=>n.remove());return '<!doctype html>\n'+c.outerHTML;})();
+const PRISTINE=(()=>{const c=document.documentElement.cloneNode(true);c.querySelectorAll('#beo-data,#beo-boot').forEach(n=>n.remove());return '<!doctype html>\n'+c.outerHTML;})();
 // In an event BEO file, the client's selections are built in and edits save under that event's own key
 const DOC=window.__BEO_DOC&&window.__BEO_DOC.id?window.__BEO_DOC:null;
 // Staff view (staff page and Hub): read-only staff sheets from the saved BEO; nothing is kept in this browser

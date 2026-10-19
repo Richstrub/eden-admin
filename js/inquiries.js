@@ -406,7 +406,7 @@
   /* ---------- the BEO, saved with the event ----------
      The BEO form keeps its work in this browser under 'eden-beo-doc-<id>'. Every change is copied to the
      database here, so the BEO is the same on every computer. */
-  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-';
+  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-'; var OPEN = 'eden-beo-open-', BEO_V = '20261019a';
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   function pushBeo(r, text) {
     var data; try { data = JSON.parse(text); } catch (e) { return Promise.resolve(); }
@@ -428,13 +428,15 @@
     beoTimers[id] = setTimeout(function () { pushBeo(r, e.newValue).then(function () { I.ctx.status('BEO saved.', 'ok'); }); }, 1200);
   });
   function openBEO(r, pre) {
+    // Open the BEO form at its own address (writing the page into a blank window left it half-loaded in some
+    // browsers). The form reads this BEO from the browser's storage, and its edits come back here through the
+    // storage listener above.
     var w = pre || window.open('', '_blank');
-    syncBeo(r).then(function () { return fetch('templates/beo-form.html', { cache: 'no-cache' }); }).then(function (x) { if (!x.ok) throw new Error('beo'); return x.text(); }).then(function (html) {
+    syncBeo(r).then(function () {
       var data = r.beo_doc || r.beo || {};
-      var inject = '<script id="beo-data">window.__BEO_DOC=' + JSON.stringify({ id: r.id, data: data }).replace(/</g, '\\u003c') + ';<\/script>';
-      var doc = html.replace(/<head>/i, '<head>' + inject);
-      if (w) { w.document.open(); w.document.write(doc); w.document.close(); }
-      else location.href = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
+      ls(OPEN + r.id, JSON.stringify({ id: r.id, data: data, title: String(data['ev.name'] || r.event_name || r.name || 'Event').trim() + ' BEO' }));
+      var url = 'templates/beo-form.html?v=' + BEO_V + '#beo=' + encodeURIComponent(r.id);
+      if (w && !w.closed) w.location.href = url; else location.href = url;
       if (!r.beo_doc) pushBeo(r, JSON.stringify(data));   // the starting point is saved too
     }).catch(function () { if (w) w.close(); I.ctx.status('Couldn’t open the BEO form.', 'err'); });
   }
