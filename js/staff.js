@@ -781,10 +781,12 @@
 
   /* ---------- Farm or producer: a drop-down of our partners (the website's Partners section), every producer already on
    * the menu, and any new one typed in (remembered in site_docs "site/producers", so it's offered from then on). ---------- */
-  // the farms and purveyors in the website's Partners section (keep in step with eden-website index.html #partners)
+  // every partner in the website's Partners section (keep in step with eden-website index.html #partners);
+  // on the website's menu, a dish whose producer is one of these links to that partner's story and map
   // written the way the menu shows a producer: "Farm · Town, ST"
   var PARTNERS = ['Grindstone Farm · Pulaski, NY', 'Fresh Herbs of Fabius · Fabius, NY', 'Fruit of the Fungi · Lebanon, NY', 'Dutch Hill Maple · Tully, NY',
-    'Hillside Farm · Truxton, NY', 'Sorrell Hill Milk Co. · Baldwinsville, NY', 'Certified Angus Beef · Wooster, OH', 'Browne Trading Co. · Portland, ME'];
+    'Hillside Farm · Truxton, NY', 'Sorrell Hill Milk Co. · Baldwinsville, NY', 'Certified Angus Beef · Wooster, OH', 'Browne Trading Co. · Portland, ME',
+    'James Beard Foundation · New York, NY', 'Kitchen Literacy Project · Syracuse, NY', 'Grills by Demant · Atlanta, GA', 'Eat Local New York · Syracuse, NY'];
   function prodKey(n) { return fold(String(n || '').split('·')[0]).replace(/\bfarms\b/g, 'farm').replace(/[^a-z0-9]+/g, ' ').trim(); }
   // kitchen tabs: farms and food producers; drink tabs (cocktails, beer, spirits…): their own list of makers
   function savedProducers(kit) { var d = store.rows['site/producers'], a = d && (kit ? d.names : d.drinks); return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string' && x.trim(); }) : []; }
