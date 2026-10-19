@@ -101,11 +101,11 @@ grant execute on function public.my_sections() to authenticated;
 
 /* ---------- each section, checked ---------- */
 
--- Prep List: the Owner, managers, and whoever Permissions allows (cooks and Kitchen logins out of the box)
+-- Prep List: the Owner, managers, the Hub screen, and whoever Permissions allows (cooks and Kitchen logins out of the box)
 create or replace function public.can_prep() returns boolean
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if coalesce(public.staff_role() in ('owner', 'manager'), false) or coalesce(public.can_schedule(), false) then return true; end if;
+  if coalesce(public.staff_role() in ('owner', 'manager', 'hub'), false) or coalesce(public.can_schedule(), false) then return true; end if;   -- 'hub': the Hub screen (supabase/hub.sql)
   if not coalesce(public.is_team(), false) then return false; end if;
   if to_regprocedure('public.section_ok(text)') is not null then return coalesce(public.section_ok('prep'), false); end if;
   return coalesce(public.staff_role() = 'kitchen', false) or coalesce(public.is_cook(), false);
