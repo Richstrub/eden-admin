@@ -386,22 +386,38 @@
     if (loading) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
 
     var sch = scheduleHours(), ro = final();
-    // step 1: Square
+    // step 1: the drop zone for the two Square files
     if (!ro) {
       var file = h('input', { type: 'file', accept: '.csv,text/csv', multiple: true, hidden: true, on: { change: function () { if (file.files.length) readSquare(file.files); file.value = ''; } } });
-      el.appendChild(h('div', { cls: 'pr-square' }, [
-        h('div', null, [h('b', { text: P.row.source === 'square' ? 'Hours from Square' + (P.row.square_file ? ': ' + P.row.square_file : '') : 'Bring in hours from Square' }),
-          h('p', { text: P.row.source === 'square' ? 'Imported ' + (P.row.square_at ? new Date(P.row.square_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '') + '. Drop a new file to replace the hours.'
-            : 'In Square: Staff → Time tracking → Timecards, pick this Sunday–Saturday, Export → Export shifts. Then drop the .csv file here.' }),
-          h('p', { text: 'Tips: also drop the week’s Transactions CSV (Transactions → pick Sunday–Saturday → Export → Transactions CSV). It catches tips on checks paid after someone clocked out. Drop both files at once.' })]),
-        h('div', { cls: 'pr-acts' }, [file,
-          h('button', { type: 'button', cls: 'ed-btn small', text: 'Choose Square files…', on: { click: function () { file.click(); } } }),
-          h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Fill from schedule', on: { click: function () {
-            if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
-            if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tips, kitchen hours and adjustments stay as they are.')) return;
-            fillFromSchedule(); saveSoon(); paint(false);
-          } } })])
-      ]));
+      var when = function (at) { return at ? new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; };
+      var slot = function (n, title, how, got, at) {
+        return h('div', { cls: 'pr-slot' + (got ? ' done' : '') }, [
+          h('span', { cls: 'pr-slotn', text: got ? '✓' : String(n) }),
+          h('div', null, [h('b', { text: title }), h('small', { text: got ? got + (at ? ' · ' + when(at) : '') : how })])
+        ]);
+      };
+      var zone = h('div', { cls: 'pr-zone', tabindex: '0', role: 'button', 'aria-label': 'Drop the two Square files here, or press to choose them' }, [
+        h('p', { cls: 'pr-zoneh', text: 'Drag both Square files here' }),
+        h('div', { cls: 'pr-slots' }, [
+          slot(1, 'Timecards: hours', 'Staff → Time tracking → Timecards → this Sunday–Saturday → Export → Export shifts', P.row.source === 'square' ? P.row.square_file : '', P.row.square_at),
+          slot(2, 'Transactions CSV: tips', 'Transactions → this Sunday–Saturday → Export → Transactions CSV', P.row.tx_file || '', P.row.tx_at)
+        ]),
+        h('p', { cls: 'pr-zonef', text: 'or click here to choose the files. Dropping a new file replaces the old one.' })
+      ]);
+      zone.addEventListener('click', function () { file.click(); });
+      zone.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); file.click(); } });
+      zone.addEventListener('dragenter', function (ev) { if (hasFiles(ev)) zone.classList.add('over'); });
+      zone.addEventListener('dragover', function (ev) { if (hasFiles(ev)) { ev.preventDefault(); zone.classList.add('over'); } });
+      zone.addEventListener('dragleave', function (ev) { if (!zone.contains(ev.relatedTarget)) zone.classList.remove('over'); });
+      zone.addEventListener('drop', function () { zone.classList.remove('over'); });   // the page reads the files
+      el.appendChild(file);
+      el.appendChild(zone);
+      el.appendChild(h('div', { cls: 'pr-acts pr-zoneacts' }, [
+        h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'No Square file? Fill hours from the schedule', on: { click: function () {
+          if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
+          if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tips, kitchen hours and adjustments stay as they are.')) return;
+          fillFromSchedule(); saveSoon(); paint(false);
+        } } })]));
     }
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
@@ -816,6 +832,7 @@
     });
     if (!seen.some(Boolean)) return fname + ': no tips in this week' + (outside ? ' (the file is for other dates)' : '') + '.';
     var t = tipsRow(); t.team = t.team || [null, null, null, null, null, null, null]; t.src = t.src || []; t.teamLabel = 'Transactions';
+    P.row.tx_file = fname; P.row.tx_at = new Date().toISOString();
     for (var i = 0; i < 7; i++) { t.team[i] = seen[i] ? days[i] : null; if (seen[i]) { t.card[i] = days[i]; t.src[i] = 'team'; } }
     return 'Transactions: ' + money(sum(days)) + ' in tips this week, by day.' + (outside ? ' ' + outside + (outside === 1 ? ' payment' : ' payments') + ' outside this week left out.' : '');
   }
