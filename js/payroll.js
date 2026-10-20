@@ -181,7 +181,7 @@
     var r = P.row.rows[id], e = empById(id), rate = P.rates[id] || {};
     if (final() && r && r.snap) return r.snap;
     return { name: e.name || 'Former employee', position: e.position || '', pay_type: rate.pay_type || 'hourly', rate: rate.rate == null ? null : +rate.rate,
-      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary, tip_eligible: !!rate.tip_eligible,
+      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary, tip_eligible: r && r.pool != null ? !!r.pool : !!rate.tip_eligible,
       kitchen_rate: rate.kitchen_rate == null ? null : +rate.kitchen_rate, commission: !!rate.commission };
   }
   function empIds() { return Object.keys((P.row && P.row.rows) || {}).filter(function (k) { return k.charAt(0) !== '_'; }); }
@@ -383,9 +383,19 @@
     emps.forEach(function (e) {
       var r = rowFor(e.id), info = empInfo(e.id), sched = sch.hours[e.id] || [0, 0, 0, 0, 0, 0, 0], ap = sch.approx[e.id] || {};
       var cells = {}, tr = h('tr', { cls: onStaff(e) ? null : 'inactive' });
-      var tags = [info.position, info.pay_type === 'salary' ? 'Salary' : info.rate != null ? money(info.rate) + '/hr' : null, info.tip_eligible ? 'Tip pool' : null, info.commission ? 'Commission' : null, onStaff(e) ? null : 'Not on staff'];
+      var tags = [info.position, info.pay_type === 'salary' ? 'Salary' : info.rate != null ? money(info.rate) + '/hr' : null, info.commission ? 'Commission' : null, onStaff(e) ? null : 'Not on staff'];
       var who = h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: info.name || e.name }), h('small', { text: tags.filter(Boolean).join(' · ') })]);
       cells.warn = h('small', { cls: 'pr-warn' }); who.appendChild(cells.warn);
+      if (info.pay_type !== 'salary') {
+        var tp = h('input', { type: 'checkbox', disabled: ro, 'aria-label': (info.name || e.name) + ' is in the tip pool this week' }); tp.checked = !!info.tip_eligible;
+        tp.addEventListener('change', function () {
+          r.pool = tp.checked;
+          var rr = P.rates[e.id] || (P.rates[e.id] = { emp: e.id, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' });
+          if (!!rr.tip_eligible !== tp.checked) { rr.tip_eligible = tp.checked; saveRate(e.id); }   // and remember it for next week
+          saveSoon(); paint(false);
+        });
+        who.appendChild(h('label', { cls: 'pr-pooltick' }, [tp, ' Tip pool']));
+      }
       tr.appendChild(who);
       DOW.forEach(function (d, i) {
         var td = dayInput(r.hours, i, (info.name || e.name) + ', ' + d + ' hours', ro, sched[i] ? 'Scheduled: ' + hrs(sched[i]) + ' h' + (ap[i] ? ' (to a server cut or close; check the real out time)' : '') : 'Not scheduled');
@@ -745,7 +755,7 @@
         }
         if (p.picked && P.v2) saveSqName(p.emp, n, p.as || 'main');
         var rr = P.rates[p.emp] || (P.rates[p.emp] = { emp: p.emp, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' }), ch = false;
-        if (p.as === 'main' && !!rr.tip_eligible !== !!p.pool) { rr.tip_eligible = !!p.pool; ch = true; }
+        if (p.as === 'main') { rowFor(p.emp).pool = !!p.pool; if (!!rr.tip_eligible !== !!p.pool) { rr.tip_eligible = !!p.pool; ch = true; } }
         var w = Object.keys(p.wages).map(Number).filter(function (x) { return x > 0; });
         if (rr.pay_type !== 'salary' && rr.rate == null && !rr.commission && w.length === 1) { rr.rate = w[0]; ch = true; }   // no rate yet: use Square's
         if (ch) saveRate(p.emp);

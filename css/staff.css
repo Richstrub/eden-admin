@@ -2576,3 +2576,4 @@ body.nt-open #app{visibility:hidden!important}
 .pr-tiptbl td.sq .pr-tipin{background:#eef2f4}
 .pr-tiptbl tr.pr-sqrow th b{font-weight:400}.pr-tiptbl tr.pr-sqrow td{color:var(--stone)}
 .pr-dlg td select{display:block;margin:2px 0}
+.pr-pooltick{display:flex;align-items:center;gap:5px;font-size:.72rem;color:var(--stone);margin-top:3px;cursor:pointer}.pr-pooltick input{width:15px;height:15px;accent-color:var(--ember)}
