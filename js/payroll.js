@@ -487,10 +487,11 @@
       body.appendChild(tr);
     }
     inRow('cash', 'Cash tips'); inRow('card', 'Credit card tips');
-    if (t.sq && sum(t.sq)) {
-      var sqr = h('tr', { cls: 'pr-sqrow' }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: 'Tips in Square' }), h('small', { text: 'from the Square file, to check' })])]);
-      for (var q = 0; q < 7; q++) { var diff = t.card[q] != null && Math.abs((+t.card[q] || 0) - t.sq[q]) >= 0.01; sqr.appendChild(h('td', { cls: 'pr-num' + (diff ? ' pr-warn' : ''), title: diff ? 'Different from the credit card tips above' : '', text: t.sq[q] ? money(t.sq[q]) : '–' })); }
-      sqr.appendChild(h('td', { cls: 'pr-num', text: money(sum(t.sq)) }));
+    var fromSq = (t.src || []).some(function (x) { return x === 'square'; });
+    if (fromSq && e.has && e.has.some(Boolean)) {   // tips from Square: show the End of day reports' tips to check against
+      var sqr = h('tr', { cls: 'pr-sqrow' }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: 'End of day reports' }), h('small', { text: 'card + cash, to check' })])]);
+      for (var q = 0; q < 7; q++) { var ev = r2(e.cash[q] + e.card[q]), tv = r2((+t.card[q] || 0) + (+t.cash[q] || 0)), diff = e.has[q] && Math.abs(ev - tv) >= 0.01; sqr.appendChild(h('td', { cls: 'pr-num' + (diff ? ' pr-warn' : ''), title: diff ? 'Different from the tips above (' + money(tv) + ')' : '', text: e.has[q] ? money(ev) : '–' })); }
+      sqr.appendChild(h('td', { cls: 'pr-num', text: money(sum(e.cash) + sum(e.card)) }));
       body.appendChild(sqr);
     }
     calcRow('fee', 'Less 2.75% card fee'); calcRow('pool', 'Tip pool', true); calcRow('hrs', 'Tip-pool hours'); calcRow('rate', 'Per hour', true);
@@ -501,9 +502,9 @@
       if (!confirm('Replace the tips above with the tips on this week’s End of day reports?')) return;
       fillTipsFromEod(); paint(false);
     } } })]));
-    var sqd = (t.src || []).filter(function (x) { return x === 'square'; }).length;
-    refs.src = (days ? 'Filled from ' + days + ' End of day ' + (days === 1 ? 'report' : 'reports') + ' (shaded). ' : (e.tipsOn === false ? '' : 'No End of day reports with tips this week. '))
-      + (sqd ? 'Credit card tips for ' + sqd + (sqd === 1 ? ' day' : ' days') + ' without a report came from the Square file (blue); add those days’ cash tips if there were any. ' : '');
+    refs.src = fromSq ? 'Tips are from the Square file (blue): credit card tips and declared cash tips. ' + (days ? 'The End of day reports are shown underneath to check; a difference is in orange. ' : '')
+      : days ? 'Filled from ' + days + ' End of day ' + (days === 1 ? 'report' : 'reports') + ' (shaded). Drop the Square file to use Square’s tips instead. '
+      : 'Drop the Square file to fill in the tips, or type them in. ';
     return box;
   }
   function arrowKeys(ev, inp) {
@@ -690,6 +691,7 @@
       if (s.job) p.jobs[s.job.trim()] = 1;
       if (s.wage != null) p.wages[s.wage.toFixed(2)] = 1;
       sqTips[i] = r2(sqTips[i] + s.tips); sqCash[i] = r2(sqCash[i] + s.cash);
+      p.tips = r2((p.tips || 0) + s.tips + s.cash);
     });
     var names = Object.keys(people).sort();
     var dlg = h('dialog', { cls: 'pr-dlg', 'aria-label': 'Import from Square' }), staff = P.emps.filter(onStaff).sort(function (a, b) { return String(a.name).localeCompare(b.name); });
@@ -708,18 +710,23 @@
         wnote.textContent = [Object.keys(p.jobs).join(', '), w.length ? 'Square wage $' + w.join(', $') + (p.emp && mine && w.indexOf(mine) < 0 ? ' (Pay rates: $' + mine + ')' : '') : ''].filter(Boolean).join(' · ');
       };
       sel.addEventListener('change', function () { p.emp = sel.value; p.picked = true; tr.classList.toggle('pr-unm', !p.emp); showWage(); });
-      as.addEventListener('change', function () { p.as = as.value; p.picked = true; });
+      var pool = h('input', { type: 'checkbox', 'aria-label': n + ' is in the tip pool' });
+      var setPool = function () { var r = P.rates[p.emp] || {}; pool.checked = p.as === 'main' && (p.tips > 0 || !!r.tip_eligible); pool.disabled = !p.emp || p.as !== 'main'; p.pool = pool.checked; };
+      pool.addEventListener('change', function () { p.pool = pool.checked; });
+      sel.addEventListener('change', setPool);
+      as.addEventListener('change', function () { p.as = as.value; p.picked = true; setPool(); });
       var kit = sum(p.kdays), main = sum(p.days);
-      showWage();
-      var tr = h('tr', { cls: p.emp ? null : 'pr-unm' }, [h('td', null, [h('b', { text: n }), wnote]), h('td', null, [sel, as]),
+      showWage(); setPool();
+      var tr = h('tr', { cls: p.emp ? null : 'pr-unm' }, [h('td', null, [h('b', { text: n }), wnote, p.tips ? h('small', { text: 'Tips in Square: ' + money(p.tips) }) : null]), h('td', null, [sel, as]),
+        h('td', { cls: 'pr-c' }, [pool]),
         h('td', { cls: 'pr-num', text: hrs(main + kit) + (kit && p.emp && empInfo(p.emp).kitchen_rate != null ? ' (' + hrs(kit) + ' kitchen)' : '') })]);
       tb.appendChild(tr);
     });
     if (names.length) {
-      kids.push(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [h('tr', null, [h('th', { text: 'In Square' }), h('th', { text: 'Staff member' }), h('th', { cls: 'pr-num', text: 'Hours' })])]), tb])]));
+      kids.push(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [h('tr', null, [h('th', { text: 'In Square' }), h('th', { text: 'Staff member' }), h('th', { cls: 'pr-c', text: 'Tip pool' }), h('th', { cls: 'pr-num', text: 'Hours' })])]), tb])]));
       if (names.some(function (n) { return !people[n].emp; })) kids.push(h('p', { cls: 'pr-warn', text: 'Pick the staff member for anyone highlighted, or leave them out.' }));
       kids.push(h('p', { cls: 'pr-fine', text: 'Your picks are remembered for next time. “Not in the tip pool” is for a second Square profile used for hours outside the tip pool (paid at the regular rate). Pay comes from Pay rates, not the Square wage.' }));
-      if (sum(sqTips)) kids.push(h('p', { text: 'Square tips for the week: ' + money(sum(sqTips)) + ' (shown under Tips by day to check against the End of day reports).' }));
+      kids.push(h('p', { text: 'Tips from the file: ' + money(sum(sqTips)) + ' credit card and ' + money(sum(sqCash)) + ' declared cash. These become each day’s tips, pooled and split by hours among everyone ticked “Tip pool”.' }));
     }
     var clear = h('input', { type: 'checkbox', checked: true });
     if (names.length) kids.push(h('label', { cls: 'pr-chk' }, [clear, ' Clear hours for anyone who isn’t in the file (Square is the record of who worked)']));
@@ -737,6 +744,11 @@
           if (toKitchen) g.kdays[i] = r2(g.kdays[i] + p.kdays[i]); else line[i] = r2(line[i] + p.kdays[i]);
         }
         if (p.picked && P.v2) saveSqName(p.emp, n, p.as || 'main');
+        var rr = P.rates[p.emp] || (P.rates[p.emp] = { emp: p.emp, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' }), ch = false;
+        if (p.as === 'main' && !!rr.tip_eligible !== !!p.pool) { rr.tip_eligible = !!p.pool; ch = true; }
+        var w = Object.keys(p.wages).map(Number).filter(function (x) { return x > 0; });
+        if (rr.pay_type !== 'salary' && rr.rate == null && !rr.commission && w.length === 1) { rr.rate = w[0]; ch = true; }   // no rate yet: use Square's
+        if (ch) saveRate(p.emp);
       });
       shownEmps().forEach(function (e) {
         var r = rowFor(e.id), g = got[e.id];
@@ -749,8 +761,9 @@
       Object.keys(got).forEach(function (id) { if (!P.row.rows[id]) { var r = rowFor(id); r.hours = got[id].days.map(function (x) { return x || null; }); } });
       P.row.source = 'square'; P.row.square_file = fname; P.row.square_at = new Date().toISOString();
       // Square's card tips by day, to check against the End of day reports (and to fill days without one)
-      var t = tipsRow(); t.sq = sqTips; t.sqCash = sqCash;
-      for (var d = 0; d < 7; d++) if ((!t.src || t.src[d] !== 'eod') && t.card[d] == null && sqTips[d]) { t.card[d] = sqTips[d]; (t.src || (t.src = []))[d] = 'square'; }
+      // the day's tips come from the Square file: card tips ("by transaction tips") and declared cash tips
+      var t = tipsRow(); t.sq = sqTips; t.sqCash = sqCash; t.src = [];
+      for (var d = 0; d < 7; d++) { t.card[d] = sqTips[d] || null; t.cash[d] = sqCash[d] || null; t.src[d] = sqTips[d] || sqCash[d] ? 'square' : ''; }
       dlg.close(); dlg.remove(); saveSoon(); paint(false);
       status('Hours filled in from Square for ' + Object.keys(got).length + ' people.', 'ok');
     });
