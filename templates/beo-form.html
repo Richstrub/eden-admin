@@ -82,6 +82,15 @@ button.ghost{background:transparent;color:var(--moss)}
 #dropZone{position:fixed;inset:12px;z-index:50;display:flex;align-items:center;justify-content:center;border:3px dashed var(--moss);border-radius:14px;background:color-mix(in srgb,var(--paper) 88%,transparent);font-family:'Jost',system-ui,sans-serif;font-size:24px;color:var(--moss);pointer-events:none;text-align:center;padding:20px}
 #dropZone[hidden]{display:none}
 .addr{font-size:13px;color:var(--ink);line-height:1.35}
+.block > h2.tog{cursor:pointer;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;user-select:none}
+.block > h2.tog::before{content:'';width:8px;height:8px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translate(-2px,-2px);flex:none;align-self:center;opacity:.6;transition:transform .2s}
+.block.shut > h2.tog::before{transform:rotate(-45deg)}
+.block.shut > :not(h2){display:none!important}
+.block.shut{padding:16px 0}
+.tog .blank-note{font-size:13px;color:var(--muted);font-weight:300}
+.hide-blank .blankf{display:none!important}
+.blank-more{margin-top:12px}
+.tidy-on #lines .z{display:none}
 button.link{background:none;border:none;padding:0;color:var(--moss);text-decoration:underline;font-size:13px}
 dialog{border:1px solid var(--rule);border-radius:10px;background:var(--surface);color:var(--ink);padding:22px;width:min(440px,calc(100vw - 32px))}
 dialog::backdrop{background:rgba(0,0,0,.35)}
@@ -100,6 +109,7 @@ dialog textarea{min-height:80px}
 @media print{
   body{background:#fff;color:#000}
   .actions,.totalbar,.saved,button.link,dialog,#dropZone{display:none!important}
+  .block.shut > :not(h2){display:revert!important}
   .layout{display:block}
   .summary{position:static;border:1px solid #999;break-inside:avoid}
   input,select,textarea{border:none;border-bottom:1px solid #999;border-radius:0;background:transparent}
@@ -758,7 +768,7 @@ function calc(){
    ['In-suite dining',suiteT],['Brunch and stations',brunchT],['Attendant fees',attend],['Reception canapés',hotT+coldT],['Reception enhancements',enhT],
    [tier?`Plated dinner ($${tier} × ${dg})`:'Plated dinner',dinnerT],['Tableside selection',tableT],[bufT?`Dinner buffet ($${bp} × ${bg})`:'Dinner buffet',bufT],['Desserts',dessT],...bar.lines,['Other beverage service',pall?0:bevItemsT],
    ['Third-floor rental',rental],['Overtime / extended service',ot]];
-  $('lines').innerHTML=lines.map(([l,v])=>`<dt>${esc(l)}</dt><dd>${v?fmt(v):'—'}</dd>`).join('')+
+  $('lines').innerHTML=lines.map(([l,v])=>`<dt${v?'':' class="z"'}>${esc(l)}</dt><dd${v?'':' class="z"'}>${v?fmt(v):'—'}</dd>`).join('')+
    `<dt class="sub">Subtotal</dt><dd class="sub">${fmt(sub)}</dd><dt>Service charge${num('bill.svc')?` (${num('bill.svc')}%)`:''}</dt><dd>${svc?fmt(svc):'—'}</dd><dt>Sales tax${num('bill.tax')?` (${num('bill.tax')}%)`:''}</dt><dd>${tax?fmt(tax):'—'}</dd>`;
   LAST={bar,lines,sub,svc,tax,total,dep,svcPct:num('bill.svc'),taxPct:num('bill.tax'),attend,tier,dg,tableT,bg,bp,bufT};
   $('grand').textContent=fmt(total);$('grand2').textContent=fmt(total);
@@ -1295,8 +1305,54 @@ $('clearBtn').addEventListener('click',()=>{
   if(!confirm('Clear every entry on this BEO?'))return;
   S={__diet:[{},{},{}],...DEFAULTS};try{localStorage.removeItem(STORE);}catch(e){}
   document.querySelectorAll('[data-k]').forEach(el=>{if(el.type==='checkbox'||el.type==='radio')el.checked=false;else if(el.tagName==='SELECT')el.selectedIndex=0;else el.value=DEFAULTS[el.dataset.k]||'';});
-  renderDiet();showAddr();calc();$('saved').textContent='Form cleared.';
+  renderDiet();showAddr();calc();tidy();$('saved').textContent='Form cleared.';
 });
+
+/* ---------- Tidy view: sections and fields left blank fold away ----------
+   When a BEO opens with information in it (from the back office, a questionnaire or a file), every section with
+   nothing entered folds down to its heading, and inside the others the blank fields and unordered items are tucked
+   away behind a "Show blank" link. Click a heading to open or close it. Nothing is deleted. */
+function hasVal(el){
+  // judged from the saved BEO itself, so values the form starts with (a preset dropdown, a default radio) don't count
+  if(el.dataset.d){const [r,f]=el.dataset.d.split('.');const row=(S.__diet||[])[r]||{};return !!String(row[f]==null?'':row[f]).trim()&&row[f]!==false;}
+  const k=el.dataset.k,v=S[k];
+  if(el.type==='checkbox')return v===true;
+  if(el.type==='radio')return v!=null&&v!==''&&String(v)===el.value;
+  if(v==null||v===false)return false;
+  const t=String(v).trim();return !!t&&!(DEFAULTS[k]!==undefined&&String(DEFAULTS[k])===t);
+}
+function tidy(){
+  const any=[...document.querySelectorAll('[data-k]')].some(hasVal);
+  document.body.classList.toggle('tidy-on',any);
+  document.querySelectorAll('section.block').forEach((sec,i)=>{
+    const h2=sec.querySelector(':scope > h2');if(!h2)return;
+    if(!h2.classList.contains('tog')){
+      h2.classList.add('tog');h2.tabIndex=0;h2.setAttribute('role','button');
+      const flip=()=>{sec.classList.toggle('shut');h2.setAttribute('aria-expanded',String(!sec.classList.contains('shut')));};
+      h2.addEventListener('click',flip);h2.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip();}});
+    }
+    sec.querySelectorAll('.blankf').forEach(x=>x.classList.remove('blankf'));
+    const old=sec.querySelector(':scope > .blank-more');if(old)old.remove();
+    let note=h2.querySelector('.blank-note');if(note)note.remove();
+    sec.classList.remove('shut','hide-blank');
+    if(!any)return;                 // a brand-new BEO stays fully open
+    const inputs=[...sec.querySelectorAll('[data-k],[data-d]')];
+    const filled=inputs.some(hasVal)||(sec.id==='bevBlock'&&!!S['bev.pkg']);
+    if(!filled&&i>0){sec.classList.add('shut');h2.insertAdjacentHTML('beforeend','<span class="blank-note">Nothing entered</span>');h2.setAttribute('aria-expanded','false');return;}
+    let n=0;
+    sec.querySelectorAll('label.f').forEach(l=>{const c=l.querySelectorAll('[data-k],[data-d]');if(c.length&&![...c].some(hasVal)&&!l.querySelector('[type=radio]')){l.classList.add('blankf');n++;}});
+    sec.querySelectorAll('tbody tr').forEach(r=>{const c=r.querySelectorAll('[data-d]');if(c.length&&![...c].some(hasVal)){r.classList.add('blankf');n++;}});
+    sec.querySelectorAll('tr[data-row],tr[data-tiers],tr[data-bf]').forEach(r=>{const c=r.querySelectorAll('[data-k]');if(!r.classList.contains('on')&&![...c].some(hasVal)){r.classList.add('blankf');n++;}});
+    sec.querySelectorAll('.table-wrap').forEach(w=>{const rows=w.querySelectorAll('tbody tr, tr[data-row], tr[data-tiers], tr[data-bf]');if(rows.length&&[...rows].every(r=>r.classList.contains('blankf')))w.classList.add('blankf');});
+    if(!n)return;
+    sec.classList.add('hide-blank');
+    const b=document.createElement('button');b.type='button';b.className='link blank-more';
+    const lbl=()=>{b.textContent=sec.classList.contains('hide-blank')?`Show ${n} blank field${n>1?'s':''} and items`:'Hide blank fields and items';};
+    b.addEventListener('click',()=>{sec.classList.toggle('hide-blank');lbl();});lbl();
+    sec.appendChild(b);
+  });
+}
+if(!STAFF)tidy();
 /* ---------- Staff view: the FOH and kitchen sheets on screen (prices only for the Owner and managers) ---------- */
 if(STAFF){
   calc();buildStaff();
