@@ -335,11 +335,14 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
     <label class="f">Overtime / extended service fees ($)<input type="number" min="0" step="0.01" data-k="bill.ot"></label>
     <label class="f">Service charge (% of food and beverage, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
     <label class="f">Sales tax (%, default 8%)<input type="number" min="0" step="0.001" data-k="bill.tax"></label>
+    <div class="inline" style="grid-column:1/-1;justify-self:start"><label><input type="checkbox" data-k="bill.taxex"> Tax exempt: New York State Form ST-119.1 (no sales tax is charged)</label></div>
+    <label class="f wide" id="f-st119">Form ST-119.1 on file<input data-k="bill.st119" placeholder="e.g., ST-119.1.pdf, received from the client"></label>
     <label class="f">Deposit received ($)<input type="number" min="0" step="0.01" data-k="bill.dep"></label>
     <label class="f">Deposit date<input type="date" data-k="bill.depdate"></label>
     <label class="f">Payment method<input data-k="bill.method"></label>
     <label class="f">Balance due date<input type="date" data-k="bill.duedate"></label>
   </div>
+  <p class="callout" id="n-tax" hidden></p>
 </section>
 
 <section class="block">
@@ -410,6 +413,8 @@ let S=null;
 if(!STAFF){try{S=JSON.parse(localStorage.getItem(STORE)||'null');}catch(e){S=null;}}
 const FRESH_DOC=!!(DOC&&!S);
 if(!S||typeof S!=='object')S=DOC?JSON.parse(JSON.stringify(DOC.data||{})):{};
+// Form ST-119.1 attached to the inquiry (Catering & BEOs passes its name when opening the BEO)
+if(DOC&&DOC.st119&&DOC.st119.name&&S['bill.taxex']&&!S['bill.st119'])S['bill.st119']=DOC.st119.name+' (attached to the inquiry)';
 /* Client questionnaire import: arrives in the link (#import=...) or from a saved answers file */
 const hasEntries=o=>Object.keys(o).some(k=>k==='__diet'?(o[k]||[]).some(r=>r&&Object.values(r).some(Boolean)):!['bill.svc','bill.tax'].includes(k)&&o[k]!==''&&o[k]!==false&&o[k]!=null);
 const askReplace=()=>!hasEntries(S)||confirm('Replace the current BEO with the client questionnaire answers? Your current entries will be cleared.');
@@ -761,7 +766,10 @@ function calc(){
   const ot=num('bill.ot');
   const sub=fb+attend+rental+ot+bar.fees;
   const svc=fb*num('bill.svc')/100;
-  const tax=(sub+svc)*num('bill.tax')/100;
+  const exempt=!!S['bill.taxex'];
+  const tax=exempt?0:(sub+svc)*num('bill.tax')/100;
+  $('f-st119').style.display=exempt?'':'none';$('n-tax').hidden=!exempt;
+  if(exempt)$('n-tax').innerHTML=S['bill.st119']?'<b>Tax exempt.</b> Form ST-119.1 is on file, so no sales tax is charged. Keep the form with the event records.':'<b>Form ST-119.1 is needed.</b> Tax exempt can only be applied with the client’s completed New York State Form ST-119.1. Attach it to the inquiry in Catering &amp; BEOs, then note it above.';
   const total=sub+svc+tax;
   const dep=num('bill.dep');
   const lines=[
@@ -769,8 +777,8 @@ function calc(){
    [tier?`Plated dinner ($${tier} × ${dg})`:'Plated dinner',dinnerT],['Tableside selection',tableT],[bufT?`Dinner buffet ($${bp} × ${bg})`:'Dinner buffet',bufT],['Desserts',dessT],...bar.lines,['Other beverage service',pall?0:bevItemsT],
    ['Third-floor rental',rental],['Overtime / extended service',ot]];
   $('lines').innerHTML=lines.map(([l,v])=>`<dt${v?'':' class="z"'}>${esc(l)}</dt><dd${v?'':' class="z"'}>${v?fmt(v):'—'}</dd>`).join('')+
-   `<dt class="sub">Subtotal</dt><dd class="sub">${fmt(sub)}</dd><dt>Service charge${num('bill.svc')?` (${num('bill.svc')}%)`:''}</dt><dd>${svc?fmt(svc):'—'}</dd><dt>Sales tax${num('bill.tax')?` (${num('bill.tax')}%)`:''}</dt><dd>${tax?fmt(tax):'—'}</dd>`;
-  LAST={bar,lines,sub,svc,tax,total,dep,svcPct:num('bill.svc'),taxPct:num('bill.tax'),attend,tier,dg,tableT,bg,bp,bufT};
+   `<dt class="sub">Subtotal</dt><dd class="sub">${fmt(sub)}</dd><dt>Service charge${num('bill.svc')?` (${num('bill.svc')}%)`:''}</dt><dd>${svc?fmt(svc):'—'}</dd><dt>Sales tax${exempt?'':num('bill.tax')?` (${num('bill.tax')}%)`:''}</dt><dd>${exempt?'Exempt (ST-119.1)':tax?fmt(tax):'—'}</dd>`;
+  LAST={bar,lines,sub,svc,tax,total,dep,exempt,svcPct:num('bill.svc'),taxPct:num('bill.tax'),attend,tier,dg,tableT,bg,bp,bufT};
   $('grand').textContent=fmt(total);$('grand2').textContent=fmt(total);
   $('dep').textContent=fmt(dep);$('bal').textContent=fmt(total-dep);
   $('xlsxBtn').hidden=!(tier&&S['din.mode']!=='table');
@@ -1097,7 +1105,8 @@ function clientPdf(){
   if(!bl.length)bl.push({cells:['No charges yet','—']});
   bl.push({bold:true,cells:['Subtotal',fmt(L.sub)]});
   if(L.svc)bl.push({cells:[{t:`Service charge (${L.svcPct}%)`,sub:'On food and beverage'},fmt(L.svc)]});
-  if(L.tax)bl.push({cells:[`Sales tax (${L.taxPct}%)`,fmt(L.tax)]});
+  if(L.exempt)bl.push({cells:[{t:'Sales tax',sub:'Exempt: NY Form ST-119.1'+(S['bill.st119']?' on file':' required')},'Exempt']});
+  else if(L.tax)bl.push({cells:[`Sales tax (${L.taxPct}%)`,fmt(L.tax)]});
   table([{h:'Description',w:.7},{h:'Amount',w:.3,align:'right'}],bl);
   d.room(80);let yy=d.get()-4;
   d.rect(M,yy-34,CW,34,C.soft);
@@ -1117,6 +1126,7 @@ function clientPdf(){
    'Buffets and reception stations run 90 minutes, plated dinners 120 to 180 minutes, and breaks 30 minutes. Longer service carries an additional fee.',
    ...(S['ev.alacarte']?['À la carte dinner is billed on what guests order.']:[]),
    ...(S['ev.dry']&&S['ev.room']!==PALLADIAN?['This is an alcohol-free event. No alcoholic beverages will be served, and guests may not bring alcohol onto the premises.']:[]),
+   ...(S['bill.taxex']?['The client is exempt from New York State sales tax. A completed Form ST-119.1 (Exempt Organization Exempt Purchase Certificate) must be on file before the event; without it, sales tax is charged.']:[]),
    ...(S['ev.alacarte']&&S['ev.third']?['The 3rd Floor Event Space has a $2,500 food and beverage minimum, or a $250 room fee.']:[]),
    'Changes after signing must be made in writing and approved by the event manager.'
   ].forEach(t=>{const lines=d.wrap(t,CW-14,false,9.5);d.room(lines.length*12.5+3);const y3=d.get();d.text(M+2,y3-9.5,'•',{size:9.5,color:C.moss});lines.forEach((l,n)=>d.text(M+14,y3-9.5-n*12.5,l,{size:9.5}));d.down(lines.length*12.5+3);});
@@ -1360,7 +1370,7 @@ if(STAFF){
   if(window.__BEO_PRICES&&LAST&&LAST.lines){
     const L=LAST,row=(a,b,cls)=>`<tr${cls?` class="${cls}"`:''}><td>${esc(a)}</td><td class="n">${esc(b)}</td></tr>`;
     st.insertAdjacentHTML('beforeend',`<section class="ss ss-prices"><div class="ss-head"><div><div class="ss-dept">Managers only</div><h1>Pricing and billing</h1></div><div class="ss-ev"><b>${esc(val('ev.name')||'Untitled event')}</b><br>${esc(fDate(val('ev.date')))}</div></div>
-      <table><tbody>${L.lines.filter(l=>l[1]).map(l=>row(l[0],fmt(l[1]))).join('')}${row('Subtotal',fmt(L.sub),'tot')}${row('Service charge'+(L.svcPct?` (${L.svcPct}%)`:''),fmt(L.svc))}${row('Sales tax'+(L.taxPct?` (${L.taxPct}%)`:''),fmt(L.tax))}${row('Total',fmt(L.total),'tot')}${row('Deposit received',fmt(L.dep))}${row('Balance due',fmt(L.total-L.dep),'tot')}</tbody></table>
+      <table><tbody>${L.lines.filter(l=>l[1]).map(l=>row(l[0],fmt(l[1]))).join('')}${row('Subtotal',fmt(L.sub),'tot')}${row('Service charge'+(L.svcPct?` (${L.svcPct}%)`:''),fmt(L.svc))}${L.exempt?row('Sales tax','Exempt (ST-119.1)'):row('Sales tax'+(L.taxPct?` (${L.taxPct}%)`:''),fmt(L.tax))}${row('Total',fmt(L.total),'tot')}${row('Deposit received',fmt(L.dep))}${row('Balance due',fmt(L.total-L.dep),'tot')}</tbody></table>
       <p class="d">Staff without manager access, and the Hub, see these sheets without this page.</p></section>`);
   }
   const bar=document.createElement('nav');bar.className='sv-bar';

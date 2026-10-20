@@ -1003,6 +1003,7 @@ body.nt-open #app{visibility:hidden!important}
 .cq-next p{margin:0 0 10px;font-size:.92rem}
 .cq-next .cq-acts{margin:0;padding:0;border:0}
 .cq-muted{color:var(--stone);font-size:.88rem}
+.cq-warn{color:#9a3b1f;font-size:.92rem;margin:0 0 8px}
 .cq-choice{margin:0 0 8px}
 .cq-choice b{display:block;font-weight:500;font-size:.86rem}
 .cq-thread{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px;max-height:520px;overflow:auto}

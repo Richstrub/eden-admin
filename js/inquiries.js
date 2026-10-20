@@ -272,6 +272,7 @@
     if (sum.length) d.appendChild(section('Their choices', sum.map(function (s) { return h('div', { cls: 'cq-choice' }, [h('b', { text: s[0] }), h('ul', { cls: 'cq-ul' }, s[1].map(function (l) { return h('li', { text: l }); }))]); })));
     else if (r.status === 'new' || r.status === 'link_sent') d.appendChild(section('Their choices', [h('p', { cls: 'cq-muted', text: 'Menu choices arrive when ' + first(r) + ' finishes the questionnaire.' })]));
     if (r.guest_notes) d.appendChild(section('Their notes', [h('p', { cls: 'cq-msg', text: r.guest_notes })]));
+    var tx = taxSection(r); if (tx) d.appendChild(tx);
     d.appendChild(conversation(r));
     var note = h('textarea', { rows: 3, placeholder: 'Notes for the team (not sent to the guest)' }); note.value = r.staff_note || '';
     note.addEventListener('change', function () { save(r, { staff_note: note.value }, 'Note saved.'); });
@@ -280,9 +281,69 @@
     var more = h('div', { cls: 'cq-acts cq-more' });
     if (window.EdenCal && r.status !== 'beo') more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Add to calendar', on: { click: function () { toCalendar(r); } } }));
     if (r.beo_doc || (r.beo && Object.keys(r.beo).length)) more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Open BEO', on: { click: function () { openBEO(r); } } }));
+    if (!tx && I.files[r.id] !== false) more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Attach Form ST-119.1', on: { click: function () { pickTaxForm(r); } } }));
     more.appendChild(h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Download answers', on: { click: function () { download(r); } } }));
     if (I.ctx.canDelete) more.appendChild(h('button', { type: 'button', cls: 'cq-del', text: 'Delete', on: { click: function () { del(r); } } }));
     d.appendChild(more);
+  }
+
+  /* ---------- tax exempt: New York State Form ST-119.1 ----------
+     The guest attaches it with the questionnaire (required when they answer tax exempt); staff can attach or
+     replace it here. Kept in inquiry_files (supabase/tax-exempt.sql). I.files[id]: undefined = not loaded,
+     false = the table isn't set up, otherwise the list (without the file data). */
+  I.files = I.files || {};
+  function loadFiles(id) {
+    return I.ctx.sb.from('inquiry_files').select('id,kind,name,mime,size,added_by,created_at').eq('inquiry_id', id).order('created_at', { ascending: false }).then(function (x) {
+      I.files[id] = x.error ? false : (x.data || []);
+    }, function () { I.files[id] = false; });
+  }
+  function st119(r) { var f = I.files[r.id]; return f ? f.filter(function (x) { return x.kind === 'st119'; })[0] || null : null; }
+  function taxSection(r) {
+    var said = (r.answers && r.answers['q.taxex'] === 'yes') || (r.beo_doc && r.beo_doc['bill.taxex']) || (r.beo && r.beo['bill.taxex']);
+    if (I.files[r.id] === undefined) { loadFiles(r.id).then(function () { if (I.sel === r.id) paintDetail(); }); }
+    var f = st119(r);
+    if (!said && !f) return null;
+    var kids = [];
+    if (I.files[r.id] === undefined) kids.push(h('p', { cls: 'cq-muted', text: 'Loading…' }));
+    else if (I.files[r.id] === false) kids.push(h('p', { cls: 'cq-muted', text: 'Saving tax forms isn’t set up yet: run supabase/tax-exempt.sql in Supabase. Forms guests attach are still emailed to the event team.' }));
+    else if (f) kids.push(h('p', null, [h('b', { text: 'Form ST-119.1 on file: ' }), document.createTextNode(f.name + ' · ' + (f.added_by === 'guest' ? 'from ' + first(r) : 'added by ' + f.added_by) + ' · ' + stamp(f.created_at) + ' ')]),
+      h('div', { cls: 'cq-acts' }, [h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the form', on: { click: function () { openTaxForm(f); } } }),
+        h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Replace…', on: { click: function () { pickTaxForm(r); } } })]));
+    else kids.push(h('p', { cls: 'cq-warn', text: first(r) + ' asked to be tax exempt, but no Form ST-119.1 is on file. Don’t apply the exemption until you have it.' }),
+      h('div', { cls: 'cq-acts' }, [h('button', { type: 'button', cls: 'ed-btn small', text: 'Attach Form ST-119.1…', on: { click: function () { pickTaxForm(r); } } })]));
+    return section('Tax exempt (NY Form ST-119.1)', kids);
+  }
+  function openTaxForm(f) {
+    var w = window.open('', '_blank');
+    I.ctx.sb.from('inquiry_files').select('data,mime,name').eq('id', f.id).maybeSingle().then(function (x) {
+      if (x.error || !x.data) { if (w) w.close(); I.ctx.status('Couldn’t open the form.', 'err'); return; }
+      var bin = atob(x.data.data), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([u], { type: x.data.mime }));
+      if (w && !w.closed) w.location.href = url; else { var a = h('a', { href: url, download: x.data.name }); document.body.appendChild(a); a.click(); a.remove(); }
+    }, function () { if (w) w.close(); I.ctx.status('Couldn’t open the form.', 'err'); });
+  }
+  function pickTaxForm(r) {
+    var inp = h('input', { type: 'file', accept: 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png' });
+    inp.addEventListener('change', function () {
+      var file = inp.files && inp.files[0]; if (!file) return;
+      var type = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : /\.png$/i.test(file.name) ? 'image/png' : /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : '');
+      if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(type) < 0) { I.ctx.status('Please choose a PDF, JPG or PNG.', 'err'); return; }
+      if (file.size > 5 * 1024 * 1024) { I.ctx.status('That file is over 5 MB.', 'err'); return; }
+      var rd = new FileReader();
+      rd.onload = function () {
+        var data = String(rd.result).split(',')[1] || '', sb = I.ctx.sb;
+        sb.from('inquiry_files').insert({ inquiry_id: r.id, kind: 'st119', name: file.name, mime: type, size: file.size, data: data, added_by: I.ctx.name || 'staff' }).then(function (x) {
+          if (x.error) { I.ctx.status(I.files[r.id] === false ? 'Run supabase/tax-exempt.sql in Supabase first.' : 'Couldn’t save the form. ' + (x.error.message || ''), 'err'); return; }
+          var old = (I.files[r.id] || []).filter(function (y) { return y.kind === 'st119'; }).map(function (y) { return y.id; });
+          (old.length ? sb.from('inquiry_files').delete().in('id', old) : Promise.resolve()).then(function () {
+            addMsg(r, { kind: 'event', subject: 'Form ST-119.1 attached' });
+            return loadFiles(r.id);
+          }).then(function () { I.ctx.status('Form ST-119.1 saved with ' + (r.name || 'the inquiry') + '.', 'ok'); if (I.sel === r.id) paintDetail(); });
+        });
+      };
+      rd.readAsDataURL(file);
+    });
+    inp.click();
   }
 
   /* ---------- the conversation ---------- */
@@ -409,7 +470,7 @@
   /* ---------- the BEO, saved with the event ----------
      The BEO form keeps its work in this browser under 'eden-beo-doc-<id>'. Every change is copied to the
      database here, so the BEO is the same on every computer. */
-  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-'; var OPEN = 'eden-beo-open-', BEO_V = '20261020a';
+  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-'; var OPEN = 'eden-beo-open-', BEO_V = '20261020b';
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   function pushBeo(r, text) {
     var data; try { data = JSON.parse(text); } catch (e) { return Promise.resolve(); }
@@ -437,7 +498,8 @@
     var w = pre || window.open('', '_blank');
     syncBeo(r).then(function () {
       var data = r.beo_doc || r.beo || {};
-      ls(OPEN + r.id, JSON.stringify({ id: r.id, data: data, title: String(data['ev.name'] || r.event_name || r.name || 'Event').trim() + ' BEO' }));
+      var f119 = st119(r);
+      ls(OPEN + r.id, JSON.stringify({ id: r.id, st119: f119 ? { name: f119.name } : null, data: data, title: String(data['ev.name'] || r.event_name || r.name || 'Event').trim() + ' BEO' }));
       var url = 'templates/beo-form.html?v=' + BEO_V + '#beo=' + encodeURIComponent(r.id);
       if (w && !w.closed) w.location.href = url; else location.href = url;
       if (!r.beo_doc) pushBeo(r, JSON.stringify(data));   // the starting point is saved too

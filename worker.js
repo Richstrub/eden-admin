@@ -215,9 +215,10 @@ async function notifyStaff(env, req, q, kind, extra) {
   const r = await sendMail(env, {
     to, reply_to: q.email || undefined,
     subject: T[0] + (q.event_date && kind !== 'reply' ? ' · ' + longDate(q.event_date) : ''),
-    html: mailShell(T[1], '<p>' + T[2] + '</p>' + (kind === 'reply' ? '' : detailRows(q)) + button(admin, 'Open in Catering & BEOs') +
+    html: mailShell(T[1], '<p>' + T[2] + '</p>' + (extra && extra.taxex ? '<p><b>Tax exempt.</b> ' + (extra.taxForm ? 'Their New York State Form ST-119.1 is attached' + (extra.taxStored ? ' and saved with the inquiry.' : '.') : 'Their Form ST-119.1 is already on file with the inquiry.') + '</p>' : '') + (kind === 'reply' ? '' : detailRows(q)) + button(admin, 'Open in Catering & BEOs') +
       '<p style="font-size:13px;color:#7f7a71">' + (kind === 'reply' ? 'The reply is saved in the guest’s conversation on the staff site.' : 'Reply from the staff site to keep the conversation in one place.') + '</p>'),
-    text: T[0] + '\n\n' + (extra && extra.body ? extra.body.slice(0, 3000) + '\n\n' : '') + 'Open it: ' + admin
+    text: T[0] + '\n\n' + (extra && extra.body ? extra.body.slice(0, 3000) + '\n\n' : '') + (extra && extra.taxex ? 'Tax exempt: Form ST-119.1 ' + (extra.taxForm ? 'attached.' : 'on file.') + '\n\n' : '') + 'Open it: ' + admin,
+    ...(extra && extra.taxForm ? { attachments: [{ filename: extra.taxForm.name, content: extra.taxForm.data, content_type: extra.taxForm.mime }] } : {})
   });
   return r.ok;
 }
@@ -324,16 +325,32 @@ async function plan(req, env) {
     if (!/^[a-f0-9]{64}$/.test(t)) return json({ error: 'not_found' }, 404, c.headers);
     let r; try { r = await rpc(env, 'get_plan', { p_key: inqKey(env), p_token: t }); } catch (e) { return json({ error: 'server' }, 502, c.headers); }
     if (!r || r.error) return json({ error: (r && r.error) || 'server' }, r && r.error === 'not_found' ? 404 : 502, c.headers);
-    return json({ ok: true, answers: r.answers || {}, done: !!r.done, locked: !!r.locked }, 200, c.headers);
+    let st119 = null; try { const f = await rpc(env, 'plan_file_info', { p_key: inqKey(env), p_token: t }); st119 = (f && f.st119) || null; } catch (e) {}
+    return json({ ok: true, answers: r.answers || {}, done: !!r.done, locked: !!r.locked, st119 }, 200, c.headers);
   }
   if (req.method !== 'POST') return new Response('Not found', { status: 404 });
   let b;
-  try { const t = await req.text(); if (t.length > 200000) return json({ error: 'too_big' }, 413, c.headers); b = JSON.parse(t); } catch (e) { return json({ error: 'bad' }, 400, c.headers); }
+  try { const t = await req.text(); if (t.length > 7600000) return json({ error: 'too_big', message: 'That file is too large. Please attach a PDF or photo under 5 MB.' }, 413, c.headers); b = JSON.parse(t); } catch (e) { return json({ error: 'bad' }, 400, c.headers); }
   const t = String(b.t || '');
   if (!/^[a-f0-9]{64}$/.test(t)) return json({ error: 'not_found' }, 404, c.headers);
   const a = (b && typeof b.answers === 'object' && b.answers) || {};
   const row = eventRow(a), fix = checkBasics(row);
   if (fix.length) return json({ error: 'fix', message: 'Please add ' + fix.join(', ') + '.' }, 400, c.headers);
+  // Tax exempt: New York State Form ST-119.1 must come with the questionnaire (or already be on file)
+  let taxForm = null, taxStored = false;
+  if (a['q.taxex'] === 'yes') {
+    const f = b.taxForm && typeof b.taxForm === 'object' ? b.taxForm : null;
+    if (f) {
+      const mime = String(f.mime || ''), data = String(f.data || '');
+      if (!/^(application\/pdf|image\/jpeg|image\/png)$/.test(mime)) return json({ error: 'tax_form', message: 'Please attach Form ST-119.1 as a PDF, JPG or PNG.' }, 400, c.headers);
+      if (data.length < 100 || data.length > 7000000 || !/^[A-Za-z0-9+/=]+$/.test(data)) return json({ error: 'tax_form', message: 'That file couldn’t be read. Please attach Form ST-119.1 as a PDF or photo under 5 MB.' }, 400, c.headers);
+      taxForm = { name: String(f.name || 'ST-119.1').replace(/[\r\n"\\/]+/g, ' ').slice(0, 120) || 'ST-119.1', mime, data };
+      try { const x = await rpc(env, 'attach_plan_file', { p_key: inqKey(env), p_token: t, p_kind: 'st119', p_name: taxForm.name, p_mime: mime, p_data: data }); taxStored = !!(x && x.id); if (x && x.error === 'locked') return json({ error: 'locked', message: 'Your event details are already with our team. Please reply to our email or write to events@edencny.com to make changes.' }, 409, c.headers); } catch (e) {}
+    } else {
+      let onFile = false; try { const x = await rpc(env, 'plan_file_info', { p_key: inqKey(env), p_token: t }); onFile = !!(x && x.st119); } catch (e) {}
+      if (!onFile) return json({ error: 'tax_form', message: 'To book as tax exempt, please attach your New York State Form ST-119.1.' }, 400, c.headers);
+    }
+  }
   Object.assign(row, {
     answers: a, beo: (b.beo && typeof b.beo === 'object') ? b.beo : {}, summary: Array.isArray(b.summary) ? b.summary.slice(0, 20) : [],
     estimate: b.estimate != null && isFinite(+b.estimate) ? String(Math.max(0, Math.round(Number(b.estimate) * 100) / 100)) : ''
@@ -341,7 +358,7 @@ async function plan(req, env) {
   let r; try { r = await rpc(env, 'submit_plan', { p_key: inqKey(env), p_token: t, p_row: row }); } catch (e) { return json({ error: 'server', message: 'Something went wrong on our side.' }, 502, c.headers); }
   if (r && r.error === 'locked') return json({ error: 'locked', message: 'Your event details are already with our team. Please reply to our email or write to events@edencny.com to make changes.' }, 409, c.headers);
   if (!r || r.error) return json({ error: (r && r.error) || 'server', message: 'We couldn’t find your questionnaire. Please use the link in our email, or write to events@edencny.com.' }, r && r.error === 'not_found' ? 404 : 502, c.headers);
-  await notifyStaff(env, req, r, 'plan');
+  await notifyStaff(env, req, r, 'plan', a['q.taxex'] === 'yes' ? { taxex: true, taxForm, taxStored } : undefined);
   return json({ ok: true, again: !!r.again }, 200, c.headers);
 }
 
