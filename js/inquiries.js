@@ -501,6 +501,19 @@
   }
 
   window.EdenInquiries = {
+    // open one BEO from elsewhere (the Calendar's event box). w: a tab opened in the click itself, so it isn't blocked
+    openBeoById: function (id, ctx, w) {
+      if (!I.ctx) I.ctx = ctx;
+      var have = I.rows.filter(function (x) { return x.id === id; })[0];
+      (have ? Promise.resolve(have) : I.ctx.sb.from('catering_inquiries').select('*').eq('id', id).then(function (r) {
+        var row = !r.error && r.data && r.data[0];
+        if (row && !I.rows.some(function (x) { return x.id === id; })) I.rows.push(row);   // so edits in the BEO tab save back
+        return row;
+      })).then(function (row) {
+        if (!row) { if (w) w.close(); (ctx.status || function () {})('Couldn’t find that BEO. It may have been deleted.', 'err'); return; }
+        openBEO(row, w);
+      }, function () { if (w) w.close(); (ctx.status || function () {})('Couldn’t reach the database.', 'err'); });
+    },
     show: function (ctx) {
       I.ctx = ctx; I.el = ctx.el;
       render();

@@ -256,6 +256,10 @@
       cl.length ? h('p', { cls: 'cl-warn', text: 'Double-booked: ' + cl.map(function (o) { return o.title + ' (' + timeText(o) + ')'; }).join(', ') + ' in the ' + e.room + '.' }) : null
     ], function (close) {
       return [h('button', { type: 'button', cls: 'ed-btn small', text: 'Day view', on: { click: function () { close(); openDay(d); } } }),
+        e.beo_id && canEdit() && window.EdenInquiries && window.EdenInquiries.openBeoById ? h('button', { type: 'button', cls: 'ed-btn small cl-beo', text: 'Open BEO', on: { click: function () {
+          var w = window.open('', '_blank'); close();
+          window.EdenInquiries.openBeoById(e.beo_id, { sb: C.ctx.sb, status: C.ctx.status || function () {}, name: C.ctx.name }, w);
+        } } }) : null,
         e.note_id && window.EdenNotes && window.EdenNotes.openNote ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the note', on: { click: function () { close(); window.EdenNotes.openNote(e.note_id); } } }) : null,
         h('span', { cls: 'sc-sp' }),
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn', text: 'Edit', on: { click: function () { close(); editEvent(e); } } }) : h('button', { type: 'button', cls: 'ed-btn', text: 'Close', on: { click: close } })];
