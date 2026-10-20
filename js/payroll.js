@@ -369,6 +369,17 @@
     // step 2: tips by day
     el.appendChild(tipsTable(ro));
 
+    // payroll detail: how each person's pay is worked out
+    var openD = false; try { openD = localStorage.getItem('eden-pay-detail') === '1'; } catch (x) {}
+    var dbtn = h('button', { type: 'button', cls: 'ed-btn ghost small', 'aria-expanded': openD ? 'true' : 'false', text: openD ? 'Hide payroll detail' : 'Show payroll detail' });
+    P.refs.detail = h('div', { cls: 'pr-detail', hidden: !openD });
+    dbtn.addEventListener('click', function () {
+      var on = P.refs.detail.hidden; P.refs.detail.hidden = !on;
+      dbtn.textContent = on ? 'Hide payroll detail' : 'Show payroll detail'; dbtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      try { localStorage.setItem('eden-pay-detail', on ? '1' : '0'); } catch (x) {}
+      if (on) { paintDetail(calc()); P.refs.detail.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+    el.appendChild(h('div', { cls: 'pr-detailbar' }, [h('b', { text: 'Timesheet' }), dbtn]));
     // step 3: timesheet
     var emps = shownEmps();
     if (!emps.length) { el.appendChild(h('p', { cls: 'an-sub', text: 'No employees yet. Add them in Schedule → Employees.' })); return; }
@@ -447,6 +458,7 @@
     DOW.forEach(function () { var c = h('td', { cls: 'pr-num' }); P.refs.T.days.push(c); foot.appendChild(c); });
     ['total', 'reg', 'ot', 'wages', 'tips', 'extra', 'adj', 'gross'].forEach(function (k) { P.refs.T[k] = h('td', { cls: 'pr-num' + (k === 'gross' ? ' pr-gross' : '') }); foot.appendChild(P.refs.T[k]); });
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [head]), body, h('tfoot', null, [foot])])]));
+    el.appendChild(P.refs.detail);
     el.appendChild(P.row.source === 'square' ? h('p', { cls: 'pr-key', text: 'Hours are from the Square file. Hover a day to see what was scheduled.' })
       : h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
 
@@ -515,6 +527,44 @@
       : 'Drop the Square file to fill in the tips, or type them in. ';
     return box;
   }
+  function paintDetail(c) {
+    var box = P.refs.detail; if (!box || box.hidden) return;
+    box.innerHTML = '';
+    var x2 = function (a, b) { return hrs(a) + ' h × ' + money(b); };
+    box.appendChild(h('h3', { text: 'Payroll detail · week of ' + weekLabel(P.week) }));
+    var grid = h('div', { cls: 'pr-dgrid' });
+    c.lines.filter(function (L) { return L.total || L.gross || L.sick || L.hol; }).forEach(function (L) {
+      var i = L.info, rate = i.rate == null ? 0 : +i.rate, rows = [];
+      var add = function (label, how, amt, cls) { rows.push(h('tr', { cls: cls || null }, [h('td', { text: label }), h('td', { cls: 'pr-how', text: how || '' }), h('td', { cls: 'pr-num', text: amt == null ? '' : money(amt) })])); };
+      if (i.pay_type === 'salary') add('Salary', 'weekly', L.salary);
+      else {
+        var blended = L.total ? (L.regPay + L.otPay / OT_RATE) / L.total : 0;
+        if (L.main) add(i.tip_eligible ? 'Hours in the tip pool' : 'Hours', x2(L.main, rate), r2(L.main * rate));
+        if (L.nt) add('Hours outside the tip pool', x2(L.nt, rate), L.ntPay);
+        if (L.kit) add('Kitchen hours', x2(L.kit, i.kitchen_rate == null ? rate : i.kitchen_rate), L.kitPay);
+        if (L.ot) add('Overtime premium', hrs(L.ot) + ' h over 40 × ½ × ' + money(blended) + (L.kit || L.nt ? ' blended' : ''), r2(L.wages - (L.mainPay + L.ntPay + L.kitPay)));
+        if (L.sick) add('Sick', x2(L.sick, rate), L.sickPay);
+        if (L.hol) add('Holiday', x2(L.hol, rate), L.holPay);
+      }
+      add('Wages', '', r2(L.wages + L.sickPay + L.holPay), 'pr-sub');
+      if (L.comm) add('Commission', '', L.comm);
+      if (L.tips) {
+        L.tipDays.forEach(function (t, d) { if (t) add('Tips · ' + DAYS[d], x2(L.days[d], c.tipHrs[d] ? c.D[d].pool / c.tipHrs[d] : 0) + '/h of ' + money(c.D[d].pool), t, 'pr-tipln'); });
+        add('Tips', money(L.tipsCard) + ' credit card · ' + money(L.tipsCash) + ' cash', L.tips, 'pr-sub');
+      } else if (i.tip_eligible) add('Tips', 'no hours on days with tips', 0);
+      if (L.adj) add('Adjustment', L.adjNote || '', L.adj);
+      add('Gross pay', '', L.gross, 'pr-grossln');
+      var pc = payco(L.id);
+      grid.appendChild(h('div', { cls: 'pr-dcard' }, [
+        h('div', { cls: 'pr-dhead' }, [h('b', { text: i.name }), h('small', { text: [pc.id, rateText(i), i.tip_eligible ? 'Tip pool' : '', i.commission ? 'Commission' : ''].filter(Boolean).join(' · ') })]),
+        h('table', null, [h('tbody', null, rows)]),
+        L.warn ? h('p', { cls: 'pr-warn', text: L.warn + ' — see Pay rates' }) : null
+      ]));
+    });
+    box.appendChild(grid);
+    var T = c.T;
+    box.appendChild(h('p', { cls: 'pr-dtot', text: 'Week: ' + money(T.wages + T.sickPay + T.holPay) + ' wages + ' + money(T.comm) + ' commission + ' + money(T.tips) + ' tips (' + money(T.tipsCard) + ' card, ' + money(T.tipsCash) + ' cash) + ' + money(T.adj) + ' adjustments = ' + money(T.gross) + ' gross. Tip pool after the 2.75% card fee: ' + money(c.pool) + '.' }));
+  }
   function arrowKeys(ev, inp) {
     if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
     var all = [].slice.call(P.pane.querySelectorAll('.pr-table:not(.pr-tiptbl) input.pr-h')), i = all.indexOf(inp), step = 7;
@@ -545,6 +595,7 @@
       T.extra.textContent = [c.T.sick ? hrs(c.T.sick) + ' sick h' : '', c.T.hol ? hrs(c.T.hol) + ' holiday h' : '', c.T.comm ? money(c.T.comm) + ' commission' : ''].filter(Boolean).join(' · ');
       T.adj.textContent = money(c.T.adj); T.gross.textContent = money(c.T.gross);
     }
+    paintDetail(c);
     var R = P.refs.tips; if (R) {
       var tc = 0, tk = 0;
       c.D.forEach(function (d, i) {
