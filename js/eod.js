@@ -261,11 +261,15 @@
     parts.slice().sort(function (a, b) { return b.r - a.r; }).forEach(function (p) { if (left > 0) { p.b++; left--; } });
     return parts.map(function (p) { return p.b / 100; });
   }
+  // The pool: cash tips plus credit card tips less the 2.75% card processing fee, divided by hours worked
+  var CARD_FEE = 0.0275;
   function tipCalc(r) {
     var ppl = (r.tip_staff || []).filter(function (p) { return Number(p.hours) > 0; });
-    var cash = split(r.tips_cash, ppl), card = split(r.tips_card, ppl), hrs = ppl.reduce(function (a, p) { return a + Number(p.hours); }, 0);
+    var cardGross = Number(r.tips_card) || 0, fee = cents(cardGross * CARD_FEE) / 100, cardNet = Math.round((cardGross - fee) * 100) / 100;
+    var cash = split(r.tips_cash, ppl), card = split(cardNet, ppl), hrs = ppl.reduce(function (a, p) { return a + Number(p.hours); }, 0);
     var share = {}; ppl.forEach(function (p, i) { share[p.emp] = { cash: cash[i], card: card[i] }; });
-    return { share: share, hours: Math.round(hrs * 100) / 100, cash: Number(r.tips_cash) || 0, card: Number(r.tips_card) || 0 };
+    var cashT = Number(r.tips_cash) || 0;
+    return { share: share, hours: Math.round(hrs * 100) / 100, cash: cashT, card: cardNet, cardGross: cardGross, fee: fee, pool: Math.round((cashT + cardNet) * 100) / 100 };
   }
   function tipsReady(r) { return !!(R.tipsOn && (Number(r.tips_cash) > 0 || Number(r.tips_card) > 0) && (r.tip_staff || []).some(function (p) { return Number(p.hours) > 0; })); }
   function hrsTxt(n) { n = Math.round(Number(n) * 100) / 100; return n + (n === 1 ? ' hr' : ' hrs'); }
@@ -303,7 +307,7 @@
     var sum = h('p', { cls: 'eo-note eo-tipsum' }); el.appendChild(sum);
     function paintTipRows() {
       c = tipCalc(r); table.innerHTML = '';
-      table.appendChild(h('div', { cls: 'eo-tiprow eo-tiphead', role: 'row' }, ['Tip pool', 'Hours', 'Cash', 'Card', 'Total', ''].map(function (t) { return h('span', { role: 'columnheader', text: t }); })));
+      table.appendChild(h('div', { cls: 'eo-tiprow eo-tiphead', role: 'row' }, ['Tip pool', 'Hours', 'Cash', 'Card (after fee)', 'Total', ''].map(function (t) { return h('span', { role: 'columnheader', text: t }); })));
       (r.tip_staff || []).forEach(function (p, i) {
         var sh = c.share[p.emp] || { cash: 0, card: 0 };
         var who = (R.tipEveryone || []).filter(function (e) { return e.emp === p.emp; })[0];
@@ -329,7 +333,7 @@
     function paintNums() {
       c = tipCalc(r);
       table.querySelectorAll('.eo-tiprow[data-emp]').forEach(function (row) { var sh = c.share[row.getAttribute('data-emp')] || { cash: 0, card: 0 }; row.querySelector('[data-k=cash]').textContent = money(sh.cash); row.querySelector('[data-k=card]').textContent = money(sh.card); row.querySelector('[data-k=total]').textContent = money(Math.round((sh.cash + sh.card) * 100) / 100); });
-      sum.textContent = c.hours ? money(c.cash) + ' cash and ' + money(c.card) + ' credit card over ' + hrsTxt(c.hours) + ': ' + money(c.cash / c.hours) + ' cash and ' + money(c.card / c.hours) + ' card per hour.' : 'Enter the tips and each person’s hours. The pool is split by hours worked, cash and card separately.';
+      sum.textContent = c.hours ? 'Credit card tips ' + money(c.cardGross) + ' less the 2.75% processing fee (' + money(c.fee) + ') = ' + money(c.card) + '. Pool: ' + money(c.cash) + ' cash + ' + money(c.card) + ' card = ' + money(c.pool) + ' over ' + hrsTxt(c.hours) + ' = ' + money(c.pool / c.hours) + ' per hour.' : 'Enter the tips and each person’s hours. The pool is the day’s cash tips plus credit card tips less the 2.75% processing fee, divided by hours worked.';
     }
     paintTipRows();
     // emailing

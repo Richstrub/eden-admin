@@ -421,19 +421,22 @@ function splitCents(total, staff) {
   return parts.map(p => p.base / 100);
 }
 function hrsText(h) { const n = Math.round(Number(h) * 100) / 100; return n + (n === 1 ? ' hour' : ' hours'); }
+// The pool: cash tips plus credit card tips less the 2.75% card processing fee, divided by hours worked
+const CARD_FEE = 0.0275;
 function tipShares(d) {
   const staff = (d.staff || []).map(p => ({ name: String(p.name || 'Team member'), email: String(p.email || '').trim(), hours: Math.max(0, Number(p.hours) || 0) })).filter(p => p.hours > 0);
-  const cash = splitCents(d.tips_cash, staff), card = splitCents(d.tips_card, staff);
+  const cardGross = Number(d.tips_card) || 0, fee = Math.round(cardGross * CARD_FEE * 100) / 100, cardNet = Math.round((cardGross - fee) * 100) / 100;
+  const cashT = Number(d.tips_cash) || 0;
+  const cash = splitCents(cashT, staff), card = splitCents(cardNet, staff);
   staff.forEach((p, i) => { p.cash = cash[i]; p.card = card[i]; p.total = Math.round((cash[i] + card[i]) * 100) / 100; });
-  const hours = Math.round(staff.reduce((a, p) => a + p.hours, 0) * 100) / 100;
-  return { staff, hours, cash: Number(d.tips_cash) || 0, card: Number(d.tips_card) || 0,
-    cashRate: hours ? Number(d.tips_cash || 0) / hours : 0, cardRate: hours ? Number(d.tips_card || 0) / hours : 0 };
+  const hours = Math.round(staff.reduce((a, p) => a + p.hours, 0) * 100) / 100, pool = Math.round((cashT + cardNet) * 100) / 100;
+  return { staff, hours, cash: cashT, card: cardNet, cardGross, fee, pool, rate: hours ? pool / hours : 0 };
 }
 function tipRow(label, value, strong) { return '<tr><td style="padding:7px 0;border-bottom:1px solid #eee8dd' + (strong ? ';font-weight:bold' : '') + '">' + esc(label) + '</td><td style="padding:7px 0;border-bottom:1px solid #eee8dd;text-align:right' + (strong ? ';font-weight:bold' : '') + '">' + esc(value) + '</td></tr>'; }
 function poolLines(T) {
   return '<p style="margin:16px 0 6px;font-size:13px;color:#7f7a71">The night’s tip pool</p><table style="width:100%;border-collapse:collapse;font-size:14px">' +
-    tipRow('Cash tips', money(T.cash)) + tipRow('Credit card tips', money(T.card)) + tipRow('Hours worked by the tip pool', hrsText(T.hours)) +
-    tipRow('Cash per hour', money(T.cashRate)) + tipRow('Credit card per hour', money(T.cardRate)) + '</table>';
+    tipRow('Cash tips', money(T.cash)) + tipRow('Credit card tips', money(T.cardGross)) + tipRow('Less 2.75% card processing fee', '−' + money(T.fee)) +
+    tipRow('Tip pool', money(T.pool), true) + tipRow('Hours worked by the tip pool', hrsText(T.hours)) + tipRow('Per hour', money(T.rate), true) + '</table>';
 }
 async function adminTips(req, env) {
   const origin = req.headers.get('origin');
@@ -458,10 +461,10 @@ async function adminTips(req, env) {
     const first = p.name.split(/\s+/)[0];
     const html = mailShell('Your tips for ' + day,
       '<p style="margin:0 0 12px">Hi ' + esc(first) + ',</p><p style="margin:0 0 12px">Here are your tips from the tip pool for ' + esc(day) + '.</p>' +
-      '<table style="width:100%;border-collapse:collapse;font-size:15px">' + tipRow('Hours worked', hrsText(p.hours)) + tipRow('Cash tips', money(p.cash)) + tipRow('Credit card tips', money(p.card)) + tipRow('Total', money(p.total), true) + '</table>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:15px">' + tipRow('Hours worked', hrsText(p.hours)) + tipRow('Cash tips', money(p.cash)) + tipRow('Credit card tips (after fee)', money(p.card)) + tipRow('Total', money(p.total), true) + '</table>' +
       poolLines(T) + '<p style="margin:16px 0 0;font-size:13px;color:#7f7a71">Tips are pooled and split by hours worked. Questions? Just reply to this email.</p>');
-    const text = 'Hi ' + first + ',\n\nYour tips from the tip pool for ' + day + ':\n\nHours worked: ' + hrsText(p.hours) + '\nCash tips: ' + money(p.cash) + '\nCredit card tips: ' + money(p.card) + '\nTotal: ' + money(p.total) +
-      '\n\nThe night’s pool: ' + money(T.cash) + ' cash and ' + money(T.card) + ' credit card over ' + hrsText(T.hours) + ' (' + money(T.cashRate) + ' cash and ' + money(T.cardRate) + ' card per hour).\n\nTips are pooled and split by hours worked. Questions? Just reply to this email.\n\nEden';
+    const text = 'Hi ' + first + ',\n\nYour tips from the tip pool for ' + day + ':\n\nHours worked: ' + hrsText(p.hours) + '\nCash tips: ' + money(p.cash) + '\nCredit card tips (after the 2.75% fee): ' + money(p.card) + '\nTotal: ' + money(p.total) +
+      '\n\nThe night’s pool: ' + money(T.cash) + ' cash + ' + money(T.card) + ' credit card after the 2.75% processing fee (' + money(T.cardGross) + ' before) = ' + money(T.pool) + ' over ' + hrsText(T.hours) + ' (' + money(T.rate) + ' per hour).\n\nTips are pooled and split by hours worked. Questions? Just reply to this email.\n\nEden';
     const sent = await sendMail(env, { from, to: [p.email], subject: 'Your tips for ' + day, html, text, reply_to: replyTo });
     log.push({ name: p.name, email: p.email, ok: sent.ok, error: sent.ok ? '' : sent.error });
   }
@@ -473,10 +476,10 @@ async function adminTips(req, env) {
     const tot = '<tr>' + ['Total', String(T.hours), money(T.cash), money(T.card), money(Math.round((T.cash + T.card) * 100) / 100)].map((v, i) => '<td style="padding:8px 0 8px ' + (i ? '8px' : '0') + ';font-weight:bold;' + (i ? 'text-align:right' : '') + '">' + esc(v) + '</td>').join('') + '</tr>';
     const html = mailShell('Tips for ' + day,
       '<p style="margin:0 0 12px">Copy of the tip emails sent from the end of day report' + (d.prepared_by ? ' prepared by ' + esc(d.prepared_by) : '') + '.</p>' +
-      '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr>' + ['Name', 'Hours', 'Cash', 'Card', 'Total'].map((t, i) => '<th style="text-align:' + (i ? 'right' : 'left') + ';font-size:12px;color:#7f7a71;padding:0 0 6px ' + (i ? '8px' : '0') + ';border-bottom:1px solid #d9d3c8">' + t + '</th>').join('') + '</tr>' + rows + tot + '</table>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr>' + ['Name', 'Hours', 'Cash', 'Card (after fee)', 'Total'].map((t, i) => '<th style="text-align:' + (i ? 'right' : 'left') + ';font-size:12px;color:#7f7a71;padding:0 0 6px ' + (i ? '8px' : '0') + ';border-bottom:1px solid #d9d3c8">' + t + '</th>').join('') + '</tr>' + rows + tot + '</table>' +
       poolLines(T));
     const text = 'Tips for ' + day + '\n\n' + T.staff.map((p, i) => p.name + ': ' + hrsText(p.hours) + ', cash ' + money(p.cash) + ', card ' + money(p.card) + ', total ' + money(p.total) + (log[i] && !log[i].ok ? ' (not emailed: ' + log[i].error + ')' : '')).join('\n') +
-      '\n\nPool: ' + money(T.cash) + ' cash, ' + money(T.card) + ' credit card, ' + hrsText(T.hours) + '.';
+      '\n\nPool: ' + money(T.cash) + ' cash + ' + money(T.card) + ' credit card after the 2.75% fee (' + money(T.cardGross) + ' before, fee ' + money(T.fee) + ') = ' + money(T.pool) + ' over ' + hrsText(T.hours) + ' (' + money(T.rate) + ' per hour).';
     const c = await sendMail(env, { from, to: copyTo, subject: 'Tips for ' + day + ' (copy)', html, text });
     copyOk = c.ok;
   }
