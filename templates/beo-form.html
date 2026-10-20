@@ -181,6 +181,7 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
     <label class="f wide">Billing address<input data-k="ev.address"></label>
     <label class="f">Expected guest count<input type="number" min="0" inputmode="numeric" data-k="ev.expected"></label>
     <label class="f">Final guaranteed count<input type="number" min="0" inputmode="numeric" data-k="ev.guar"></label>
+    <label class="f">Budget per person ($, corporate)<input type="number" min="0" step="1" inputmode="decimal" data-k="ev.budget"></label>
   </div>
   <p class="note" style="margin-top:12px">The final guarantee is due by 11:00 am, 5 business days before the event. If it isn't received, the expected count becomes the minimum guarantee.</p>
   <div class="inline">
@@ -300,6 +301,8 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
   <h2>Beverage service</h2>
   <p class="callout" id="n-pall" hidden><b>Palladian Hall:</b> no beverage service is offered at Palladian Hall. Anything entered in this section is left off the bill.</p>
   <div id="bevBody">
+  <div class="inline" style="margin-bottom:10px"><label><input type="checkbox" data-k="ev.dry"> Alcohol-free event (becomes part of the contract)</label></div>
+  <p class="callout" id="n-dry" hidden><b>Alcohol-free:</b> no alcohol is served and guests may not bring their own. The bar package and alcoholic items below are left off the bill, and the term is printed on the BEO.</p>
   <p class="note">Every bar package has a $75 setup fee and $15 per bartender per hour: one bartender, plus one more for every 30 guests. Partial hours count as a full hour.</p>
   <div class="fields"><label class="f">Bar package<select data-k="bev.pkg" id="barSel"><option value=""></option><option value="menu">Bar menu (à la carte, Restaurant only)</option><option value="open-bw">Open bar · beer and wine</option><option value="open-full">Open bar · beer, wine and cocktails</option><option value="cash">Cash bar</option><option value="cons">Consumption bar</option></select></label><label class="f">Bar open<input type="time" data-k="bev.open"></label><label class="f">Bar close<input type="time" data-k="bev.close"></label><label class="f">Bartenders<input type="number" min="0" data-k="bev.staff" id="barStaff"></label><label class="f" id="barTabF" hidden>Bar tab at close ($)<input type="number" min="0" step="0.01" inputmode="decimal" data-k="bev.tab"></label></div>
   <p class="note" id="barCalc"></p>
@@ -320,7 +323,7 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
   <h2>Billing adjustments</h2>
   <div class="fields">
     <label class="f">Overtime / extended service fees ($)<input type="number" min="0" step="0.01" data-k="bill.ot"></label>
-    <label class="f">Service charge (% of food and beverage, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
+    <label class="f">Service charge (% of food, beverage and bar fees, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
     <label class="f">Sales tax (%, default 8%)<input type="number" min="0" step="0.001" data-k="bill.tax"></label>
     <label class="f">Deposit received ($)<input type="number" min="0" step="0.01" data-k="bill.dep"></label>
     <label class="f">Deposit date<input type="date" data-k="bill.depdate"></label>
@@ -496,9 +499,13 @@ const desserts=[
  {key:'ds.brulee',name:'Crème brûlée',desc:'Fresh fruit, chantilly',price:9},
  {key:'ds.apple',name:'Apple crumble',desc:'Granola, crème fraîche sorbet',price:8}];
 const bev=[
- {key:'bv.bar',name:'Bar service, custom',desc:'Only for an arrangement outside the bar packages above',price:null},
- {key:'bv.wine',name:'Wine service with dinner',desc:'',price:null},
- {key:'bv.toast',name:'Champagne toast',desc:'',price:null},
+ {key:'bv.bar',name:'Bar service, custom',desc:'Only for an arrangement outside the bar packages above',price:null,alc:true},
+ {key:'bv.toast.bro',name:'Toast: Brotherhood Blanc de Blancs',desc:'Per guest',price:6,alc:true},
+ {key:'bv.toast.frank',name:'Toast: Dr. Konstantin Frank Célèbre',desc:'Per guest',price:8,alc:true},
+ {key:'bv.toast.wiemer',name:'Toast: Hermann J. Wiemer Sparkling Brut Riesling',desc:'Per guest',price:9,alc:true},
+ {key:'bv.toast',name:'Toast, other',desc:'',price:null,alc:true},
+ {key:'bv.sig',name:'Signature cocktail',desc:'One cocktail created with our bar team',price:null,alc:true},
+ {key:'bv.wine',name:'Wine service with dinner',desc:'',price:null,alc:true},
  {key:'bv.na',name:'Non-alcoholic beverages',desc:'',price:null},
  {key:'bv.other',name:'Other',desc:'',price:null}];
 /*BUFFET-START*/
@@ -622,7 +629,8 @@ function alaCheck(){
    Open bar is charged per guest: beer and wine $16 the first hour and $12 each hour after;
    beer, wine and cocktails $18 the first hour and $16 each hour after.
    Cash bar: guests pay their own tabs at the end of the meal. Consumption bar: the host pays the bar tab at the end.
-   No beverage service at Palladian Hall; the bar menu is for à la carte dinners in the Restaurant only. */
+   The bar menu (à la carte in the Restaurant only) carries the same setup and bartender fees; drinks are billed as ordered.
+   The service charge applies to the setup and bartender fees too. No beverage service at Palladian Hall. */
 const BAR={setup:75,perBartender:15,guestsPer:30,
   pkgs:{menu:{name:'Bar menu',fees:false},'open-bw':{name:'Open bar · beer and wine',first:16,after:12},'open-full':{name:'Open bar · beer, wine and cocktails',first:18,after:16},
         cash:{name:'Cash bar'},cons:{name:'Consumption bar'}}};
@@ -631,13 +639,10 @@ function barHours(){const a=String(S['bev.open']||''),b=String(S['bev.close']||'
   const m=x=>+x.slice(0,2)*60+ +x.slice(3,5);let d=m(b)-m(a);if(d<=0)d+=1440;return Math.ceil(d/60);}
 function barCalc(G){
   const out={on:false,lines:[],fb:0,fees:0,note:'',warn:''};
-  if(S['ev.room']===PALLADIAN)return out;
+  if(S['ev.room']===PALLADIAN||G===-1)return out;
   const key=String(S['bev.pkg']||''),P=BAR.pkgs[key];if(!P)return out;
   out.on=true;
-  if(key==='menu'){
-    if(!(S['ev.alacarte']&&S['ev.room']==='Restaurant'))out.warn='The bar menu is only offered with an à la carte dinner in the Restaurant. Choose another bar package, or change the dinner and location.';
-    out.note='Guests order from the current bar menu; drinks are billed as ordered. No setup or bartender fees.';
-    return out;}
+  if(key==='menu'&&!(S['ev.alacarte']&&S['ev.room']==='Restaurant'))out.warn='The bar menu is only offered with an à la carte dinner in the Restaurant. Choose another bar package, or change the dinner and location.';
   const h=barHours(),auto=1+Math.floor((G||0)/BAR.guestsPer),n=num('bev.staff')||auto;
   if(!h)out.warn='Enter the bar open and close times to price the bar.';
   if(!G)out.warn=(out.warn?out.warn+' ':'')+'Enter the guaranteed or expected guest count.';
@@ -647,6 +652,8 @@ function barCalc(G){
   if(P.first){const pp=h?P.first+P.after*(h-1):0;out.fb=pp*(G||0);
     if(h)out.lines.push([`${P.name} (${G||0} guests × $${pp})`,out.fb]);
     out.note=`$${P.first} per guest for the first hour, $${P.after} per guest for each hour after${h?`: $${pp} per guest for ${h} hour${h>1?'s':''}`:''}.`;}
+  if(key==='menu')out.note='Guests order from the current bar menu; drinks are billed as ordered.';
+  if(key==='open-full')out.note+=' Classic cocktails: Cosmopolitan (Albany Distilling Vodka), Martini and Negroni (Deep Wells Gin), Old Fashioned (Fort Hamilton Whiskey), Manhattan (Fort Hamilton Rye), Margarita (Steelbound Agave), Daiquiri (Albany Distilling Rum).';
   if(key==='cash')out.note='Each guest pays their own bar tab at the end of the meal. The host pays the setup and bartender fees.';
   if(key==='cons'){const tab=num('bev.tab');out.fb=tab;if(tab)out.lines.push(['Consumption bar tab',tab]);
     out.note='The host pays the bar tab at the end of the meal'+(tab?'.':'; enter it in “Bar tab at close” once the bar closes.');}
@@ -679,8 +686,11 @@ function calc(){
     const it=allMenu.find(x=>x.key===r.dataset.bf);const dd=r.querySelector('td:nth-child(2) .item-desc');if(it&&dd)dd.textContent=bufDesc(it,bt)||'';
   });
   const pall=S['ev.room']===PALLADIAN;
-  const bevItemsT=sumItems(bev);
-  const bar=barCalc(G);
+  const dry=!!S['ev.dry'];
+  const bevItemsT=sumItems(bev)-(dry?bev.filter(it=>it.alc).reduce((a,it)=>a+num(it.key+'.qty')*unitPrice(it),0):0);
+  bev.forEach(it=>{const r=document.querySelector(`tr[data-row="${it.key}"]`);if(r)r.classList.toggle('off',dry&&!!it.alc);});
+  $('n-dry').hidden=!dry;
+  const bar=dry?barCalc(-1):barCalc(G);
   const bevT=pall?0:bevItemsT+bar.fb;
   $('n-pall').hidden=!pall;$('bevBody').classList.toggle('off',pall);
   $('barTabF').style.display=S['bev.pkg']==='cons'&&!pall?'':'none';
@@ -738,7 +748,7 @@ function calc(){
   const rental=S['ev.third']&&!S['ev.waive']&&fb<=2500?250:0;
   const ot=num('bill.ot');
   const sub=fb+attend+rental+ot+bar.fees;
-  const svc=fb*num('bill.svc')/100;
+  const svc=(fb+bar.fees)*num('bill.svc')/100;
   const tax=(sub+svc)*num('bill.tax')/100;
   const total=sub+svc+tax;
   const dep=num('bill.dep');
@@ -901,7 +911,7 @@ function buildStaff(){
   const setupHtml=setupPairs.some(p=>p[1])?kv(setupPairs):'<p class="none">No room setup entered.</p>';
   const barWhen=[fTime(val('bev.open')),fTime(val('bev.close'))].filter(Boolean).join(' – ');
   const barP=BAR.pkgs[String(S['bev.pkg']||'')],barB=barCalc(num('ev.guar')||num('ev.expected')),barN=barP&&S['bev.pkg']!=='menu'?(num('bev.staff')||barB.auto||''):(num('bev.staff')||'');
-  const bevHtml=S['ev.room']===PALLADIAN?'<p class="none">No beverage service at Palladian Hall.</p>':(oBev.length||barWhen||barP||num('bev.staff'))?`${kv([['Bar package',barP?barP.name:''],['Bar hours',barWhen],['Bartenders',barN],['Bar location',val('rm.bar')],['Bar terms',barB.note]])}${itemRows(oBev,'Qty',false)}`:'<p class="none">No beverage service entered.</p>';
+  const bevHtml=S['ev.room']===PALLADIAN?'<p class="none">No beverage service at Palladian Hall.</p>':S['ev.dry']?`<p class="none"><b>Alcohol-free event.</b> No alcohol is served, and guests may not bring their own.</p>${itemRows(oBev.filter(it=>!it.alc),'Qty',false)}`:(oBev.length||barWhen||barP||num('bev.staff'))?`${kv([['Bar package',barP?barP.name:''],['Bar hours',barWhen],['Bartenders',barN],['Bar location',val('rm.bar')],['Bar terms',barB.note]])}${itemRows(oBev,'Qty',false)}`:'<p class="none">No beverage service entered.</p>';
   const notesHtml=val('notes')?`<h2>Notes</h2><div class="notes">${esc(val('notes'))}</div>`:'';
   const anyRaw=[...oSuite,...oBrunch,...oSt,...oHot,...oCold,...oEnh,...salad,...starter,...ent,...bE].some(raw);
   const foot=`<div class="foot">${anyRaw?'Items marked RAW / UNDERCOOKED carry the consumer advisory: consuming raw or undercooked meats, poultry, seafood, shellfish, oysters, or eggs may increase the risk of foodborne illness. ':''}Printed ${new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})}.</div>`;
@@ -1060,7 +1070,8 @@ function clientPdf(){
     if(oDess.length){sub('Desserts');table(priceCols,priceRows(oDess,'pp'));}
   }
   const pBar=BAR.pkgs[String(S['bev.pkg']||'')],pB=L.bar||{};
-  if(S['ev.room']!==PALLADIAN&&(oBev.length||val('bev.open')||pBar)){section('Beverage service');
+  if(S['ev.room']!==PALLADIAN&&S['ev.dry']){section('Beverage service');d.para('Alcohol-free event: no alcohol is served, and guests may not bring their own.',{size:9.5});const naB=oBev.filter(it=>!it.alc);if(naB.length)table(priceCols,priceRows(naB,''));}
+  else if(S['ev.room']!==PALLADIAN&&(oBev.length||val('bev.open')||pBar)){section('Beverage service');
     kvs([['Bar package',pBar?pBar.name:''],['Bar hours',[fTime(val('bev.open')),fTime(val('bev.close'))].filter(Boolean).join(' – ')],['Bartenders',pBar&&S['bev.pkg']!=='menu'?(num('bev.staff')||pB.auto||''):(num('bev.staff')||'')],['Bar location',val('rm.bar')],['Bar terms',pB.note||'']]);
     if(oBev.length)table(priceCols,priceRows(oBev,''));}
 
@@ -1093,6 +1104,7 @@ function clientPdf(){
    `The final guaranteed guest count is due by 11:00 am, 5 business days before the event${DL?` (${DL.guar})`:''}. If it isn't received, the expected count becomes the minimum guarantee.`,
    'Buffets and reception stations run 90 minutes, plated dinners 120 to 180 minutes, and breaks 30 minutes. Longer service carries an additional fee.',
    ...(S['ev.alacarte']?['À la carte dinner is billed on what guests order.']:[]),
+   ...(S['ev.dry']&&S['ev.room']!==PALLADIAN?['This is an alcohol-free event. No alcoholic beverages will be served, and guests may not bring alcohol onto the premises.']:[]),
    ...(S['ev.alacarte']&&S['ev.third']?['The 3rd Floor Event Space has a $2,500 food and beverage minimum, or a $250 room fee.']:[]),
    'Changes after signing must be made in writing and approved by the event manager.'
   ].forEach(t=>{const lines=d.wrap(t,CW-14,false,9.5);d.room(lines.length*12.5+3);const y3=d.get();d.text(M+2,y3-9.5,'•',{size:9.5,color:C.moss});lines.forEach((l,n)=>d.text(M+14,y3-9.5-n*12.5,l,{size:9.5}));d.down(lines.length*12.5+3);});
