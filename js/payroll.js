@@ -126,7 +126,9 @@
       P.eod = eodDays(res[4].error ? [] : res[4].data || []);
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
       else { P.row = { week_start: wk, status: 'draft', tip_pool: 0, rows: {}, notes: '' }; P.fresh = true; fillFromSchedule(); }
-      if (!P.row.rows._tips && !final()) fillTipsFromEod(true);
+      if (!final() && P.row.rows._tips) {   // tips come only from the Square file: drop any filled from End of day reports
+        var t0 = tipsRow(); (t0.src || []).forEach(function (x, i) { if (x === 'eod') { t0.card[i] = null; t0.cash[i] = null; t0.src[i] = ''; } });
+      }
       paint(false);
     }, function () { if (my === P.seq) { P.err = 'Couldn’t reach the database. Check your connection.'; paint(false); } });
   }
@@ -143,6 +145,17 @@
     return d;
   }
   function tipsRow() { var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] }; t.cash = seven(t.cash); t.card = seven(t.card); return t; }
+  // Days where the Square file's tips and the End of day report's tips aren't the same
+  function tipMismatch() {
+    var t = P.row && P.row.rows._tips, e = P.eod, out = [];
+    if (!t || !e || !(t.src || []).some(function (x) { return x === 'square'; })) return out;
+    for (var i = 0; i < 7; i++) {
+      if (!e.has[i]) continue;
+      var sc = r2(+t.card[i] || 0), ec = r2(e.card[i]), sh = r2(+t.cash[i] || 0), eh = r2(e.cash[i]);
+      if (Math.abs(sc - ec) >= 0.01 || Math.abs(sh - eh) >= 0.01) out.push({ i: i, sc: sc, ec: ec, sh: sh, eh: eh });
+    }
+    return out;
+  }
   function fillTipsFromEod(quiet) {
     var e = P.eod, t = tipsRow();
     if (!e) return;
@@ -366,6 +379,18 @@
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
 
+    // tips that don't match the End of day reports
+    var mm = tipMismatch();
+    if (mm.length) el.appendChild(h('div', { cls: 'pr-alert', role: 'alert' }, [
+      h('b', { text: 'Tips in the Square file don’t match the End of day ' + (mm.length === 1 ? 'report' : 'reports') }),
+      h('ul', null, mm.map(function (m) {
+        var bits = [];
+        if (Math.abs(m.sc - m.ec) >= 0.01) bits.push('credit card ' + money(m.sc) + ' in Square vs ' + money(m.ec) + ' on the report (' + (m.sc > m.ec ? '+' : '−') + money(Math.abs(m.sc - m.ec)).replace(/^[−-]/, '') + ')');
+        if (Math.abs(m.sh - m.eh) >= 0.01) bits.push('cash ' + money(m.sh) + ' in Square vs ' + money(m.eh) + ' on the report');
+        return h('li', { text: DAYS[m.i] + ' ' + md(addDays(P.week, m.i)) + ': ' + bits.join('; ') });
+      })),
+      h('p', { text: 'Payroll uses the Square numbers. Check the day in Square and on the End of day report before finalizing.' })
+    ]));
     // step 2: tips by day
     el.appendChild(tipsTable(ro));
 
@@ -508,23 +533,25 @@
     }
     inRow('cash', 'Cash tips'); inRow('card', 'Credit card tips');
     var fromSq = (t.src || []).some(function (x) { return x === 'square'; });
-    if (fromSq && e.has && e.has.some(Boolean)) {   // tips from Square: show the End of day reports' tips to check against
-      var sqr = h('tr', { cls: 'pr-sqrow' }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: 'End of day reports' }), h('small', { text: 'card + cash, to check' })])]);
-      for (var q = 0; q < 7; q++) { var ev = r2(e.cash[q] + e.card[q]), tv = r2((+t.card[q] || 0) + (+t.cash[q] || 0)), diff = e.has[q] && Math.abs(ev - tv) >= 0.01; sqr.appendChild(h('td', { cls: 'pr-num' + (diff ? ' pr-warn' : ''), title: diff ? 'Different from the tips above (' + money(tv) + ')' : '', text: e.has[q] ? money(ev) : '–' })); }
-      sqr.appendChild(h('td', { cls: 'pr-num', text: money(sum(e.cash) + sum(e.card)) }));
-      body.appendChild(sqr);
+    if (e.has && e.has.some(Boolean)) {   // the End of day reports, only to check against Square
+      [['card', 'Card tips, End of day', 'to check against Square'], ['cash', 'Cash tips, End of day', 'to check against Square']].forEach(function (k) {
+        if (k[0] === 'cash' && !sum(e.cash) && !sum(t.cash)) return;
+        var sqr = h('tr', { cls: 'pr-sqrow' }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: k[1] }), h('small', { text: k[2] })])]);
+        for (var q = 0; q < 7; q++) {
+          var ev = r2(e[k[0]][q]), tv = r2(+t[k[0]][q] || 0), diff = fromSq && e.has[q] && Math.abs(ev - tv) >= 0.01;
+          sqr.appendChild(h('td', { cls: 'pr-num' + (diff ? ' pr-mis' : ''), title: diff ? 'Square: ' + money(tv) : '', text: e.has[q] ? money(ev) + (diff ? ' ≠' : '') : '–' }));
+        }
+        sqr.appendChild(h('td', { cls: 'pr-num', text: money(sum(e[k[0]])) }));
+        body.appendChild(sqr);
+      });
     }
     calcRow('fee', 'Less 2.75% card fee'); calcRow('pool', 'Tip pool', true); calcRow('hrs', 'Tip-pool hours'); calcRow('rate', 'Per hour', true);
     box.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table pr-tiptbl' }, [h('thead', null, [head]), body])]));
     var note = h('p', { cls: 'pr-poolnote' }); refs.note = note;
     var days = (e.has || []).filter(Boolean).length;
-    box.appendChild(h('div', { cls: 'pr-tipbar' }, [note, ro ? null : h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Refill from End of day reports', on: { click: function () {
-      if (!confirm('Replace the tips above with the tips on this week’s End of day reports?')) return;
-      fillTipsFromEod(); paint(false);
-    } } })]));
-    refs.src = fromSq ? 'Tips are from the Square file (blue): credit card tips and declared cash tips. ' + (days ? 'The End of day reports are shown underneath to check; a difference is in orange. ' : '')
-      : days ? 'Filled from ' + days + ' End of day ' + (days === 1 ? 'report' : 'reports') + ' (shaded). Drop the Square file to use Square’s tips instead. '
-      : 'Drop the Square file to fill in the tips, or type them in. ';
+    box.appendChild(h('div', { cls: 'pr-tipbar' }, [note]));
+    refs.src = fromSq ? 'Tips are from the Square file (blue): credit card tips (“by transaction tips”) and declared cash tips. ' + (days ? 'The End of day reports are shown underneath only to check; a day that doesn’t match is marked ≠. ' : '')
+      : 'Tips come from the Square file. Drop this week’s file above to fill them in. ';
     return box;
   }
   function paintDetail(c) {
@@ -616,6 +643,8 @@
   function finalize() {
     var c = calc(), missing = c.lines.filter(function (L) { return L.warn; });
     if (missing.length && !confirm(missing.map(function (L) { return L.info.name + ': ' + L.warn; }).join('\n') + '\n\nFinalize anyway?')) return;
+    var mm = tipMismatch();
+    if (mm.length && !confirm('The Square tips don’t match the End of day ' + (mm.length === 1 ? 'report' : 'reports') + ' on ' + mm.map(function (m) { return DAYS[m.i]; }).join(', ') + '. Payroll uses the Square numbers.\n\nFinalize anyway?')) return;
     if (!confirm('Finalize the week of ' + weekLabel(P.week) + '? Gross pay ' + money(c.T.gross) + '. The hours and pay rates are locked as they are now; you can reopen it later.')) return;
     c.lines.forEach(function (L) {
       var r = rowFor(L.id), i = L.info;
