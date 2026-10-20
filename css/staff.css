@@ -2573,3 +2573,6 @@ body.nt-open #app{visibility:hidden!important}
 .pr-dlg tr.pr-unm td{background:#fbf3ea}
 .pr-dlg .pr-acts{margin-top:12px}
 .pr-chk{display:flex;gap:8px;align-items:center;font-size:.86rem;margin:8px 0}
+.pr-tiptbl td.sq .pr-tipin{background:#eef2f4}
+.pr-tiptbl tr.pr-sqrow th b{font-weight:400}.pr-tiptbl tr.pr-sqrow td{color:var(--stone)}
+.pr-dlg td select{display:block;margin:2px 0}
