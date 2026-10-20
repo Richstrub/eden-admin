@@ -314,7 +314,9 @@
   function openCompose(r, mode) {
     var msgs = I.msgs[r.id] || [], lastSub = '';
     msgs.forEach(function (m) { if ((m.kind === 'in' || m.kind === 'out') && m.subject) lastSub = m.subject; });
-    var sign = '\n\n' + (I.ctx.name || '') + '\nEden';
+    // the writer's sign-off from Business email (Email sign-off); without one, their name and Eden Hospitality
+    var so = I.sig && (I.sig.line1 || I.sig.line2 || I.sig.line3) ? [I.sig.line1, I.sig.line2, I.sig.line3].filter(Boolean) : [I.ctx.name || '', 'Eden Hospitality'].filter(Boolean);
+    var sign = '\n\n' + so.join('\n');
     if (mode === 'plan') I.compose = { id: r.id, mode: mode, subject: 'Planning your event at Eden',
       body: 'Hi ' + first(r) + ',\n\nThank you for your interest in hosting ' + (r.event_name || 'your event') + ' at Eden' + (r.event_date ? ' on ' + longDate(r.event_date) : '') + '. Please use the link below to plan your menu and the details of your event. We’ve already filled in what you sent us, and you’ll see an estimate as you choose.\n\n{link}\n\nWe look forward to working with you.' + sign };
     else if (mode === 'message') I.compose = { id: r.id, mode: mode, subject: lastSub ? (/^re:/i.test(lastSub) ? lastSub : 'Re: ' + lastSub) : 'Your event at Eden', body: 'Hi ' + first(r) + ',\n\n' + sign };
@@ -516,6 +518,7 @@
     },
     show: function (ctx) {
       I.ctx = ctx; I.el = ctx.el;
+      if (I.sig === undefined && ctx.uid) { I.sig = null; ctx.sb.from('mail_signatures').select('line1,line2,line3').eq('user_id', ctx.uid).maybeSingle().then(function (r) { if (r && r.data) I.sig = r.data; }, function () {}); }
       render();
       load().then(function () { render(); if (I.sel && !I.msgs[I.sel]) loadMsgs(I.sel).then(paintDetail); });
     }

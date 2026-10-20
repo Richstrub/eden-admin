@@ -201,7 +201,7 @@
       if (window.EdenSchedule) window.EdenSchedule.show({ sb: sb, el: $('viewSchedule'), status: status, role: role, user: session && session.user });
     } else if (v === 'catering') {
       status('');
-      if (window.EdenInquiries) window.EdenInquiries.show({ sb: sb, el: $('viewCatering'), status: status, name: staffName, canDelete: role === 'owner' });
+      if (window.EdenInquiries) window.EdenInquiries.show({ sb: sb, el: $('viewCatering'), status: status, name: staffName, uid: session && session.user && session.user.id, canDelete: role === 'owner' });
     } else if (v === 'analytics') {
       status('');
       if (window.EdenAnalytics) window.EdenAnalytics.show({ sb: sb, el: $('viewAnalytics'), status: status, sub: sub });

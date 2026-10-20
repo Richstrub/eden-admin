@@ -802,8 +802,8 @@
     var text = h('textarea', { cls: 'em-in em-body-in', rows: '10', 'aria-label': 'Message', placeholder: 'Write your message' });
     if (o.body) text.value = o.body;
     var sigBox = h('input', { type: 'checkbox', checked: true });
-    var own = mySig();
-    var sigRow = h('label', { cls: 'em-check' }, [sigBox, own ? ' Add my sign-off' : ' Add my Gmail signature']);
+    var so = sigFor(a), own = so.sig;
+    var sigRow = h('label', { cls: 'em-check' }, [sigBox, own ? (so.mine ? ' Add my sign-off' : ' Add ' + so.name + '’s sign-off') : ' Add the Gmail signature']);
     // your staff-site sign-off (three lines and the Eden picture); without one, the mailbox's Gmail signature
     function sig() { if (own) return sigHtml(own); var s = sendAs[+fromSel.value] || {}; return s.signature || ''; }
     function paintSig() { sigRow.hidden = !sig(); }
@@ -877,6 +877,25 @@
     }, function () { M.sigMissing = true; });
   }
   function mySig() { var x = M.sigs[M.ctx.uid]; return x && (x.line1 || x.line2 || x.line3) ? x : null; }
+  // Starting sign-offs, used until someone saves their own on the Email sign-off page
+  var DEFAULT_SIGS = {
+    tyler: { line1: 'Tyler Ball', line2: 'Front of House Manager', line3: 'Eden Hospitality' },
+    rich: { line1: 'Rich Strub', line2: 'Chef / Owner', line3: 'Eden Hospitality' }
+  };
+  function filled(x) { return x && (x.line1 || x.line2 || x.line3) ? x : null; }
+  // The sign-off for a mailbox belongs to the person whose mailbox it is, not whoever is signed in to the
+  // staff site: an email from Tyler's mailbox signs off as Tyler, even when the Owner writes it.
+  // A mailbox is matched to a person by its Google name or by the first part of its address (tyler@ → Tyler).
+  function sigFor(a) {
+    var local = String((a && a.address) || '').split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
+    var gname = String((a && a.name) || '').toLowerCase().trim();
+    var match = function (name) { var n = String(name || '').toLowerCase().trim(); return !!n && (n === gname || n.split(/\s+/)[0] === local); };
+    var people = (M.people || []).concat(M.ctx.name ? [{ user_id: M.ctx.uid, name: M.ctx.name }] : []);
+    var who = people.filter(function (p) { return match(p.name); })[0];
+    if (who) return { sig: filled(M.sigs[who.user_id]) || DEFAULT_SIGS[String(who.name).toLowerCase().split(/\s+/)[0]] || null, name: who.name, mine: who.user_id === M.ctx.uid };
+    if (DEFAULT_SIGS[local]) return { sig: DEFAULT_SIGS[local], name: DEFAULT_SIGS[local].line1, mine: false };
+    return { sig: mySig(), name: M.ctx.name || '', mine: true };
+  }
   function markUrl() { var base = String((window.EDEN_STAFF_CONFIG || {}).staffHome || location.origin + '/').replace(/\/?$/, '/'); return base + 'assets/brand/email-mark.png'; }
   // laid out with a table so it looks the same in Gmail, Apple Mail and Outlook
   function sigHtml(x) {
