@@ -234,8 +234,7 @@
     });
     // tips: each day's pool split by that day's hours among tip-pool staff (front-of-house hours, not kitchen)
     var D = dayTips(), tipHrs = [0, 0, 0, 0, 0, 0, 0], pooled = lines.filter(function (L) { return L.info.tip_eligible; }), unshared = [];
-    var anyDayTips = D.some(function (d) { return d.pool; });
-    if (anyDayTips) {
+    {   // each day on its own: that day's pool ÷ that day's tip-pool hours
       for (var i = 0; i < 7; i++) {
         var w = pooled.map(function (L) { return L.days[i]; });
         tipHrs[i] = sum(w);
@@ -243,9 +242,6 @@
         var cs = splitCents(D[i].cash, w), cd = splitCents(D[i].net, w);
         pooled.forEach(function (L, j) { L.tipsCash = r2(L.tipsCash + cs[j]); L.tipsCard = r2(L.tipsCard + cd[j]); L.tipDays[i] = r2(cs[j] + cd[j]); });
       }
-    } else if (+P.row.tip_pool) {   // weeks saved before daily tips: one weekly pool split by the week's hours
-      var sh = splitCents(P.row.tip_pool, pooled.map(function (L) { return L.main; }));
-      pooled.forEach(function (L, j) { L.tipsCard = sh[j]; });
     }
     var T = { total: 0, main: 0, kit: 0, reg: 0, ot: 0, regPay: 0, otPay: 0, salary: 0, sick: 0, hol: 0, sickPay: 0, holPay: 0, comm: 0, tipsCash: 0, tipsCard: 0, tips: 0, adj: 0, gross: 0, wages: 0, days: [0, 0, 0, 0, 0, 0, 0] };
     lines.forEach(function (L) {
@@ -256,7 +252,7 @@
       L.days.forEach(function (x, i) { T.days[i] = r2(T.days[i] + x + L.kdays[i] + L.ndays[i]); });
     });
     var pool = sum(D.map(function (d) { return d.pool; }));
-    return { lines: lines, T: T, D: D, tipHrs: tipHrs, unshared: unshared, pool: anyDayTips ? pool : r2(P.row.tip_pool), daily: anyDayTips };
+    return { lines: lines, T: T, D: D, tipHrs: tipHrs, unshared: unshared, pool: pool, daily: true };
   }
 
   /* ---------------- saving ---------------- */
@@ -397,10 +393,12 @@
         who.appendChild(h('label', { cls: 'pr-pooltick' }, [tp, ' Tip pool']));
       }
       tr.appendChild(who);
+      cells.tipd = [];
       DOW.forEach(function (d, i) {
         var td = dayInput(r.hours, i, (info.name || e.name) + ', ' + d + ' hours', ro, sched[i] ? 'Scheduled: ' + hrs(sched[i]) + ' h' + (ap[i] ? ' (to a server cut or close; check the real out time)' : '') : 'Not scheduled');
         if (P.row.source !== 'square') { var mark = function () { td.classList.toggle('chg', r2(+r.hours[i] || 0) !== r2(sched[i])); }; td.firstChild.addEventListener('input', mark); mark(); }
         if (ap[i] && P.row.source !== 'square') td.classList.add('approx');
+        var tdl = h('small', { cls: 'pr-tipday' }); cells.tipd.push(tdl); td.appendChild(tdl);
         tr.appendChild(td);
       });
       ['total', 'reg', 'ot', 'wages', 'tips'].forEach(function (k) { cells[k] = h('td', { cls: 'pr-num' }); tr.appendChild(cells[k]); });
@@ -466,7 +464,7 @@
         ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
           : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })])
     ]));
-    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tips: each day’s pool is that day’s cash tips plus credit card tips less the 2.75% card processing fee, divided by the hours tip-pool staff worked that day. Kitchen hours aren’t in the tip pool. Overtime is hours over 40 in the Sunday–Saturday week at 1.5×; with two pay rates it’s paid on the week’s blended rate. Salaried staff are shown at their weekly salary. These are gross amounts before taxes and deductions.' }));
+    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tips: each day’s pool is that day’s cash tips plus credit card tips less the 2.75% card processing fee, divided by the hours tip-pool staff worked that day, so a day’s tips go only to the people who worked that day. Each person’s share shows under their hours for the day. Kitchen hours aren’t in the tip pool. Overtime is hours over 40 in the Sunday–Saturday week at 1.5×; with two pay rates it’s paid on the week’s blended rate. Salaried staff are shown at their weekly salary. These are gross amounts before taxes and deductions.' }));
     refresh();
   }
   function dayInput(arr, i, label, ro, title) {
@@ -533,6 +531,7 @@
       x.wages.textContent = money(L.wages);
       x.wages.title = L.info.pay_type === 'salary' ? 'Weekly salary' : money(L.regPay) + ' regular' + (L.ot ? ' + ' + money(L.otPay) + ' overtime' : '') + (L.kit ? ' (includes ' + money(L.kitPay) + ' kitchen)' : '') + (L.nt ? ' (includes ' + money(L.ntPay) + ' outside the tip pool)' : '');
       x.tips.textContent = L.tips ? money(L.tips) : '–';
+      if (x.tipd) x.tipd.forEach(function (el, i) { el.textContent = L.tipDays[i] ? money(L.tipDays[i]) : ''; el.title = L.tipDays[i] ? 'Tips for ' + DAYS[i] + ': ' + hrs(L.days[i]) + ' h × ' + money(c.D[i].pool / (c.tipHrs[i] || 1)) + '/h' : ''; });
       x.tips.title = L.tips ? money(L.tipsCard) + ' credit card + ' + money(L.tipsCash) + ' cash' : '';
       x.gross.textContent = money(L.gross);
       x.warn.textContent = L.warn ? L.warn + ' — see Pay rates' : '';
@@ -556,7 +555,7 @@
       });
       var th = sum(c.tipHrs), fee = sum(c.D.map(function (d) { return d.fee; }));
       R.cashT.textContent = money(tc); R.cardT.textContent = money(tk); R.feeT.textContent = fee ? '−' + money(fee) : '–'; R.poolT.textContent = money(c.pool);
-      R.hrsT.textContent = hrs(th); R.rateT.textContent = th ? money(c.pool / th) : '–';
+      R.hrsT.textContent = hrs(th); R.rateT.textContent = 'by day';
       R.note.textContent = R.src + (c.unshared.length ? 'Tips on ' + c.unshared.map(function (i) { return DAYS[i]; }).join(', ') + ' but nobody in the tip pool has hours that day, so they aren’t split. Check the hours, or “Tip pool” in Pay rates.' : '');
       R.note.classList.toggle('pr-warn', !!c.unshared.length);
     }
