@@ -21,7 +21,12 @@ insert into public.pay_rates (emp, kitchen_rate, tip_eligible, square_name)
   on conflict (emp) do update set kitchen_rate = coalesce(public.pay_rates.kitchen_rate, 30), tip_eligible = true,
     square_name = case when public.pay_rates.square_name = '' then excluded.square_name else public.pay_rates.square_name end;
 
--- Keenan Davis: commission and tips, no hourly base rate
-insert into public.pay_rates (emp, commission, tip_eligible)
-  select id, true, true from public.employees where name ilike 'keenan%'
-  on conflict (emp) do update set commission = true, tip_eligible = true, rate = null;
+-- Keenan Davis: commission is his base pay (hourly rate $0); his hours count toward the tip pool
+insert into public.pay_rates (emp, pay_type, rate, commission, tip_eligible)
+  select id, 'hourly', 0, true, true from public.employees where name ilike 'keenan%'
+  on conflict (emp) do update set pay_type = 'hourly', rate = 0, commission = true, tip_eligible = true;
+
+-- Rich Strub: salary, $1,442.31 a week
+insert into public.pay_rates (emp, pay_type, weekly_salary, tip_eligible)
+  select id, 'salary', 1442.31, false from public.employees where name ilike 'rich%strub%'
+  on conflict (emp) do update set pay_type = 'salary', weekly_salary = 1442.31, tip_eligible = false;
