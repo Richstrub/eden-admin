@@ -789,6 +789,10 @@
   var PARTNERS = ['Grindstone Farm · Pulaski, NY', 'Fresh Herbs of Fabius · Fabius, NY', 'Fruit of the Fungi · Lebanon, NY', 'Dutch Hill Maple · Tully, NY',
     'Hillside Farm · Truxton, NY', 'Sorrell Hill Milk Co. · Baldwinsville, NY', 'Certified Angus Beef · Wooster, OH', 'Browne Trading Co. · Portland, ME', 'Wester Ross · Scotland',
     'James Beard Foundation · New York, NY', 'Kitchen Literacy Project · Syracuse, NY', 'Grills by Demant · Atlanta, GA', 'Eat Local New York · Syracuse, NY'];
+  // wine and spirit makers on the website's partner wall (Vine and Still): offered on the drink tabs
+  var DRINK_PARTNERS = ['Dr. Konstantin Frank Winery · Hammondsport, NY', 'Hermann J. Wiemer Vineyard · Dundee, NY', 'Heart & Hands Wine Company · Union Springs, NY',
+    'Living Roots Wine & Co. · Hammondsport, NY', 'Grace Tyler Estate Winery · Constantia, NY', 'Lock 1 Distilling Company · Phoenix, NY', 'Old Home Distillers · Lebanon, NY',
+    'Hollerhorn Distilling · Naples, NY', 'Fort Hamilton Distillery · Brooklyn, NY', 'Albany Distilling Company · Albany, NY'];
   function prodKey(n) { return fold(String(n || '').split('·')[0]).replace(/\bfarms\b/g, 'farm').replace(/[^a-z0-9]+/g, ' ').trim(); }
   // kitchen tabs: farms and food producers; drink tabs (cocktails, beer, spirits…): their own list of makers
   function savedProducers(kit) { var d = store.rows['site/producers'], a = d && (kit ? d.names : d.drinks); return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string' && x.trim(); }) : []; }
@@ -797,7 +801,7 @@
     tabs.forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) {
       var v = String(it.src || '').trim(); if (v) uses[prodKey(v)] = (uses[prodKey(v)] || 0) + 1; }); }); });
     function add(n, kind) { var k = prodKey(n); if (!k || seen[k]) return; seen[k] = 1; out.push({ name: n.trim(), kind: kind, uses: uses[k] || 0 }); }
-    if (kit) PARTNERS.forEach(function (n) { add(n, 'partner'); });
+    (kit ? PARTNERS : DRINK_PARTNERS).forEach(function (n) { add(n, 'partner'); });
     savedProducers(kit).forEach(function (n) { add(n, 'saved'); });
     tabs.forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { if (it.src) add(String(it.src), 'menu'); }); }); });
     var rank = { partner: 0, saved: 1, menu: 1 };
