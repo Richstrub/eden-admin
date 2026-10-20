@@ -146,13 +146,38 @@
   }
   function tipsRow() { var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] }; t.cash = seven(t.cash); t.card = seven(t.card); return t; }
   // Days where the Square file's tips and the End of day report's tips aren't the same
-  function tipMismatch() {
+  function diffTxt(a, b) { var d = r2(a - b); return (d > 0 ? '+' : '−') + money(Math.abs(d)); }
+  function tipMismatch() {   // every way the week's tips disagree: [{ day, text }]
     var t = P.row && P.row.rows._tips, e = P.eod, out = [];
-    if (!t || !e || !(t.src || []).some(function (x) { return x === 'square'; })) return out;
+    if (!t || !(t.src || []).some(function (x) { return x === 'square' || x === 'team'; })) return out;
+    var dl = function (i) { return DAYS[i] + ' ' + md(addDays(P.week, i)); };
     for (var i = 0; i < 7; i++) {
-      if (!e.has[i]) continue;
-      var sc = r2(+t.card[i] || 0), ec = r2(e.card[i]), sh = r2(+t.cash[i] || 0), eh = r2(e.cash[i]);
-      if (Math.abs(sc - ec) >= 0.01 || Math.abs(sh - eh) >= 0.01) out.push({ i: i, sc: sc, ec: ec, sh: sh, eh: eh });
+      var used = r2(+t.card[i] || 0);
+      // Team sales (all tips on the day's checks) vs the timecard file (only tips taken while someone was clocked in)
+      if (t.team && t.team[i] != null && t.sq && Math.abs(t.team[i] - (t.sq[i] || 0)) >= 0.01)
+        out.push({ day: i, text: dl(i) + ': Team sales tips ' + money(t.team[i]) + ', timecard file ' + money(t.sq[i] || 0) + ' (' + diffTxt(t.team[i], t.sq[i] || 0) + ' on checks paid outside the server’s clock-in, or rung under another Square profile). Payroll uses Team sales.' });
+      if (e && e.has[i]) {
+        var bits = [];
+        if (Math.abs(used - r2(e.card[i])) >= 0.01) bits.push('credit card ' + money(used) + ' in Square vs ' + money(e.card[i]) + ' on the End of day report (' + diffTxt(used, e.card[i]) + ')');
+        if (Math.abs(r2(+t.cash[i] || 0) - r2(e.cash[i])) >= 0.01) bits.push('cash ' + money(+t.cash[i] || 0) + ' in Square vs ' + money(e.cash[i]) + ' on the End of day report');
+        if (bits.length) out.push({ day: i, text: dl(i) + ': ' + bits.join('; ') + '.' });
+      }
+    }
+    // a whole-week Team sales file: does the week add up?
+    var w = t.teamWeek;
+    if (w) {
+      var have = sum(t.card);
+      if (Math.abs(w.total - have) >= 0.01) {
+        var who = [];
+        var key = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); }, tc = {};
+        if (t.sqBy) { Object.keys(t.sqBy).forEach(function (n) { tc[key(n)] = t.sqBy[n]; }); Object.keys(w.by).forEach(function (n) { var d = r2(w.by[n] - (tc[key(n)] || 0)); if (Math.abs(d) >= 0.01) who.push(n + ' ' + (d > 0 ? '+' : '−') + money(Math.abs(d))); }); }
+        var open = [], tm = t.team || [];
+        for (var k = 0; k < 7; k++) if ((t.sq && t.sq[k]) && tm[k] == null) open.push(DAYS[k]);
+        var anyDay = tm.some(function (x) { return x != null; });
+        out.push({ day: -1, text: 'Week: Team sales tips ' + money(w.total) + ', but the tips by day add up to ' + money(have) + ' (' + diffTxt(w.total, have) + ').' +
+          (!anyDay && who.length ? ' Not in the timecard file: ' + who.join(', ') + '.' : '') +
+          (open.length ? ' Drop the one-day Team sales export for ' + open.join(', ') + ' to put the rest on the right days.' : ' Check the one-day Team sales files add up to the week.') });
+      }
     }
     return out;
   }
@@ -315,7 +340,7 @@
     el.addEventListener('drop', function (ev) {
       el.classList.remove('pr-drop');
       if (P.sub !== 'week' || final() || !hasFiles(ev)) return;
-      ev.preventDefault(); var f = ev.dataTransfer.files[0]; if (f) readSquare(f);
+      ev.preventDefault(); if (ev.dataTransfer.files.length) readSquare(ev.dataTransfer.files);
     });
   }
   function hasFiles(ev) { return ev.dataTransfer && [].slice.call(ev.dataTransfer.types || []).indexOf('Files') >= 0; }
@@ -362,13 +387,14 @@
     var sch = scheduleHours(), ro = final();
     // step 1: Square
     if (!ro) {
-      var file = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true, on: { change: function () { if (file.files[0]) readSquare(file.files[0]); file.value = ''; } } });
+      var file = h('input', { type: 'file', accept: '.csv,text/csv', multiple: true, hidden: true, on: { change: function () { if (file.files.length) readSquare(file.files); file.value = ''; } } });
       el.appendChild(h('div', { cls: 'pr-square' }, [
         h('div', null, [h('b', { text: P.row.source === 'square' ? 'Hours from Square' + (P.row.square_file ? ': ' + P.row.square_file : '') : 'Bring in hours from Square' }),
           h('p', { text: P.row.source === 'square' ? 'Imported ' + (P.row.square_at ? new Date(P.row.square_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '') + '. Drop a new file to replace the hours.'
-            : 'In Square: Staff → Time tracking → Timecards, pick this Sunday–Saturday, Export → Export shifts. Then drop the .csv file here.' })]),
+            : 'In Square: Staff → Time tracking → Timecards, pick this Sunday–Saturday, Export → Export shifts. Then drop the .csv file here.' }),
+          h('p', { text: 'Tips: also drop the Team sales export for each day you were open (Reports → Sales → Team sales, one day, download). Those catch tips on checks paid after someone clocked out. You can drop several files at once.' })]),
         h('div', { cls: 'pr-acts' }, [file,
-          h('button', { type: 'button', cls: 'ed-btn small', text: 'Choose the Square file…', on: { click: function () { file.click(); } } }),
+          h('button', { type: 'button', cls: 'ed-btn small', text: 'Choose Square files…', on: { click: function () { file.click(); } } }),
           h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Fill from schedule', on: { click: function () {
             if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
             if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tips, kitchen hours and adjustments stay as they are.')) return;
@@ -382,14 +408,9 @@
     // tips that don't match the End of day reports
     var mm = tipMismatch();
     if (mm.length) el.appendChild(h('div', { cls: 'pr-alert', role: 'alert' }, [
-      h('b', { text: 'Tips in the Square file don’t match the End of day ' + (mm.length === 1 ? 'report' : 'reports') }),
-      h('ul', null, mm.map(function (m) {
-        var bits = [];
-        if (Math.abs(m.sc - m.ec) >= 0.01) bits.push('credit card ' + money(m.sc) + ' in Square vs ' + money(m.ec) + ' on the report (' + (m.sc > m.ec ? '+' : '−') + money(Math.abs(m.sc - m.ec)).replace(/^[−-]/, '') + ')');
-        if (Math.abs(m.sh - m.eh) >= 0.01) bits.push('cash ' + money(m.sh) + ' in Square vs ' + money(m.eh) + ' on the report');
-        return h('li', { text: DAYS[m.i] + ' ' + md(addDays(P.week, m.i)) + ': ' + bits.join('; ') });
-      })),
-      h('p', { text: 'Payroll uses the Square numbers. Check the day in Square and on the End of day report before finalizing.' })
+      h('b', { text: 'The tip numbers don’t all agree' }),
+      h('ul', null, mm.map(function (m) { return h('li', { text: m.text }); })),
+      h('p', { text: 'Each day’s tip pool uses the Team sales export for that day when you’ve dropped one in, otherwise the timecard file. Check anything listed here before finalizing.' })
     ]));
     // step 2: tips by day
     el.appendChild(tipsTable(ro));
@@ -519,7 +540,7 @@
       for (var i = 0; i < 7; i++) (function (i) {
         var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money pr-tipin', value: t[k][i] == null ? '' : r2(t[k][i]).toFixed(2), placeholder: '–', disabled: ro, 'aria-label': label + ', ' + DAYS[i] });
         inp.addEventListener('input', function () { t[k][i] = numIn(inp.value); (t.src || (t.src = []))[i] = 'manual'; refresh(); saveSoon(); });
-        var td = h('td', { cls: 'pr-dayc' + (t.src && t.src[i] === 'eod' ? ' eod' : t.src && t.src[i] === 'square' ? ' sq' : '') }, [inp]);
+        var td = h('td', { cls: 'pr-dayc' + (t.src && t.src[i] === 'eod' ? ' eod' : t.src && t.src[i] === 'square' ? ' sq' : t.src && t.src[i] === 'team' && k === 'card' ? ' team' : '') }, [inp]);
         tr.appendChild(td);
       })(i);
       refs[k + 'T'] = h('td', { cls: 'pr-num' }); tr.appendChild(refs[k + 'T']);
@@ -532,7 +553,7 @@
       body.appendChild(tr);
     }
     inRow('cash', 'Cash tips'); inRow('card', 'Credit card tips');
-    var fromSq = (t.src || []).some(function (x) { return x === 'square'; });
+    var fromSq = (t.src || []).some(function (x) { return x === 'square' || x === 'team'; });
     if (e.has && e.has.some(Boolean)) {   // the End of day reports, only to check against Square
       [['card', 'Card tips, End of day', 'to check against Square'], ['cash', 'Cash tips, End of day', 'to check against Square']].forEach(function (k) {
         if (k[0] === 'cash' && !sum(e.cash) && !sum(t.cash)) return;
@@ -550,7 +571,8 @@
     var note = h('p', { cls: 'pr-poolnote' }); refs.note = note;
     var days = (e.has || []).filter(Boolean).length;
     box.appendChild(h('div', { cls: 'pr-tipbar' }, [note]));
-    refs.src = fromSq ? 'Tips are from the Square file (blue): credit card tips (“by transaction tips”) and declared cash tips. ' + (days ? 'The End of day reports are shown underneath only to check; a day that doesn’t match is marked ≠. ' : '')
+    var tdays = (t.src || []).filter(function (x) { return x === 'team'; }).length;
+    refs.src = fromSq ? (tdays ? 'Credit card tips on ' + tdays + (tdays === 1 ? ' day' : ' days') + ' are from Team sales (green); ' : '') + 'the rest are from the timecard file (blue). Cash is declared cash tips. ' + (days ? 'The End of day reports are shown underneath only to check; a day that doesn’t match is marked ≠. ' : '')
       : 'Tips come from the Square file. Drop this week’s file above to fill them in. ';
     return box;
   }
@@ -644,7 +666,7 @@
     var c = calc(), missing = c.lines.filter(function (L) { return L.warn; });
     if (missing.length && !confirm(missing.map(function (L) { return L.info.name + ': ' + L.warn; }).join('\n') + '\n\nFinalize anyway?')) return;
     var mm = tipMismatch();
-    if (mm.length && !confirm('The Square tips don’t match the End of day ' + (mm.length === 1 ? 'report' : 'reports') + ' on ' + mm.map(function (m) { return DAYS[m.i]; }).join(', ') + '. Payroll uses the Square numbers.\n\nFinalize anyway?')) return;
+    if (mm.length && !confirm('The tip numbers don’t all agree:\n\n' + mm.map(function (m) { return '• ' + m.text; }).join('\n') + '\n\nFinalize anyway?')) return;
     if (!confirm('Finalize the week of ' + weekLabel(P.week) + '? Gross pay ' + money(c.T.gross) + '. The hours and pay rates are locked as they are now; you can reopen it later.')) return;
     c.lines.forEach(function (L) {
       var r = rowFor(L.id), i = L.info;
@@ -758,14 +780,44 @@
     r.square_name = list.map(function (x) { return x.name + (x.as !== 'main' ? '=' + x.as : ''); }).join('; ');
     saveRate(id);
   }
-  function readSquare(f) {
-    var rd = new FileReader();
-    rd.onload = function () {
-      var shifts; try { shifts = squareShifts(rd.result); } catch (e) { alert(e.message); return; }
-      importDialog(shifts, f.name);
-    };
-    rd.onerror = function () { alert('That file couldn’t be read.'); };
-    rd.readAsText(f);
+  function readSquare(files) {
+    files = [].slice.call(files.length != null ? files : [files]);
+    Promise.all(files.map(function (f) {
+      return new Promise(function (res) { var rd = new FileReader(); rd.onload = function () { res({ f: f, text: String(rd.result) }); }; rd.onerror = function () { res({ f: f, text: null }); }; rd.readAsText(f); });
+    })).then(function (list) {
+      var shifts = null, sname = '', msgs = [];
+      list.forEach(function (x) {
+        if (x.text == null) { msgs.push(x.f.name + ': couldn’t be read.'); return; }
+        var head = (parseCSV(x.text.slice(0, 2000))[0] || []).join(',').toLowerCase();
+        if (/gross sales|net sales/.test(head) && /tips/.test(head) && !/clock/.test(head)) { msgs.push(teamFile(x.text, x.f.name)); return; }
+        try { shifts = squareShifts(x.text); sname = x.f.name; } catch (e) { msgs.push(x.f.name + ': ' + e.message); }
+      });
+      if (msgs.length) { saveSoon(); paint(false); status(msgs.join(' '), /couldn|not|outside|isn’t/i.test(msgs.join(' ')) ? 'err' : 'ok'); }
+      if (shifts) importDialog(shifts, sname);
+    });
+  }
+  // Square → Reports → Team sales, exported (download button). One day: that day's tips. The whole week: a check.
+  function teamFile(text, fname) {
+    var rows = parseCSV(text), H = (rows[0] || []).map(function (x) { return String(x).trim().toLowerCase(); });
+    var ni = H.indexOf('name'), ti = H.indexOf('tips');
+    if (ni < 0 || ti < 0) return fname + ': couldn’t find the Name and Tips columns.';
+    var by = {}, total = 0;
+    rows.slice(1).forEach(function (r) {
+      var n = String(r[ni] || '').trim(), v = numIn(r[ti]);
+      if (!n || /^total$/i.test(n) || v == null) return;
+      by[n] = r2((by[n] || 0) + v); total = r2(total + v);
+    });
+    var m = /(\d{4}-\d{2}-\d{2})[^\d]+(\d{4}-\d{2}-\d{2})/.exec(fname) || /(\d{4}-\d{2}-\d{2})/.exec(fname);
+    if (!m) return fname + ': keep Square’s file name (it has the dates) so payroll knows which day it’s for.';
+    var a = parseDate(m[1]), b = parseDate(m[2] || m[1]), i = Math.round((a - P.week) / 864e5), j = Math.round((b - P.week) / 864e5);
+    var t = tipsRow(); t.team = t.team || [null, null, null, null, null, null, null]; t.src = t.src || [];
+    if (i === j && i >= 0 && i <= 6) {
+      t.team[i] = total; t.card[i] = total; t.src[i] = 'team';
+      return 'Team sales for ' + DAYS[i] + ': ' + money(total) + ' in tips.';
+    }
+    if (i === 0 && j === 6) { t.teamWeek = { total: total, by: by, file: fname }; return 'Team sales for the week: ' + money(total) + ' in tips (used to check the days).'; }
+    if (j < 0 || i > 6) return fname + ' is for ' + md(a) + '–' + md(b) + ', outside this week.';
+    return fname + ': export one day at a time, or the whole Sunday–Saturday week.';
   }
   function importDialog(shifts, fname) {
     var wk = P.week, people = {}, outside = 0, dates = [], sqTips = [0, 0, 0, 0, 0, 0, 0], sqCash = [0, 0, 0, 0, 0, 0, 0];
@@ -851,8 +903,13 @@
       P.row.source = 'square'; P.row.square_file = fname; P.row.square_at = new Date().toISOString();
       // Square's card tips by day, to check against the End of day reports (and to fill days without one)
       // the day's tips come from the Square file: card tips ("by transaction tips") and declared cash tips
-      var t = tipsRow(); t.sq = sqTips; t.sqCash = sqCash; t.src = [];
-      for (var d = 0; d < 7; d++) { t.card[d] = sqTips[d] || null; t.cash[d] = sqCash[d] || null; t.src[d] = sqTips[d] || sqCash[d] ? 'square' : ''; }
+      var t = tipsRow(); t.sq = sqTips; t.sqCash = sqCash; t.src = t.src || [];
+      t.sqBy = {}; names.forEach(function (n) { t.sqBy[n] = r2(people[n].tips || 0); });
+      for (var d = 0; d < 7; d++) {
+        t.cash[d] = sqCash[d] || null;
+        if (t.team && t.team[d] != null) { t.card[d] = t.team[d]; t.src[d] = 'team'; }
+        else { t.card[d] = sqTips[d] || null; t.src[d] = sqTips[d] || sqCash[d] ? 'square' : ''; }
+      }
       dlg.close(); dlg.remove(); saveSoon(); paint(false);
       status('Hours filled in from Square for ' + Object.keys(got).length + ' people.', 'ok');
     });
