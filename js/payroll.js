@@ -154,8 +154,9 @@
     for (var i = 0; i < 7; i++) {
       var used = r2(+t.card[i] || 0);
       // Team sales (all tips on the day's checks) vs the timecard file (only tips taken while someone was clocked in)
+      var lbl = t.teamLabel || 'Team sales';
       if (t.team && t.team[i] != null && t.sq && Math.abs(t.team[i] - (t.sq[i] || 0)) >= 0.01)
-        out.push({ day: i, text: dl(i) + ': Team sales tips ' + money(t.team[i]) + ', timecard file ' + money(t.sq[i] || 0) + ' (' + diffTxt(t.team[i], t.sq[i] || 0) + ' on checks paid outside the server’s clock-in, or rung under another Square profile). Payroll uses Team sales.' });
+        out.push({ day: i, text: dl(i) + ': ' + lbl + ' tips ' + money(t.team[i]) + ', timecard file ' + money(t.sq[i] || 0) + ' (' + diffTxt(t.team[i], t.sq[i] || 0) + ' on checks paid outside the server’s clock-in, or rung under another Square profile). Payroll uses ' + lbl + '.' });
       if (e && e.has[i]) {
         var bits = [];
         if (Math.abs(used - r2(e.card[i])) >= 0.01) bits.push('credit card ' + money(used) + ' in Square vs ' + money(e.card[i]) + ' on the End of day report (' + diffTxt(used, e.card[i]) + ')');
@@ -392,7 +393,7 @@
         h('div', null, [h('b', { text: P.row.source === 'square' ? 'Hours from Square' + (P.row.square_file ? ': ' + P.row.square_file : '') : 'Bring in hours from Square' }),
           h('p', { text: P.row.source === 'square' ? 'Imported ' + (P.row.square_at ? new Date(P.row.square_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '') + '. Drop a new file to replace the hours.'
             : 'In Square: Staff → Time tracking → Timecards, pick this Sunday–Saturday, Export → Export shifts. Then drop the .csv file here.' }),
-          h('p', { text: 'Tips: also drop the Team sales export for each day you were open (Reports → Sales → Team sales, one day, download). Those catch tips on checks paid after someone clocked out. You can drop several files at once.' })]),
+          h('p', { text: 'Tips: also drop the week’s Transactions CSV (Transactions → pick Sunday–Saturday → Export → Transactions CSV). It catches tips on checks paid after someone clocked out. Drop both files at once.' })]),
         h('div', { cls: 'pr-acts' }, [file,
           h('button', { type: 'button', cls: 'ed-btn small', text: 'Choose Square files…', on: { click: function () { file.click(); } } }),
           h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Fill from schedule', on: { click: function () {
@@ -410,7 +411,7 @@
     if (mm.length) el.appendChild(h('div', { cls: 'pr-alert', role: 'alert' }, [
       h('b', { text: 'The tip numbers don’t all agree' }),
       h('ul', null, mm.map(function (m) { return h('li', { text: m.text }); })),
-      h('p', { text: 'Each day’s tip pool uses the Team sales export for that day when you’ve dropped one in, otherwise the timecard file. Check anything listed here before finalizing.' })
+      h('p', { text: 'Each day’s tip pool uses the Transactions CSV (or a Team sales export) when you’ve dropped one in, otherwise the timecard file. Check anything listed here before finalizing.' })
     ]));
     // step 2: tips by day
     el.appendChild(tipsTable(ro));
@@ -572,7 +573,7 @@
     var days = (e.has || []).filter(Boolean).length;
     box.appendChild(h('div', { cls: 'pr-tipbar' }, [note]));
     var tdays = (t.src || []).filter(function (x) { return x === 'team'; }).length;
-    refs.src = fromSq ? (tdays ? 'Credit card tips on ' + tdays + (tdays === 1 ? ' day' : ' days') + ' are from Team sales (green); ' : '') + 'the rest are from the timecard file (blue). Cash is declared cash tips. ' + (days ? 'The End of day reports are shown underneath only to check; a day that doesn’t match is marked ≠. ' : '')
+    refs.src = fromSq ? (tdays ? 'Credit card tips on ' + tdays + (tdays === 1 ? ' day' : ' days') + ' are from ' + (t.teamLabel || 'Team sales') + ' (green); ' : '') + 'the rest are from the timecard file (blue). Cash is declared cash tips. ' + (days ? 'The End of day reports are shown underneath only to check; a day that doesn’t match is marked ≠. ' : '')
       : 'Tips come from the Square file. Drop this week’s file above to fill them in. ';
     return box;
   }
@@ -789,12 +790,34 @@
       list.forEach(function (x) {
         if (x.text == null) { msgs.push(x.f.name + ': couldn’t be read.'); return; }
         var head = (parseCSV(x.text.slice(0, 2000))[0] || []).join(',').toLowerCase();
+        if (/(^|,)"?date"?(,|$)/.test(head) && /(^|,)"?tips?"?(,|$)/.test(head) && /transaction id|payment id|total collected|net total/.test(head)) { msgs.push(txFile(x.text, x.f.name)); return; }
         if (/gross sales|net sales/.test(head) && /tips/.test(head) && !/clock/.test(head)) { msgs.push(teamFile(x.text, x.f.name)); return; }
         try { shifts = squareShifts(x.text); sname = x.f.name; } catch (e) { msgs.push(x.f.name + ': ' + e.message); }
       });
       if (msgs.length) { saveSoon(); paint(false); status(msgs.join(' '), /couldn|not|outside|isn’t/i.test(msgs.join(' ')) ? 'err' : 'ok'); }
       if (shifts) importDialog(shifts, sname);
     });
+  }
+  // Square → Transactions → Export → Transactions CSV for the week: every payment's tip, added up by date
+  function txFile(text, fname) {
+    var rows = parseCSV(text), H = (rows[0] || []).map(function (x) { return String(x).trim().toLowerCase(); });
+    var di = H.indexOf('date'), ti = H.indexOf('tip'); if (ti < 0) ti = H.indexOf('tips');
+    var ei = H.indexOf('event type'), st = H.indexOf('transaction status');
+    if (di < 0 || ti < 0) return fname + ': couldn’t find the Date and Tip columns.';
+    var days = [0, 0, 0, 0, 0, 0, 0], seen = [false, false, false, false, false, false, false], outside = 0;
+    rows.slice(1).forEach(function (r) {
+      var d = parseDate(r[di]); if (!d) return;
+      if (ei >= 0 && /refund/i.test(r[ei] || '')) return;            // refunds don't change the tip pool here
+      if (st >= 0 && /fail|cancel|void/i.test(r[st] || '')) return;
+      var v = numIn(String(r[ti] || '').replace(/[()]/g, '')); if (!v) return;
+      var i = Math.round((d - P.week) / 864e5);
+      if (i < 0 || i > 6) { outside++; return; }
+      days[i] = r2(days[i] + v); seen[i] = true;
+    });
+    if (!seen.some(Boolean)) return fname + ': no tips in this week' + (outside ? ' (the file is for other dates)' : '') + '.';
+    var t = tipsRow(); t.team = t.team || [null, null, null, null, null, null, null]; t.src = t.src || []; t.teamLabel = 'Transactions';
+    for (var i = 0; i < 7; i++) { t.team[i] = seen[i] ? days[i] : null; if (seen[i]) { t.card[i] = days[i]; t.src[i] = 'team'; } }
+    return 'Transactions: ' + money(sum(days)) + ' in tips this week, by day.' + (outside ? ' ' + outside + (outside === 1 ? ' payment' : ' payments') + ' outside this week left out.' : '');
   }
   // Square → Reports → Team sales, exported (download button). One day: that day's tips. The whole week: a check.
   function teamFile(text, fname) {
@@ -812,6 +835,7 @@
     var a = parseDate(m[1]), b = parseDate(m[2] || m[1]), i = Math.round((a - P.week) / 864e5), j = Math.round((b - P.week) / 864e5);
     var t = tipsRow(); t.team = t.team || [null, null, null, null, null, null, null]; t.src = t.src || [];
     if (i === j && i >= 0 && i <= 6) {
+      t.teamLabel = 'Team sales';
       t.team[i] = total; t.card[i] = total; t.src[i] = 'team';
       return 'Team sales for ' + DAYS[i] + ': ' + money(total) + ' in tips.';
     }
