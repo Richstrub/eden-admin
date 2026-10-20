@@ -323,7 +323,7 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
   <h2>Billing adjustments</h2>
   <div class="fields">
     <label class="f">Overtime / extended service fees ($)<input type="number" min="0" step="0.01" data-k="bill.ot"></label>
-    <label class="f">Service charge (% of food, beverage and bar fees, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
+    <label class="f">Service charge (% of food and beverage, default 3%)<input type="number" min="0" step="0.1" data-k="bill.svc"></label>
     <label class="f">Sales tax (%, default 8%)<input type="number" min="0" step="0.001" data-k="bill.tax"></label>
     <label class="f">Deposit received ($)<input type="number" min="0" step="0.01" data-k="bill.dep"></label>
     <label class="f">Deposit date<input type="date" data-k="bill.depdate"></label>
@@ -629,8 +629,8 @@ function alaCheck(){
    Open bar is charged per guest: beer and wine $16 the first hour and $12 each hour after;
    beer, wine and cocktails $18 the first hour and $16 each hour after.
    Cash bar: guests pay their own tabs at the end of the meal. Consumption bar: the host pays the bar tab at the end.
-   The bar menu (à la carte in the Restaurant only) carries the same setup and bartender fees; drinks are billed as ordered.
-   The service charge applies to the setup and bartender fees too. No beverage service at Palladian Hall. */
+   The bar menu (à la carte in the Restaurant only) has no setup or bartender fees; drinks are billed as ordered.
+   The service charge applies to food and beverage only, not to the setup or bartender fees. No beverage service at Palladian Hall. */
 const BAR={setup:75,perBartender:15,guestsPer:30,
   pkgs:{menu:{name:'Bar menu',fees:false},'open-bw':{name:'Open bar · beer and wine',first:16,after:12},'open-full':{name:'Open bar · beer, wine and cocktails',first:18,after:16},
         cash:{name:'Cash bar'},cons:{name:'Consumption bar'}}};
@@ -642,7 +642,10 @@ function barCalc(G){
   if(S['ev.room']===PALLADIAN||G===-1)return out;
   const key=String(S['bev.pkg']||''),P=BAR.pkgs[key];if(!P)return out;
   out.on=true;
-  if(key==='menu'&&!(S['ev.alacarte']&&S['ev.room']==='Restaurant'))out.warn='The bar menu is only offered with an à la carte dinner in the Restaurant. Choose another bar package, or change the dinner and location.';
+  if(key==='menu'){
+    if(!(S['ev.alacarte']&&S['ev.room']==='Restaurant'))out.warn='The bar menu is only offered with an à la carte dinner in the Restaurant. Choose another bar package, or change the dinner and location.';
+    out.note='Guests order from the current bar menu; drinks are billed as ordered. No setup or bartender fees.';
+    return out;}
   const h=barHours(),auto=1+Math.floor((G||0)/BAR.guestsPer),n=num('bev.staff')||auto;
   if(!h)out.warn='Enter the bar open and close times to price the bar.';
   if(!G)out.warn=(out.warn?out.warn+' ':'')+'Enter the guaranteed or expected guest count.';
@@ -652,7 +655,6 @@ function barCalc(G){
   if(P.first){const pp=h?P.first+P.after*(h-1):0;out.fb=pp*(G||0);
     if(h)out.lines.push([`${P.name} (${G||0} guests × $${pp})`,out.fb]);
     out.note=`$${P.first} per guest for the first hour, $${P.after} per guest for each hour after${h?`: $${pp} per guest for ${h} hour${h>1?'s':''}`:''}.`;}
-  if(key==='menu')out.note='Guests order from the current bar menu; drinks are billed as ordered.';
   if(key==='open-full')out.note+=' Classic cocktails: Cosmopolitan (Albany Distilling Vodka), Martini and Negroni (Deep Wells Gin), Old Fashioned (Fort Hamilton Whiskey), Manhattan (Fort Hamilton Rye), Margarita (Steelbound Agave), Daiquiri (Albany Distilling Rum).';
   if(key==='cash')out.note='Each guest pays their own bar tab at the end of the meal. The host pays the setup and bartender fees.';
   if(key==='cons'){const tab=num('bev.tab');out.fb=tab;if(tab)out.lines.push(['Consumption bar tab',tab]);
@@ -748,7 +750,7 @@ function calc(){
   const rental=S['ev.third']&&!S['ev.waive']&&fb<=2500?250:0;
   const ot=num('bill.ot');
   const sub=fb+attend+rental+ot+bar.fees;
-  const svc=(fb+bar.fees)*num('bill.svc')/100;
+  const svc=fb*num('bill.svc')/100;
   const tax=(sub+svc)*num('bill.tax')/100;
   const total=sub+svc+tax;
   const dep=num('bill.dep');
