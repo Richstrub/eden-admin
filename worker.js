@@ -172,6 +172,27 @@ function mailShell(title, inner) {
     (title ? '<h1 style="font-family:Georgia,serif;font-weight:normal;font-size:22px;margin:0 0 14px;color:#0f1215">' + esc(title) + '</h1>' : '') + inner + '</div>' +
     '<p style="font-family:Arial,sans-serif;font-size:12px;color:#7f7a71;text-align:center;margin-top:18px">Eden · 118 E. Genesee St., Syracuse, NY · edencny.com</p></div></body></html>';
 }
+// Sign-off with the Eden E, matching Business email's sign-off
+function signOff(lines, src) {
+  const st = ["font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:22px;color:#0f1215",
+    'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#8a5226',
+    'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#7f7a71'];
+  return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:18px 0 0"><tr>' +
+    '<td style="padding:0 14px 0 0;vertical-align:middle"><img src="' + esc(src) + '" width="60" height="60" alt="Eden" style="display:block;width:60px;height:60px;border:0;border-radius:6px"></td>' +
+    '<td style="vertical-align:middle;padding:2px 0 2px 14px;border-left:1px solid #d8cdbd">' +
+    lines.map((t, i) => '<div style="' + st[Math.min(i, 2)] + '">' + esc(t) + '</div>').join('') + '</td></tr></table>';
+}
+let MARK_B64 = '';
+async function markB64(env, req) {
+  if (MARK_B64) return MARK_B64;
+  try {
+    const r = await env.ASSETS.fetch(new Request(new URL('/assets/brand/email-mark.png', req.url)));
+    if (!r.ok) return '';
+    const u = new Uint8Array(await r.arrayBuffer()); let s = '';
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return (MARK_B64 = btoa(s));
+  } catch (e) { return ''; }
+}
 function button(href, label) { return '<p style="margin:18px 0"><a href="' + esc(href) + '" style="display:inline-block;background:#b0703f;color:#fff;text-decoration:none;padding:12px 22px;letter-spacing:.12em;text-transform:uppercase;font-size:12px">' + esc(label) + '</a></p>'; }
 function textToHtml(t) { return String(t || '').split(/\n{2,}/).map(p => '<p style="margin:0 0 12px">' + esc(p).replace(/\n/g, '<br>') + '</p>').join(''); }
 function detailRows(q) {
@@ -352,9 +373,19 @@ async function adminSend(req, env) {
   try {
     msg = (await asUser(env, jwt, 'POST', 'inquiry_messages', { inquiry_id: id, kind: 'out', to_addr: q.email, from_addr: env.MAIL_FROM, subject, body: text, by_name: String(b.by_name || '').slice(0, 80), mail_status: 'sending' }))[0];
   } catch (e) { return json({ error: 'auth' }, 403); }
-  const parts = text.split(link || '\u0000');
-  const html = mailShell('', link ? parts.map(textToHtml).join(button(link, 'Plan your event')) : textToHtml(text));
-  const sent = await sendMail(env, { to: [q.email], subject, html, text, reply_to: replyAddr(env, id) || staffTo(env)[0] || undefined });
+  // the sender's sign-off: the last lines of the message become the E mark plus their name, role and company
+  const sig = Array.isArray(b.sig) ? b.sig.map(x => String(x || '').trim().slice(0, 80)).filter(Boolean).slice(0, 3) : [];
+  const tail = sig.length ? '\n\n' + sig.join('\n') : '';
+  let bodyText = text, sigBlock = '', attachments;
+  if (tail && text.trimEnd().endsWith(tail.trim())) {
+    bodyText = text.trimEnd().slice(0, -tail.trim().length).trimEnd();
+    const mark = await markB64(env, req);
+    sigBlock = signOff(sig, mark ? 'cid:eden-mark' : staffUrl(env, req) + 'assets/brand/email-mark.png');
+    if (mark) attachments = [{ filename: 'eden.png', content: mark, content_type: 'image/png', content_id: 'eden-mark' }];
+  }
+  const parts = bodyText.split(link || '\u0000');
+  const html = mailShell('', (link ? parts.map(textToHtml).join(button(link, 'Plan your event')) : textToHtml(bodyText)) + sigBlock);
+  const sent = await sendMail(env, Object.assign({ to: [q.email], subject, html, text, reply_to: replyAddr(env, id) || staffTo(env)[0] || undefined }, attachments ? { attachments } : {}));
   try { await asUser(env, jwt, 'PATCH', 'inquiry_messages?id=eq.' + msg.id, { mail_status: sent.ok ? 'sent' : 'failed', email_id: sent.id || '' }); } catch (e) {}
   if (!sent.ok) return json({ error: 'send_failed', message: 'The email couldn’t be sent: ' + sent.error }, 502);
   if (b.plan && q.status === 'new') { try { await asUser(env, jwt, 'PATCH', 'catering_inquiries?id=eq.' + id, { status: 'link_sent', plan_sent_at: new Date().toISOString() }); } catch (e) {} }

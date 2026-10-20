@@ -164,8 +164,16 @@
     if (o.references) lines.push('References: ' + o.references);
     lines.push('MIME-Version: 1.0');
     var alt = B();
+    var htmlPart = 'Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n' + wrap76(utf8B64(o.html));
+    // pictures carried inside the email (the sign-off's E), so they show even where outside pictures are blocked
+    if (o.inline && o.inline.length) {
+      var rel = B();
+      htmlPart = 'Content-Type: multipart/related; boundary="' + rel + '"\r\n\r\n--' + rel + '\r\n' + htmlPart +
+        o.inline.map(function (p) { return '\r\n--' + rel + '\r\nContent-Type: ' + p.mime + '; name="' + p.name + '"\r\nContent-Transfer-Encoding: base64\r\nContent-ID: <' + p.cid + '>\r\nContent-Disposition: inline; filename="' + p.name + '"\r\n\r\n' + wrap76(bytesToB64(p.bytes)); }).join('') +
+        '\r\n--' + rel + '--';
+    }
     var altBody = '--' + alt + '\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n' + wrap76(utf8B64(o.text)) +
-      '\r\n--' + alt + '\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n' + wrap76(utf8B64(o.html)) + '\r\n--' + alt + '--';
+      '\r\n--' + alt + '\r\n' + htmlPart + '\r\n--' + alt + '--';
     if (!o.atts.length) { lines.push('Content-Type: multipart/alternative; boundary="' + alt + '"'); return lines.join('\r\n') + '\r\n\r\n' + altBody; }
     var mix = B();
     lines.push('Content-Type: multipart/mixed; boundary="' + mix + '"');
@@ -848,15 +856,17 @@
       if (total > MAX_ATTACH) { err.textContent = 'The attachments add up to ' + size(total) + '. The most you can send here is 18 MB; share bigger files with a Google Drive link.'; return; }
       var s = sendAs[+fromSel.value] || sendAs[0];
       var body = text.value.replace(/\s+$/, '');
-      var sigHtml = sigBox.checked && sig() ? sig() : '';
-      var html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">' + textToHtml(body) + (sigHtml ? '<br><div class="gmail_signature">' + sigHtml + '</div>' : '') + '</div>' + (quoteOn && o.quote ? '<br>' + o.quote.html : '');
-      var plain = body + (sigHtml ? '\n\n-- \n' + (own ? sigText(own) : htmlToText(sigHtml)) : '') + (quoteOn && o.quote ? '\n\n' + o.quote.text : '');
+      var useSig = sigBox.checked && !!sig(), ownSig = useSig && !!own;
+      var plain = body + (useSig ? '\n\n-- \n' + (own ? sigText(own) : htmlToText(sig())) : '') + (quoteOn && o.quote ? '\n\n' + o.quote.text : '');
+      var htmlWith = function (sigH) { return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">' + textToHtml(body) + (sigH ? '<br><div class="gmail_signature">' + sigH + '</div>' : '') + '</div>' + (quoteOn && o.quote ? '<br>' + o.quote.html : ''); };
+      var html = htmlWith(useSig ? sig() : ''), inline = [];
       send.disabled = true; send.lastChild.textContent = 'Sending…';
-      Promise.all(files.map(function (f) {
+      // the staff-site sign-off carries its E inside the email; if the picture can't be read, it links to it instead
+      (ownSig ? markData().then(function (b) { inline = [{ cid: 'eden-mark', name: 'eden.png', mime: 'image/png', bytes: b }]; html = htmlWith(sigHtml(own, 'cid:eden-mark')); }, function () {}) : Promise.resolve()).then(function () { return Promise.all(files.map(function (f) {
         if (f.file) return f.file.arrayBuffer().then(function (b) { return { name: f.name, mime: f.mime, bytes: new Uint8Array(b) }; });
         return attData(f.msg, f.att).then(function (b) { return { name: f.name, mime: f.mime, bytes: b }; });
-      })).then(function (atts) {
-        var raw = buildRaw({ from: { name: s.name || '', email: s.email }, to: T, cc: C, bcc: BC, subject: subj.value.trim(), text: plain, html: html, inReplyTo: o.inReplyTo, references: o.references, atts: atts });
+      })); }).then(function (atts) {
+        var raw = buildRaw({ from: { name: s.name || '', email: s.email }, to: T, cc: C, bcc: BC, subject: subj.value.trim(), text: plain, html: html, inReplyTo: o.inReplyTo, references: o.references, atts: atts, inline: inline });
         return api('send', { raw: raw, threadId: o.mode === 'Forward' ? '' : (o.threadId || '') });
       }).then(function () {
         w.remove(); say('Sent from ' + s.email + '. It’s in Sent here and in Gmail.', 'ok');
@@ -898,15 +908,22 @@
   }
   function markUrl() { var base = String((window.EDEN_STAFF_CONFIG || {}).staffHome || location.origin + '/').replace(/\/?$/, '/'); return base + 'assets/brand/email-mark.png'; }
   // laid out with a table so it looks the same in Gmail, Apple Mail and Outlook
-  function sigHtml(x) {
+  function sigHtml(x, src) {
     var line = function (t, css) { return t ? '<div style="' + css + '">' + esc(t) + '</div>' : ''; };
     return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0"><tr>' +
-      '<td style="padding:0 14px 0 0;vertical-align:middle"><img src="' + markUrl() + '" width="60" height="60" alt="Eden" style="display:block;width:60px;height:60px;border:0;border-radius:6px"></td>' +
+      '<td style="padding:0 14px 0 0;vertical-align:middle"><img src="' + (src || markUrl()) + '" width="60" height="60" alt="Eden" style="display:block;width:60px;height:60px;border:0;border-radius:6px"></td>' +
       '<td style="vertical-align:middle;padding:2px 0 2px 14px;border-left:1px solid #d8cdbd">' +
       line(x.line1, "font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:22px;color:#0f1215") +
       line(x.line2, 'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#8a5226') +
       line(x.line3, 'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;letter-spacing:.04em;color:#7f7a71') +
       '</td></tr></table>';
+  }
+  // the E picture for sign-offs, read from this site once and carried inside each email
+  var markBytes = null;
+  function markData() {
+    if (markBytes) return Promise.resolve(markBytes);
+    return fetch('assets/brand/email-mark.png', { cache: 'force-cache' }).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      .then(function (b) { markBytes = new Uint8Array(b); return markBytes; });
   }
   function sigText(x) { return [x.line1, x.line2, x.line3].filter(Boolean).join('\n'); }
   function sigPreview(x) { var d = h('div', { cls: 'em-sigprev' }); d.innerHTML = sigHtml(x); return d; }

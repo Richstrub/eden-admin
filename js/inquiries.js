@@ -315,7 +315,7 @@
     var msgs = I.msgs[r.id] || [], lastSub = '';
     msgs.forEach(function (m) { if ((m.kind === 'in' || m.kind === 'out') && m.subject) lastSub = m.subject; });
     // the writer's sign-off from Business email (Email sign-off); without one, their name and Eden Hospitality
-    var so = I.sig && (I.sig.line1 || I.sig.line2 || I.sig.line3) ? [I.sig.line1, I.sig.line2, I.sig.line3].filter(Boolean) : [I.ctx.name || '', 'Eden Hospitality'].filter(Boolean);
+    var so = signLines();
     var sign = '\n\n' + so.join('\n');
     if (mode === 'plan') I.compose = { id: r.id, mode: mode, subject: 'Planning your event at Eden',
       body: 'Hi ' + first(r) + ',\n\nThank you for your interest in hosting ' + (r.event_name || 'your event') + ' at Eden' + (r.event_date ? ' on ' + longDate(r.event_date) : '') + '. Please use the link below to plan your menu and the details of your event. We’ve already filled in what you sent us, and you’ll see an estimate as you choose.\n\n{link}\n\nWe look forward to working with you.' + sign };
@@ -379,13 +379,14 @@
       else window.prompt('Copy this link:', link);
     }, function () { I.ctx.status('Couldn’t make the link.', 'err'); });
   }
+  function signLines() { return I.sig && (I.sig.line1 || I.sig.line2 || I.sig.line3) ? [I.sig.line1, I.sig.line2, I.sig.line3].filter(Boolean) : [I.ctx.name || '', 'Eden Hospitality'].filter(Boolean); }
   function sendEmail(r, c, btn, err) {
     err.textContent = '';
     if (!c.subject.trim() || !c.body.trim()) { err.textContent = 'Add a subject and a message.'; return; }
     btn.disabled = true; btn.textContent = 'Sending…';
     token().then(function (jwt) {
       return fetch('admin/send', { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + jwt },
-        body: JSON.stringify({ id: r.id, plan: c.mode === 'plan', subject: c.subject.trim(), body: c.body, by_name: I.ctx.name || '' }) });
+        body: JSON.stringify({ id: r.id, plan: c.mode === 'plan', subject: c.subject.trim(), body: c.body, by_name: I.ctx.name || '', sig: signLines() }) });
     }).then(function (x) { return x.json().catch(function () { return {}; }).then(function (j) { return { ok: x.ok, j: j }; }); }).then(function (res) {
       if (!res.ok || !res.j.ok) { err.textContent = (res.j && res.j.message) || 'The email couldn’t be sent.'; btn.disabled = false; btn.textContent = 'Send email'; loadMsgs(r.id).then(function () { if (I.sel === r.id) paintDetail(); }); return; }
       if (c.mode === 'plan') { if (r.status === 'new') r.status = 'link_sent'; r.plan_sent_at = new Date().toISOString(); }
