@@ -176,8 +176,10 @@
     var bits = [];
     if (withDay) bits.push(parseDay(e.date).toLocaleDateString('en-US', { weekday: 'short' }));
     if (!e.all_day && e.start) bits.push(t12(e.start));
-    return h('li', null, [h('b', { text: (bits.length ? bits.join(' · ') + ' · ' : '') + e.title }),
-      (e.room || e.guests) ? h('span', { text: [e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') }) : null]);
+    // tap an event: the Calendar opens on that day with the event's details
+    return h('li', null, [h('a', { cls: 'td-evlink', href: '#calendar/e/' + e.date + '/' + encodeURIComponent(e.id || ''), title: 'Open in the calendar' }, [
+      h('b', { text: (bits.length ? bits.join(' · ') + ' · ' : '') + e.title }),
+      (e.room || e.guests) ? h('span', { text: [e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') }) : null])]);
   }
   function render(ctx, r) {
     var el = ctx.el; el.innerHTML = '';

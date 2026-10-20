@@ -165,6 +165,8 @@
     if (v.indexOf('employees/') === 0) { sub = v.slice(10) === 'permissions' && role === 'owner' ? 'permissions' : ''; v = 'employees'; }
     if (v.indexOf('checklists/') === 0) { sub = v.slice(11) === 'edit' && isMgr() ? 'edit' : ''; v = 'checklists'; }
     if (v.indexOf('promo/') === 0) { sub = v.slice(6); v = 'promo'; if (!/^(list|e\/[0-9a-f-]{36})$/.test(sub)) sub = ''; }
+    var calFocus = null;   // #calendar/e/<date>/<event id>: open the calendar on that day with the event showing (from Today)
+    if (v.indexOf('calendar/e/') === 0) { var cm = /^calendar\/e\/(\d{4}-\d{2}-\d{2})\/(.*)$/.exec(v); if (cm) calFocus = { date: cm[1], id: decodeURIComponent(cm[2]) }; v = 'calendar'; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
     if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
@@ -208,7 +210,7 @@
       if (window.EdenPayroll) window.EdenPayroll.show({ sb: sb, el: $('viewPayroll'), status: status, sub: sub });
     } else if (v === 'calendar') {
       status('');
-      if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr() });
+      if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr(), focus: calFocus });
     } else if (v === 'recipes') {
       status('');
       if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr() });

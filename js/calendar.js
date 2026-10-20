@@ -360,6 +360,12 @@
     show: function (ctx) {
       var first = !C.ctx; C.ctx = ctx; C.el = ctx.el;
       if (first || ctx.fresh) { C.view = ctx.view || C.view; }
+      var f = ctx.focus;
+      if (f && f.date) {   // opened from Today: that day, with the event's details on top
+        C.view = 'day'; C.day = parseDay(f.date);
+        render(); load().then(function () { render(); var e = C.events.filter(function (x) { return String(x.id) === String(f.id); })[0]; if (e) showEvent(e); });
+        return;
+      }
       go();
     },
     // open the Add event form pre-filled (used by Notes)
