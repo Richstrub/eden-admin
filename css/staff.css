@@ -2544,3 +2544,32 @@ body.nt-open #app{visibility:hidden!important}
 .td-ev a.td-evlink{display:block;color:inherit;text-decoration:none;border-radius:4px;margin:-4px -6px;padding:4px 6px;transition:background .15s}
 .td-ev a.td-evlink:hover,.td-ev a.td-evlink:focus-visible{background:rgba(176,112,63,.09)}
 .td-ev a.td-evlink:hover b{color:var(--ember)}
+/* Payroll: Square import, daily tips, kitchen hours, the two sheets */
+.pr-square,.pr-out{display:flex;justify-content:space-between;align-items:center;gap:12px 20px;flex-wrap:wrap;padding:14px 16px;background:#fff;border:1px solid var(--line);margin:4px 0 10px}
+.pr-square p,.pr-out p{margin:2px 0 0;font-size:.84rem;color:var(--stone);max-width:70ch}
+.pr-out{margin-top:18px}
+.pr-drop .pr-square{outline:2px dashed var(--ember);outline-offset:3px;background:#fbf3ea}
+.pr-tips{margin:0 0 16px}
+.pr-tiptbl .pr-tipin{width:6.2em;text-align:right}
+.pr-tiptbl td.eod .pr-tipin{background:#f6f1e8}
+.pr-tiptbl tr.pr-strong td,.pr-tiptbl tr.pr-strong th{font-weight:500}
+.pr-tiptbl td.pr-warn{color:#9a5a1c;font-weight:500}
+.pr-tipbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pr-extra{white-space:nowrap}
+.pr-mini{display:inline-flex;flex-direction:column;gap:2px;margin-right:6px;font-size:.6rem;letter-spacing:.06em;color:var(--stone);vertical-align:top}
+.pr-mini .pr-sm{width:4.6em;font-size:.82rem}
+.pr-mini .pr-money.pr-sm{width:6.2em;text-align:right}
+.pr-table tr.pr-kit th,.pr-table tr.pr-kit td{background:#faf8f4}
+.pr-table tr.pr-kit .pr-name b{font-weight:400;color:var(--stone)}
+.pr-table tr.inactive{opacity:.65}
+.pr-pid{width:6.5em}
+.pr-auto{display:block;font-size:.72rem;color:var(--stone);margin-top:3px}
+.pr-dlg{max-width:640px;width:calc(100% - 32px);border:1px solid var(--line);padding:20px 22px;background:#fff;color:var(--ink)}
+.pr-dlg::backdrop{background:rgba(15,18,21,.45)}
+.pr-dlg h2{font-family:var(--serif,inherit);font-weight:400;margin:0 0 6px}
+.pr-dlg p{font-size:.88rem;margin:6px 0}
+.pr-dlg .pr-scroll{max-height:50vh;overflow:auto;margin:10px 0}
+.pr-dlg td small{display:block;font-size:.72rem;color:var(--stone)}
+.pr-dlg tr.pr-unm td{background:#fbf3ea}
+.pr-dlg .pr-acts{margin-top:12px}
+.pr-chk{display:flex;gap:8px;align-items:center;font-size:.86rem;margin:8px 0}

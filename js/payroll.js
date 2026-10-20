@@ -1,18 +1,28 @@
 /* Eden staff site: Payroll (Owner only).
- *   This week:  a weekly timesheet, Sunday to Saturday. Hours start from the published schedule and can be
- *               corrected day by day. Works out regular hours, overtime (over 40 in the week, at 1.5x),
- *               the week's tip pool split by hours among tip-pool staff, adjustments, and gross pay.
- *               Print a summary or download a spreadsheet for the accountant. Finalize the week to lock it.
- *   Pay rates:  hourly rate or weekly salary for each employee, and who shares the tip pool.
- * Tax withholding is left to the accountant. Data: supabase/payroll.sql (pay_rates, payroll_weeks),
+ *   This week:  a weekly timesheet, Sunday to Saturday. Hours come from Square (drop the "Export shifts" CSV from
+ *               Square Timecards onto the page), or from the schedule, and can be corrected day by day.
+ *               Kitchen hours (a second rate, e.g. Tyler at $30/hr), sick and holiday hours, and commission.
+ *               Tips: each day's pool is that day's cash tips plus credit card tips less the 2.75% card processing
+ *               fee (from the End of day reports), split by that day's hours among tip-pool staff.
+ *               Downloads: the Eden Hospitality Hours sheet for the payroll company, and the Tip Weighted Payroll
+ *               sheet for Eden's records. Finalize the week to lock it.
+ *   Pay rates:  hourly rate or weekly salary, kitchen rate, commission, tip pool, and the payroll company's ID.
+ * Tax withholding is left to the payroll company. Data: supabase/payroll.sql and payroll-square.sql,
  * readable by the Owner only. */
 (function () {
   'use strict';
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   var ENDS = { cut1: '20:00', cut2: '21:00', close: '22:00' };   // same assumed out-times as the schedule
   var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  var OT_AFTER = 40, OT_RATE = 1.5;
-  var P = { ctx: null, el: null, sub: 'week', week: null, emps: [], rates: {}, row: null, fresh: false, sched: null, missing: false, err: '', seq: 0, t: null, saving: null, refs: {} };
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var OT_AFTER = 40, OT_RATE = 1.5, CARD_FEE = 0.0275;
+  var KITCHEN_JOB = /kitchen|cook|line|prep|dish|chef|pastry|culinary|bake/i;
+  // The payroll company's sheet (Eden Hospitality Hours): their Employee IDs and spellings, in their order
+  var PAYCO = [['E18629', 'Alden, Kyle'], ['K15347', 'Ball, Tyler'], ['S07721', 'Davis, Keenan B'], ['W26589', 'Colluci, Nerissa'],
+    ['X25654', 'Elderbroom, Dakota'], ['C14811', 'Feltham, Ciara'], ['U13555', 'Kwiek, Michael'], ['P11703', 'Labenski, Paige'],
+    ['N23918', 'Longo, Jae'], ['Z26136', 'McKay, Ovidiu'], ['U28579', 'Otts, Breauna'], ['Z32304', 'Scott, Aaron'],
+    ['W32085', 'Shutter-Beaver, Joe'], ['C00507', 'Strub, Richard'], ['H32480', 'Thor, Ana'], ['J30874', 'Toledo, Joshua'], ['T31170', 'Willaims, Kyle']];
+  var P = { ctx: null, el: null, sub: 'week', week: null, emps: [], rates: {}, row: null, fresh: false, sched: null, eod: null, missing: false, v2: true, err: '', seq: 0, t: null, saving: null, refs: {} };
 
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -37,10 +47,13 @@
     return d.toLocaleDateString('en-US', o) + ' – ' + (d.getMonth() === e.getMonth() ? e.getDate() : e.toLocaleDateString('en-US', o)) + ', ' + e.getFullYear();
   }
   function isMissing(e) { return e && (e.code === 'PGRST205' || e.code === '42P01' || /could not find the table|does not exist|schema cache/i.test(e.message || '')); }
+  function isMissingCol(e) { return e && (e.code === 'PGRST204' || e.code === '42703' || /column .* (does not exist|of .* in the schema cache)|could not find the '.*' column/i.test(e.message || '')); }
   function r2(n) { return Math.round((+n || 0) * 100) / 100; }
   function money(n) { n = r2(n); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function hrs(n) { n = r2(n); return n ? String(n) : '0'; }
   function numIn(v) { var s = String(v == null ? '' : v).replace(/[$,\s]/g, ''); if (s === '') return null; var n = parseFloat(s); return isFinite(n) ? n : null; }
+  function sum(a) { return r2((a || []).reduce(function (x, y) { return x + (+y || 0); }, 0)); }
+  function seven(a) { a = Array.isArray(a) ? a : []; return [0, 1, 2, 3, 4, 5, 6].map(function (i) { return a[i] == null || a[i] === '' ? null : +a[i]; }); }
   function mins(t) { var p = String(t || '').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }
   function shiftHours(s) {
     if (!s || !s.start || !s.end) return 0;
@@ -49,16 +62,58 @@
     return d / 60;
   }
   function final() { return P.row && P.row.status === 'final'; }
+  // whole cents, the odd cents to the largest remainders, so the shares add up exactly
+  function splitCents(total, weights) {
+    var c = Math.round((+total || 0) * 100), w = weights.reduce(function (a, b) { return a + (b > 0 ? b : 0); }, 0);
+    if (!c || !w) return weights.map(function () { return 0; });
+    var parts = weights.map(function (x, i) { var e = c * (x > 0 ? x : 0) / w; return { i: i, b: Math.floor(e), r: e - Math.floor(e) }; });
+    var left = c - parts.reduce(function (a, p) { return a + p.b; }, 0);
+    parts.slice().sort(function (a, b) { return b.r - a.r; }).forEach(function (p) { if (left > 0) { p.b++; left--; } });
+    return parts.map(function (p) { return p.b / 100; });
+  }
+
+  /* ---------------- names: staff site ↔ payroll company ↔ Square ---------------- */
+  function lev(a, b) {
+    var m = a.length, n = b.length, d = [], i, j;
+    for (i = 0; i <= m; i++) d[i] = [i];
+    for (j = 0; j <= n; j++) d[0][j] = j;
+    for (i = 1; i <= m; i++) for (j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[m][n];
+  }
+  function parts(s) {   // "Ball, Tyler J" or "Tyler J Ball" -> { first, last, all: [tokens] }
+    s = String(s || '').toLowerCase().replace(/[^a-z,\s'-]/g, ' ').trim();
+    var first, last, toks;
+    if (s.indexOf(',') >= 0) { var p = s.split(','); last = p[0].trim(); first = (p[1] || '').trim().split(/\s+/)[0] || ''; }
+    else { var t = s.split(/\s+/).filter(Boolean); first = t[0] || ''; last = t.length > 1 ? t[t.length - 1] : ''; }
+    toks = s.replace(/,/g, ' ').split(/[\s-]+/).filter(Boolean);
+    return { first: first, last: last, all: toks };
+  }
+  function sameName(a, b) {   // tolerant: last names close (or one inside a hyphenated name), first names close or sharing 3 letters
+    var A = parts(a), B = parts(b);
+    if (!A.first || !B.first) return false;
+    var lastOk = (A.last && B.last && (lev(A.last, B.last) <= 2 || B.all.indexOf(A.last) >= 0 || A.all.indexOf(B.last) >= 0));
+    var firstOk = lev(A.first, B.first) <= 1 || (A.first.length >= 3 && B.first.length >= 3 && A.first.slice(0, 3) === B.first.slice(0, 3));
+    return !!(lastOk && firstOk);
+  }
+  function payco(id) {   // { id, name } on the payroll company's sheet, from Pay rates or matched by name
+    var r = P.rates[id] || {}, e = empById(id);
+    if (r.payroll_id || r.payroll_name) return { id: r.payroll_id || '', name: r.payroll_name || '', set: true };
+    var m = PAYCO.filter(function (x) { return sameName(e.name, x[1]); })[0];
+    return m ? { id: m[0], name: m[1], auto: true } : { id: '', name: '' };
+  }
+  function empById(id) { return P.emps.filter(function (x) { return x.id === id; })[0] || {}; }
+  function onStaff(e) { return e && e.active !== false; }
 
   /* ---------------- data ---------------- */
   function load() {
-    var my = ++P.seq, wk = iso(P.week);
+    var my = ++P.seq, wk = iso(P.week), end = iso(addDays(P.week, 6));
     P.err = ''; paint(true);
     return Promise.all([
       sb().from('employees').select('*').order('name'),
       sb().from('pay_rates').select('*'),
       sb().from('payroll_weeks').select('*').eq('week_start', wk).maybeSingle(),
-      sb().from('schedule_weeks').select('week_start,shifts,status,published').eq('week_start', wk).maybeSingle()
+      sb().from('schedule_weeks').select('week_start,shifts,status,published').eq('week_start', wk).maybeSingle(),
+      sb().from('eod_reports').select('*').gte('report_date', wk).lte('report_date', end)
     ]).then(function (res) {
       if (my !== P.seq) return;
       var bad = res[1].error || res[2].error;
@@ -66,11 +121,34 @@
       if (bad && !P.missing) P.err = 'Couldn’t load payroll. ' + (bad.message || '');
       P.emps = (res[0].data || []).filter(function (e) { return String(e.name || '').trim(); });
       P.rates = {}; (res[1].data || []).forEach(function (r) { P.rates[r.emp] = r; });
+      P.v2 = !(res[1].data || []).length || 'kitchen_rate' in res[1].data[0];
       P.sched = res[3].error ? null : res[3].data;
+      P.eod = eodDays(res[4].error ? [] : res[4].data || []);
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
       else { P.row = { week_start: wk, status: 'draft', tip_pool: 0, rows: {}, notes: '' }; P.fresh = true; fillFromSchedule(); }
+      if (!P.row.rows._tips && !final()) fillTipsFromEod(true);
       paint(false);
     }, function () { if (my === P.seq) { P.err = 'Couldn’t reach the database. Check your connection.'; paint(false); } });
+  }
+  function eodDays(list) {   // each day's tips and net sales from the End of day reports (all shifts that day)
+    var d = { cash: [0, 0, 0, 0, 0, 0, 0], card: [0, 0, 0, 0, 0, 0, 0], sales: [0, 0, 0, 0, 0, 0, 0], has: [false, false, false, false, false, false, false], tipsOn: false };
+    var wk = iso(P.week);
+    list.forEach(function (r) {
+      var i = Math.round((Date.parse(r.report_date + 'T12:00:00') - Date.parse(wk + 'T12:00:00')) / 864e5);
+      if (i < 0 || i > 6) return;
+      if ('tips_cash' in r) d.tipsOn = true;
+      d.has[i] = true;
+      d.cash[i] = r2(d.cash[i] + (+r.tips_cash || 0)); d.card[i] = r2(d.card[i] + (+r.tips_card || 0)); d.sales[i] = r2(d.sales[i] + (+r.net_sales || 0));
+    });
+    return d;
+  }
+  function tipsRow() { var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] }; t.cash = seven(t.cash); t.card = seven(t.card); return t; }
+  function fillTipsFromEod(quiet) {
+    var e = P.eod, t = tipsRow();
+    if (!e) return;
+    for (var i = 0; i < 7; i++) { t.cash[i] = e.has[i] ? e.cash[i] : null; t.card[i] = e.has[i] ? e.card[i] : null; }
+    t.src = e.has.map(function (x) { return x ? 'eod' : ''; });
+    if (!quiet) saveSoon();
   }
   function scheduleHours() {   // { emp: [Sun..Sat hours] } from the published schedule (or the draft, if not published yet)
     var out = {}, approx = {}, s = P.sched;
@@ -89,69 +167,93 @@
       var r = rowFor(e.id);
       r.hours = (sh[e.id] || [0, 0, 0, 0, 0, 0, 0]).map(function (x) { return x || null; });
     });
+    P.row.source = 'schedule';
   }
   function rowFor(id) {
     var r = P.row.rows[id];
-    if (!r) r = P.row.rows[id] = { hours: [null, null, null, null, null, null, null], adj: null, adj_note: '' };
-    if (!Array.isArray(r.hours)) r.hours = [null, null, null, null, null, null, null];
+    if (!r) r = P.row.rows[id] = { hours: seven(), adj: null, adj_note: '' };
+    r.hours = seven(r.hours);
+    if (r.khours) r.khours = seven(r.khours);
     return r;
   }
   function empInfo(id) {   // name, position and pay terms: frozen when the week was finalized
-    var r = P.row.rows[id], e = P.emps.filter(function (x) { return x.id === id; })[0] || {}, rate = P.rates[id] || {};
+    var r = P.row.rows[id], e = empById(id), rate = P.rates[id] || {};
     if (final() && r && r.snap) return r.snap;
     return { name: e.name || 'Former employee', position: e.position || '', pay_type: rate.pay_type || 'hourly', rate: rate.rate == null ? null : +rate.rate,
-      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary, tip_eligible: !!rate.tip_eligible };
+      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary, tip_eligible: !!rate.tip_eligible,
+      kitchen_rate: rate.kitchen_rate == null ? null : +rate.kitchen_rate, commission: !!rate.commission };
   }
-  function shownEmps() {   // active employees, plus anyone with hours or pay this week
+  function empIds() { return Object.keys((P.row && P.row.rows) || {}).filter(function (k) { return k.charAt(0) !== '_'; }); }
+  function shownEmps() {   // employees on staff, plus anyone with hours or pay this week
     var sh = scheduleHours().hours, ids = {}, out = [];
-    P.emps.forEach(function (e) { if (e.active !== false || sh[e.id]) { ids[e.id] = 1; out.push(e); } });
-    Object.keys((P.row && P.row.rows) || {}).forEach(function (id) {
+    P.emps.forEach(function (e) { if (onStaff(e) || sh[e.id]) { ids[e.id] = 1; out.push(e); } });
+    empIds().forEach(function (id) {
       if (ids[id]) return;
-      var r = P.row.rows[id], any = (r.hours || []).some(function (x) { return +x; }) || +r.adj;
-      if (any || (final() && r.snap)) { ids[id] = 1; out.push(P.emps.filter(function (x) { return x.id === id; })[0] || { id: id, name: (r.snap && r.snap.name) || 'Former employee' }); }
+      var r = P.row.rows[id], any = (r.hours || []).concat(r.khours || []).some(function (x) { return +x; }) || +r.adj || +r.comm;
+      if (any || (final() && r.snap)) { ids[id] = 1; out.push(empById(id).id ? empById(id) : { id: id, name: (r.snap && r.snap.name) || 'Former employee', active: false }); }
     });
     if (final()) out = out.filter(function (e) { return P.row.rows[e.id]; });
     return out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
   }
 
   /* ---------------- the numbers ---------------- */
+  function dayTips() {   // per day: cash, card before fee, fee, card after fee, pool
+    var t = P.row.rows._tips, out = [];
+    for (var i = 0; i < 7; i++) {
+      var cash = t ? +t.cash[i] || 0 : 0, card = t ? +t.card[i] || 0 : 0, fee = r2(card * CARD_FEE), net = r2(card - fee);
+      out.push({ cash: r2(cash), card: r2(card), fee: fee, net: net, pool: r2(cash + net) });
+    }
+    return out;
+  }
   function calc() {
-    var emps = shownEmps(), lines = [], pool = r2(P.row.tip_pool), tipHours = 0;
+    var emps = shownEmps(), lines = [];
     emps.forEach(function (e) {
       var r = rowFor(e.id), info = empInfo(e.id);
-      var days = r.hours.map(function (x) { return +x || 0; }), total = r2(days.reduce(function (a, b) { return a + b; }, 0));
-      var L = { id: e.id, info: info, days: days, total: total, reg: 0, ot: 0, regPay: 0, otPay: 0, salary: 0, tips: 0, adj: r2(r.adj), adjNote: r.adj_note || '', warn: '' };
+      var days = r.hours.map(function (x) { return +x || 0; }), kdays = (info.kitchen_rate != null || r.khours) ? seven(r.khours).map(function (x) { return +x || 0; }) : [0, 0, 0, 0, 0, 0, 0];
+      var main = sum(days), kit = sum(kdays), total = r2(main + kit);
+      var L = { id: e.id, e: e, info: info, days: days, kdays: kdays, main: main, kit: kit, total: total, reg: 0, ot: 0, regPay: 0, otPay: 0, salary: 0, mainPay: 0, kitPay: 0,
+        sick: r2(r.sick), hol: r2(r.hol), sickPay: 0, holPay: 0, comm: r2(r.comm), tipsCash: 0, tipsCard: 0, tips: 0, tipDays: [0, 0, 0, 0, 0, 0, 0], adj: r2(r.adj), adjNote: r.adj_note || '', warn: '' };
+      var rate = info.rate == null ? 0 : +info.rate, krate = info.kitchen_rate == null ? rate : +info.kitchen_rate;
       if (info.pay_type === 'salary') {
         L.reg = total; L.salary = r2(info.weekly_salary);
         if (info.weekly_salary == null) L.warn = 'No weekly salary set';
       } else {
-        L.reg = Math.min(total, OT_AFTER); L.ot = r2(Math.max(total - OT_AFTER, 0));
-        var rate = info.rate == null ? 0 : +info.rate;
-        L.regPay = r2(L.reg * rate); L.otPay = r2(L.ot * rate * OT_RATE);
-        if (info.rate == null && total) L.warn = 'No hourly rate set';
+        // overtime over 40 hours in the week; with two rates, overtime is paid on the week's blended rate
+        L.ot = r2(Math.max(total - OT_AFTER, 0)); L.reg = r2(total - L.ot);
+        var straight = r2(main * rate + kit * krate), blended = total ? straight / total : 0;
+        L.mainPay = r2(main * rate); L.kitPay = r2(kit * krate);
+        L.regPay = r2(straight - L.ot * blended); L.otPay = r2(L.ot * blended * OT_RATE);
+        L.sickPay = r2(L.sick * rate); L.holPay = r2(L.hol * rate);
+        if (info.rate == null && main && !info.commission) L.warn = 'No hourly rate set';
+        if (kit && info.kitchen_rate == null) L.warn = 'No kitchen rate set';
       }
-      if (info.tip_eligible && total > 0) tipHours += total;
       lines.push(L);
     });
-    // tip pool by hours, in whole cents, so the shares add up to exactly the pool
-    var cents = Math.round(pool * 100), given = 0, parts = [];
-    if (tipHours > 0 && cents) {
-      lines.forEach(function (L) {
-        if (!L.info.tip_eligible || L.total <= 0) return;
-        var exact = cents * L.total / tipHours, base = Math.floor(exact);
-        parts.push({ L: L, base: base, rem: exact - base }); given += base;
-      });
-      parts.sort(function (a, b) { return b.rem - a.rem; });
-      for (var i = 0; i < cents - given; i++) parts[i % parts.length].base++;
-      parts.forEach(function (p) { p.L.tips = p.base / 100; });
+    // tips: each day's pool split by that day's hours among tip-pool staff (front-of-house hours, not kitchen)
+    var D = dayTips(), tipHrs = [0, 0, 0, 0, 0, 0, 0], pooled = lines.filter(function (L) { return L.info.tip_eligible; }), unshared = [];
+    var anyDayTips = D.some(function (d) { return d.pool; });
+    if (anyDayTips) {
+      for (var i = 0; i < 7; i++) {
+        var w = pooled.map(function (L) { return L.days[i]; });
+        tipHrs[i] = sum(w);
+        if (D[i].pool && !tipHrs[i]) unshared.push(i);
+        var cs = splitCents(D[i].cash, w), cd = splitCents(D[i].net, w);
+        pooled.forEach(function (L, j) { L.tipsCash = r2(L.tipsCash + cs[j]); L.tipsCard = r2(L.tipsCard + cd[j]); L.tipDays[i] = r2(cs[j] + cd[j]); });
+      }
+    } else if (+P.row.tip_pool) {   // weeks saved before daily tips: one weekly pool split by the week's hours
+      var sh = splitCents(P.row.tip_pool, pooled.map(function (L) { return L.main; }));
+      pooled.forEach(function (L, j) { L.tipsCard = sh[j]; });
     }
-    var T = { total: 0, reg: 0, ot: 0, regPay: 0, otPay: 0, salary: 0, tips: 0, adj: 0, gross: 0, days: [0, 0, 0, 0, 0, 0, 0] };
+    var T = { total: 0, main: 0, kit: 0, reg: 0, ot: 0, regPay: 0, otPay: 0, salary: 0, sick: 0, hol: 0, sickPay: 0, holPay: 0, comm: 0, tipsCash: 0, tipsCard: 0, tips: 0, adj: 0, gross: 0, wages: 0, days: [0, 0, 0, 0, 0, 0, 0] };
     lines.forEach(function (L) {
-      L.gross = r2(L.regPay + L.otPay + L.salary + L.tips + L.adj);
-      ['total', 'reg', 'ot', 'regPay', 'otPay', 'salary', 'tips', 'adj', 'gross'].forEach(function (k) { T[k] = r2(T[k] + L[k]); });
-      L.days.forEach(function (x, i) { T.days[i] = r2(T.days[i] + x); });
+      L.tips = r2(L.tipsCash + L.tipsCard);
+      L.wages = r2(L.regPay + L.otPay + L.salary);
+      L.gross = r2(L.wages + L.sickPay + L.holPay + L.comm + L.tips + L.adj);
+      ['total', 'main', 'kit', 'reg', 'ot', 'regPay', 'otPay', 'salary', 'sick', 'hol', 'sickPay', 'holPay', 'comm', 'tipsCash', 'tipsCard', 'tips', 'adj', 'gross', 'wages'].forEach(function (k) { T[k] = r2(T[k] + L[k]); });
+      L.days.forEach(function (x, i) { T.days[i] = r2(T.days[i] + x + L.kdays[i]); });
     });
-    return { lines: lines, T: T, pool: pool, tipHours: r2(tipHours), unshared: cents && !tipHours };
+    var pool = sum(D.map(function (d) { return d.pool; }));
+    return { lines: lines, T: T, D: D, tipHrs: tipHrs, unshared: unshared, pool: anyDayTips ? pool : r2(P.row.tip_pool), daily: anyDayTips };
   }
 
   /* ---------------- saving ---------------- */
@@ -174,8 +276,10 @@
   function saveRate(id) {
     var r = P.rates[id];
     var row = { emp: id, pay_type: r.pay_type || 'hourly', rate: r.rate == null ? null : r2(r.rate), weekly_salary: r.weekly_salary == null ? null : r2(r.weekly_salary), tip_eligible: !!r.tip_eligible, notes: r.notes || '' };
+    if (P.v2) Object.assign(row, { kitchen_rate: r.kitchen_rate == null ? null : r2(r.kitchen_rate), commission: !!r.commission, payroll_id: r.payroll_id || '', payroll_name: r.payroll_name || '', square_name: r.square_name || '' });
     status('Saving…', 'dirty');
     return sb().from('pay_rates').upsert(row, { onConflict: 'emp' }).then(function (x) {
+      if (x.error && isMissingCol(x.error)) { P.v2 = false; status('One step left: run supabase/payroll-square.sql in Supabase to save kitchen rates, commission and payroll IDs.', 'err'); return; }
       if (x.error) status(isMissing(x.error) ? 'Payroll isn’t set up yet: run supabase/payroll.sql in Supabase.' : 'Couldn’t save: ' + (x.error.message || 'try again.'), 'err');
       else status('Saved.');
     }, function () { status('Couldn’t save. Check your connection.', 'err'); });
@@ -193,21 +297,31 @@
     P.pane = h('div', { cls: 'pr-pane' });
     wrap.appendChild(P.pane);
     el.appendChild(wrap);
+    // drop a Square export anywhere on the Payroll page
+    el.addEventListener('dragover', function (ev) { if (P.sub === 'week' && !final() && hasFiles(ev)) { ev.preventDefault(); el.classList.add('pr-drop'); } });
+    el.addEventListener('dragleave', function (ev) { if (ev.target === el || !el.contains(ev.relatedTarget)) el.classList.remove('pr-drop'); });
+    el.addEventListener('drop', function (ev) {
+      el.classList.remove('pr-drop');
+      if (P.sub !== 'week' || final() || !hasFiles(ev)) return;
+      ev.preventDefault(); var f = ev.dataTransfer.files[0]; if (f) readSquare(f);
+    });
   }
+  function hasFiles(ev) { return ev.dataTransfer && [].slice.call(ev.dataTransfer.types || []).indexOf('Files') >= 0; }
   function paint(loading) {
     P.el.querySelectorAll('.an-tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-sub') === P.sub ? 'page' : 'false'); });
     var el = P.pane; el.innerHTML = ''; P.refs = {};
     if (loading && !P.row) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
-    if (P.missing) { el.appendChild(setupNote()); return; }
+    if (P.missing) { el.appendChild(setupNote('supabase/payroll.sql')); return; }
     if (P.err) { el.appendChild(h('p', { cls: 'pr-err', role: 'alert', text: P.err })); }
+    if (!P.v2) el.appendChild(h('p', { cls: 'pr-err', text: 'One step left: run supabase/payroll-square.sql in Supabase (SQL Editor → New query → paste → Run) to save kitchen rates, commission and payroll company IDs. Until then they won’t save.' }));
     if (P.sub === 'rates') paintRates(el); else paintWeek(el, loading);
   }
-  function setupNote() {
+  function setupNote(file) {
     return h('div', { cls: 'pr-setup' }, [
       h('h2', { cls: 'an-h2', text: 'One step to switch on Payroll' }),
       h('ol', null, [
         h('li', { text: 'Open Supabase and choose SQL Editor → New query.' }),
-        h('li', { text: 'Paste in supabase/payroll.sql from the eden-admin repository and click Run.' }),
+        h('li', { text: 'Paste in ' + file + ' from the eden-admin repository and click Run. Then do the same with supabase/payroll-square.sql.' }),
         h('li', { text: 'Come back here and reload the page.' })
       ]),
       h('p', { cls: 'an-sub', text: 'Pay rates and payroll are stored so that only you, the Owner, can see them. Managers and staff can’t.' })
@@ -234,54 +348,59 @@
     if (loading) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
 
     var sch = scheduleHours(), ro = final();
-    var src = sch.source === 'published' ? 'the published schedule' : sch.source === 'draft' ? 'the draft schedule (this week isn’t published yet)' : null;
-    el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro
-      ? 'This week is final and locked. Reopen it if something needs to change.'
-      : (P.fresh ? (src ? 'Hours below come from ' + src + '. ' : 'There’s no schedule for this week, so enter hours by hand. ') : '') +
-        'Correct any day that was different from the schedule (late out, sent home early, extra shift). Everything saves automatically.' }));
+    // step 1: Square
+    if (!ro) {
+      var file = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true, on: { change: function () { if (file.files[0]) readSquare(file.files[0]); file.value = ''; } } });
+      el.appendChild(h('div', { cls: 'pr-square' }, [
+        h('div', null, [h('b', { text: P.row.source === 'square' ? 'Hours from Square' + (P.row.square_file ? ': ' + P.row.square_file : '') : 'Bring in hours from Square' }),
+          h('p', { text: P.row.source === 'square' ? 'Imported ' + (P.row.square_at ? new Date(P.row.square_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '') + '. Drop a new file to replace the hours.'
+            : 'In Square: Staff → Time tracking → Timecards, pick this Sunday–Saturday, Export → Export shifts. Then drop the .csv file here.' })]),
+        h('div', { cls: 'pr-acts' }, [file,
+          h('button', { type: 'button', cls: 'ed-btn small', text: 'Choose the Square file…', on: { click: function () { file.click(); } } }),
+          h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Fill from schedule', on: { click: function () {
+            if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
+            if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tips, kitchen hours and adjustments stay as they are.')) return;
+            fillFromSchedule(); saveSoon(); paint(false);
+          } } })])
+      ]));
+    }
+    el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
+      : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
 
-    // tip pool + actions
-    var pool = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: P.row.tip_pool ? r2(P.row.tip_pool).toFixed(2) : '', placeholder: '0.00', disabled: ro, 'aria-label': 'Tip pool for the week' });
-    pool.addEventListener('input', function () { P.row.tip_pool = numIn(pool.value) || 0; refresh(); saveSoon(); });
-    pool.addEventListener('blur', function () { if (numIn(pool.value) != null) pool.value = r2(numIn(pool.value)).toFixed(2); });
-    var acts = h('div', { cls: 'pr-acts' }, [
-      ro ? null : h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Fill from schedule', on: { click: function () {
-        if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
-        if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tip pool and adjustments stay as they are.')) return;
-        fillFromSchedule(); saveSoon(); paint(false);
-      } } }),
-      h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Print summary', on: { click: printSummary } }),
-      h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Download for accountant (.xlsx)', on: { click: download } }),
-      ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
-        : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })
-    ]);
-    el.appendChild(h('div', { cls: 'pr-toolbar' }, [h('label', { cls: 'pr-pool' }, [h('span', { text: 'Tip pool for the week' }), h('span', { cls: 'pr-dollar' }, ['$', pool])]), acts]));
-    P.refs.poolNote = h('p', { cls: 'pr-poolnote' }); el.appendChild(P.refs.poolNote);
+    // step 2: tips by day
+    el.appendChild(tipsTable(ro));
 
-    // timesheet
+    // step 3: timesheet
     var emps = shownEmps();
     if (!emps.length) { el.appendChild(h('p', { cls: 'an-sub', text: 'No employees yet. Add them in Schedule → Employees.' })); return; }
     var head = h('tr', null, [h('th', { cls: 'pr-name', scope: 'col', text: 'Employee' })]
       .concat(DOW.map(function (d, i) { return h('th', { scope: 'col', cls: 'pr-day' }, [d, h('small', { text: md(addDays(wk, i)) })]); }))
-      .concat(['Hours', 'Reg', 'OT', 'Wages', 'Tips', 'Adjustment', 'Gross'].map(function (t) { return h('th', { scope: 'col', cls: 'pr-num', text: t }); })));
+      .concat(['Hours', 'Reg', 'OT', 'Wages', 'Tips', 'Sick · Holiday · Commission', 'Adjustment', 'Gross'].map(function (t) { return h('th', { scope: 'col', cls: 'pr-num', text: t }); })));
     var body = h('tbody');
     emps.forEach(function (e) {
       var r = rowFor(e.id), info = empInfo(e.id), sched = sch.hours[e.id] || [0, 0, 0, 0, 0, 0, 0], ap = sch.approx[e.id] || {};
-      var cells = {}, tr = h('tr');
-      var who = h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: info.name || e.name }), h('small', { text: [info.position, info.pay_type === 'salary' ? 'Salary' : info.rate != null ? money(info.rate) + '/hr' : null, info.tip_eligible ? 'Tip pool' : null].filter(Boolean).join(' · ') })]);
+      var cells = {}, tr = h('tr', { cls: onStaff(e) ? null : 'inactive' });
+      var tags = [info.position, info.pay_type === 'salary' ? 'Salary' : info.rate != null ? money(info.rate) + '/hr' : null, info.tip_eligible ? 'Tip pool' : null, info.commission ? 'Commission' : null, onStaff(e) ? null : 'Not on staff'];
+      var who = h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: info.name || e.name }), h('small', { text: tags.filter(Boolean).join(' · ') })]);
       cells.warn = h('small', { cls: 'pr-warn' }); who.appendChild(cells.warn);
       tr.appendChild(who);
-      cells.days = [];
       DOW.forEach(function (d, i) {
-        var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-h', value: r.hours[i] == null ? '' : String(r.hours[i]), placeholder: '–', disabled: ro,
-          'aria-label': (info.name || e.name) + ', ' + d + ' hours', title: sched[i] ? 'Scheduled: ' + hrs(sched[i]) + ' h' + (ap[i] ? ' (to a server cut or close; check the real out time)' : '') : 'Not scheduled' });
-        var td = h('td', { cls: 'pr-dayc' + (ap[i] ? ' approx' : '') }, [inp]);
-        var mark = function () { var v = numIn(inp.value) || 0; td.classList.toggle('chg', r2(v) !== r2(sched[i])); };
-        inp.addEventListener('input', function () { var v = numIn(inp.value); r.hours[i] = v == null ? null : Math.max(0, Math.min(24, v)); mark(); refresh(); saveSoon(); });
-        inp.addEventListener('keydown', function (ev) { arrowKeys(ev, inp); });
-        mark(); cells.days.push(inp); tr.appendChild(td);
+        var td = dayInput(r.hours, i, (info.name || e.name) + ', ' + d + ' hours', ro, sched[i] ? 'Scheduled: ' + hrs(sched[i]) + ' h' + (ap[i] ? ' (to a server cut or close; check the real out time)' : '') : 'Not scheduled');
+        if (P.row.source !== 'square') { var mark = function () { td.classList.toggle('chg', r2(+r.hours[i] || 0) !== r2(sched[i])); }; td.firstChild.addEventListener('input', mark); mark(); }
+        if (ap[i] && P.row.source !== 'square') td.classList.add('approx');
+        tr.appendChild(td);
       });
       ['total', 'reg', 'ot', 'wages', 'tips'].forEach(function (k) { cells[k] = h('td', { cls: 'pr-num' }); tr.appendChild(cells[k]); });
+      // sick and holiday hours, commission
+      var extra = h('td', { cls: 'pr-extra' });
+      var small = function (k, label, ph, isMoney) {
+        var inp = h('input', { type: 'text', inputmode: 'decimal', cls: isMoney ? 'pr-money pr-sm' : 'pr-h pr-sm', value: r[k] ? (isMoney ? r2(r[k]).toFixed(2) : String(r[k])) : '', placeholder: ph, disabled: ro, title: label, 'aria-label': (info.name || e.name) + ' ' + label });
+        inp.addEventListener('input', function () { r[k] = numIn(inp.value); refresh(); saveSoon(); });
+        return h('label', { cls: 'pr-mini' }, [h('span', { text: label }), inp]);
+      };
+      if (info.pay_type !== 'salary') { extra.appendChild(small('sick', 'Sick h', '–')); extra.appendChild(small('hol', 'Holiday h', '–')); }
+      if (info.commission || r.comm) extra.appendChild(small('comm', 'Commission $', '0.00', true));
+      tr.appendChild(extra);
       var adj = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: r.adj ? r2(r.adj).toFixed(2) : '', placeholder: '0.00', disabled: ro, 'aria-label': (info.name || e.name) + ' adjustment in dollars' });
       var note = h('input', { type: 'text', cls: 'pr-note', value: r.adj_note || '', placeholder: 'What for?', disabled: ro, 'aria-label': (info.name || e.name) + ' adjustment note' });
       adj.addEventListener('input', function () { r.adj = numIn(adj.value); refresh(); saveSoon(); });
@@ -289,24 +408,86 @@
       tr.appendChild(h('td', { cls: 'pr-adj' }, [adj, note]));
       cells.gross = h('td', { cls: 'pr-num pr-gross' }); tr.appendChild(cells.gross);
       P.refs[e.id] = cells; body.appendChild(tr);
+      // kitchen hours at the kitchen rate (Tyler)
+      if (info.kitchen_rate != null || (r.khours && sum(r.khours))) {
+        if (!r.khours) r.khours = seven();
+        var kt = h('tr', { cls: 'pr-kit' }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: '↳ Kitchen' }), h('small', { text: (info.kitchen_rate != null ? money(info.kitchen_rate) + '/hr' : 'No kitchen rate set') + ' · not in the tip pool' })])]);
+        DOW.forEach(function (d, i) { kt.appendChild(dayInput(r.khours, i, (info.name || e.name) + ', ' + d + ' kitchen hours', ro, 'Kitchen hours at ' + (info.kitchen_rate != null ? money(info.kitchen_rate) + '/hr' : 'the kitchen rate'))); });
+        cells.ktotal = h('td', { cls: 'pr-num' }); kt.appendChild(cells.ktotal);
+        kt.appendChild(h('td', { colspan: '2' }));
+        cells.kpay = h('td', { cls: 'pr-num' }); kt.appendChild(cells.kpay);
+        kt.appendChild(h('td', { colspan: '4' }));
+        body.appendChild(kt);
+      }
     });
     var foot = h('tr', { cls: 'pr-total' }, [h('th', { scope: 'row', cls: 'pr-name', text: 'Total' })]);
     P.refs.T = { days: [] };
     DOW.forEach(function () { var c = h('td', { cls: 'pr-num' }); P.refs.T.days.push(c); foot.appendChild(c); });
-    ['total', 'reg', 'ot', 'wages', 'tips', 'adj', 'gross'].forEach(function (k) { P.refs.T[k] = h('td', { cls: 'pr-num' + (k === 'gross' ? ' pr-gross' : '') }); foot.appendChild(P.refs.T[k]); });
+    ['total', 'reg', 'ot', 'wages', 'tips', 'extra', 'adj', 'gross'].forEach(function (k) { P.refs.T[k] = h('td', { cls: 'pr-num' + (k === 'gross' ? ' pr-gross' : '') }); foot.appendChild(P.refs.T[k]); });
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [head]), body, h('tfoot', null, [foot])])]));
-    el.appendChild(h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
+    el.appendChild(P.row.source === 'square' ? h('p', { cls: 'pr-key', text: 'Hours are from the Square file. Hover a day to see what was scheduled.' })
+      : h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
 
-    var notes = h('textarea', { cls: 'pr-notes', rows: '3', placeholder: 'Anything the accountant should know this week (new hire, bonus, unpaid leave…)', disabled: ro, 'aria-label': 'Notes for the accountant' });
+    // step 4: the sheets
+    var notes = h('textarea', { cls: 'pr-notes', rows: '3', placeholder: 'Anything the payroll company should know this week (new hire, bonus, unpaid leave…)', disabled: ro, 'aria-label': 'Notes for payroll' });
     notes.value = P.row.notes || '';
     notes.addEventListener('input', function () { P.row.notes = notes.value; saveSoon(); });
-    el.appendChild(h('label', { cls: 'pr-notesf' }, [h('span', { text: 'Notes for the accountant' }), notes]));
-    el.appendChild(h('p', { cls: 'pr-fine', text: 'Overtime is worked out as hours over 40 in the Sunday–Saturday week at 1.5 × the hourly rate. Salaried employees are shown at their weekly salary with no overtime. Tips are the week’s pool divided by hours worked among tip-pool staff. These are gross amounts before taxes and deductions; your accountant handles withholding and should confirm overtime for anyone paid with a tip credit and for salaried staff.' }));
+    el.appendChild(h('label', { cls: 'pr-notesf' }, [h('span', { text: 'Notes for payroll' }), notes]));
+    el.appendChild(h('div', { cls: 'pr-out' }, [
+      h('div', null, [h('b', { text: 'The two sheets' }), h('p', { text: 'Eden Hospitality Hours goes to the payroll company. Tip Weighted Payroll is for Eden’s records. Only people on staff on the staff site are included.' })]),
+      h('div', { cls: 'pr-acts' }, [
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Eden Hospitality Hours (.xlsx)', on: { click: downloadHours } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Tip Weighted Payroll (.xlsx)', on: { click: downloadTips } }),
+        h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Print summary', on: { click: printSummary } }),
+        ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
+          : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })])
+    ]));
+    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tips: each day’s pool is that day’s cash tips plus credit card tips less the 2.75% card processing fee, divided by the hours tip-pool staff worked that day. Kitchen hours aren’t in the tip pool. Overtime is hours over 40 in the Sunday–Saturday week at 1.5×; with two pay rates it’s paid on the week’s blended rate. Salaried staff are shown at their weekly salary. These are gross amounts before taxes and deductions.' }));
     refresh();
+  }
+  function dayInput(arr, i, label, ro, title) {
+    var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-h', value: arr[i] == null ? '' : String(arr[i]), placeholder: '–', disabled: ro, 'aria-label': label, title: title });
+    inp.addEventListener('input', function () { var v = numIn(inp.value); arr[i] = v == null ? null : Math.max(0, Math.min(24, v)); refresh(); saveSoon(); });
+    inp.addEventListener('keydown', function (ev) { arrowKeys(ev, inp); });
+    return h('td', { cls: 'pr-dayc' }, [inp]);
+  }
+  function tipsTable(ro) {
+    var t = tipsRow(), e = P.eod || {}, box = h('div', { cls: 'pr-tips' });
+    var head = h('tr', null, [h('th', { cls: 'pr-name', scope: 'col', text: 'Tips by day' })].concat(DOW.map(function (d, i) { return h('th', { scope: 'col', cls: 'pr-day' }, [d, h('small', { text: md(addDays(P.week, i)) })]); }), [h('th', { scope: 'col', cls: 'pr-num', text: 'Week' })]));
+    var body = h('tbody'), refs = P.refs.tips = {};
+    function inRow(k, label) {
+      var tr = h('tr', null, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: label })])]);
+      for (var i = 0; i < 7; i++) (function (i) {
+        var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money pr-tipin', value: t[k][i] == null ? '' : r2(t[k][i]).toFixed(2), placeholder: '–', disabled: ro, 'aria-label': label + ', ' + DAYS[i] });
+        inp.addEventListener('input', function () { t[k][i] = numIn(inp.value); (t.src || (t.src = []))[i] = 'manual'; refresh(); saveSoon(); });
+        var td = h('td', { cls: 'pr-dayc' + (t.src && t.src[i] === 'eod' ? ' eod' : '') }, [inp]);
+        tr.appendChild(td);
+      })(i);
+      refs[k + 'T'] = h('td', { cls: 'pr-num' }); tr.appendChild(refs[k + 'T']);
+      body.appendChild(tr);
+    }
+    function calcRow(k, label, strong) {
+      var tr = h('tr', { cls: strong ? 'pr-strong' : null }, [h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: label })])]);
+      refs[k] = []; for (var i = 0; i < 7; i++) { var c = h('td', { cls: 'pr-num' }); refs[k].push(c); tr.appendChild(c); }
+      refs[k + 'T'] = h('td', { cls: 'pr-num' }); tr.appendChild(refs[k + 'T']);
+      body.appendChild(tr);
+    }
+    inRow('cash', 'Cash tips'); inRow('card', 'Credit card tips');
+    calcRow('fee', 'Less 2.75% card fee'); calcRow('pool', 'Tip pool', true); calcRow('hrs', 'Tip-pool hours'); calcRow('rate', 'Per hour', true);
+    box.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table pr-tiptbl' }, [h('thead', null, [head]), body])]));
+    var note = h('p', { cls: 'pr-poolnote' }); refs.note = note;
+    var days = (e.has || []).filter(Boolean).length;
+    box.appendChild(h('div', { cls: 'pr-tipbar' }, [note, ro ? null : h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Refill from End of day reports', on: { click: function () {
+      if (!confirm('Replace the tips above with the tips on this week’s End of day reports?')) return;
+      fillTipsFromEod(); paint(false);
+    } } })]));
+    refs.src = days ? 'Filled from ' + days + ' End of day ' + (days === 1 ? 'report' : 'reports') + ' (shaded). ' : (e.tipsOn === false ? '' : 'No End of day reports with tips this week; enter each day’s tips. ');
+    return box;
   }
   function arrowKeys(ev, inp) {
     if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
-    var all = [].slice.call(P.pane.querySelectorAll('input.pr-h')), i = all.indexOf(inp), step = 7;
+    var all = [].slice.call(P.pane.querySelectorAll('.pr-table:not(.pr-tiptbl) input.pr-h')), i = all.indexOf(inp), step = 7;
+    if (i < 0) return;
     var j = ev.key === 'ArrowUp' ? i - step : i + step;
     if (all[j]) { ev.preventDefault(); all[j].focus(); all[j].select(); }
   }
@@ -316,23 +497,34 @@
       var x = P.refs[L.id]; if (!x) return;
       x.total.textContent = hrs(L.total); x.reg.textContent = hrs(L.reg);
       x.ot.textContent = L.ot ? hrs(L.ot) : '–'; x.ot.classList.toggle('pr-ot', !!L.ot);
-      x.wages.textContent = money(L.regPay + L.otPay + L.salary);
-      x.wages.title = L.info.pay_type === 'salary' ? 'Weekly salary' : money(L.regPay) + ' regular' + (L.ot ? ' + ' + money(L.otPay) + ' overtime' : '');
+      x.wages.textContent = money(L.wages);
+      x.wages.title = L.info.pay_type === 'salary' ? 'Weekly salary' : money(L.regPay) + ' regular' + (L.ot ? ' + ' + money(L.otPay) + ' overtime' : '') + (L.kit ? ' (includes ' + money(L.kitPay) + ' kitchen)' : '');
       x.tips.textContent = L.tips ? money(L.tips) : '–';
+      x.tips.title = L.tips ? money(L.tipsCard) + ' credit card + ' + money(L.tipsCash) + ' cash' : '';
       x.gross.textContent = money(L.gross);
       x.warn.textContent = L.warn ? L.warn + ' — see Pay rates' : '';
+      if (x.ktotal) { x.ktotal.textContent = hrs(L.kit); x.kpay.textContent = L.kit ? money(L.kitPay) : '–'; }
     });
     var T = P.refs.T; if (T) {
       c.T.days.forEach(function (v, i) { T.days[i].textContent = hrs(v); });
       T.total.textContent = hrs(c.T.total); T.reg.textContent = hrs(c.T.reg); T.ot.textContent = hrs(c.T.ot);
-      T.wages.textContent = money(c.T.regPay + c.T.otPay + c.T.salary); T.tips.textContent = money(c.T.tips); T.adj.textContent = money(c.T.adj); T.gross.textContent = money(c.T.gross);
+      T.wages.textContent = money(c.T.wages); T.tips.textContent = money(c.T.tips);
+      T.extra.textContent = [c.T.sick ? hrs(c.T.sick) + ' sick h' : '', c.T.hol ? hrs(c.T.hol) + ' holiday h' : '', c.T.comm ? money(c.T.comm) + ' commission' : ''].filter(Boolean).join(' · ');
+      T.adj.textContent = money(c.T.adj); T.gross.textContent = money(c.T.gross);
     }
-    if (P.refs.poolNote) {
-      var n = c.lines.filter(function (L) { return L.tips; }).length;
-      P.refs.poolNote.textContent = c.unshared ? 'Nobody in the tip pool worked this week, so the pool isn’t split yet. Check “Tip pool” for the right people in Pay rates.'
-        : c.pool ? money(c.pool) + ' split by ' + hrs(c.tipHours) + ' hours among ' + n + ' tip-pool ' + (n === 1 ? 'employee' : 'employees') + ' (' + money(c.pool / (c.tipHours || 1)) + ' an hour).'
-        : '';
-      P.refs.poolNote.classList.toggle('pr-warn', !!c.unshared);
+    var R = P.refs.tips; if (R) {
+      var tc = 0, tk = 0;
+      c.D.forEach(function (d, i) {
+        R.fee[i].textContent = d.fee ? '−' + money(d.fee) : '–'; R.pool[i].textContent = d.pool ? money(d.pool) : '–';
+        R.hrs[i].textContent = c.tipHrs[i] ? hrs(c.tipHrs[i]) : '–'; R.rate[i].textContent = c.tipHrs[i] && d.pool ? money(d.pool / c.tipHrs[i]) : '–';
+        R.pool[i].classList.toggle('pr-warn', c.unshared.indexOf(i) >= 0);
+        tc += d.cash; tk += d.card;
+      });
+      var th = sum(c.tipHrs), fee = sum(c.D.map(function (d) { return d.fee; }));
+      R.cashT.textContent = money(tc); R.cardT.textContent = money(tk); R.feeT.textContent = fee ? '−' + money(fee) : '–'; R.poolT.textContent = money(c.pool);
+      R.hrsT.textContent = hrs(th); R.rateT.textContent = th ? money(c.pool / th) : '–';
+      R.note.textContent = R.src + (c.unshared.length ? 'Tips on ' + c.unshared.map(function (i) { return DAYS[i]; }).join(', ') + ' but nobody in the tip pool has hours that day, so they aren’t split. Check the hours, or “Tip pool” in Pay rates.' : '');
+      R.note.classList.toggle('pr-warn', !!c.unshared.length);
     }
   }
   function go(d) { flush().then(function () { P.week = sunday(d); P.row = null; load(); }); }
@@ -343,7 +535,7 @@
     if (!confirm('Finalize the week of ' + weekLabel(P.week) + '? Gross pay ' + money(c.T.gross) + '. The hours and pay rates are locked as they are now; you can reopen it later.')) return;
     c.lines.forEach(function (L) {
       var r = rowFor(L.id), i = L.info;
-      r.snap = { name: i.name, position: i.position || '', pay_type: i.pay_type, rate: i.rate, weekly_salary: i.weekly_salary, tip_eligible: !!i.tip_eligible };
+      r.snap = { name: i.name, position: i.position || '', pay_type: i.pay_type, rate: i.rate, weekly_salary: i.weekly_salary, tip_eligible: !!i.tip_eligible, kitchen_rate: i.kitchen_rate, commission: !!i.commission };
     });
     P.row.status = 'final'; P.row.finalized_at = new Date().toISOString(); P.fresh = false;
     saveWeek(); paint(false);
@@ -351,70 +543,273 @@
   function reopen() {
     if (!confirm('Reopen this week so it can be changed? Current pay rates will be used again until you finalize it.')) return;
     P.row.status = 'draft'; P.row.finalized_at = null;
-    Object.keys(P.row.rows).forEach(function (id) { delete P.row.rows[id].snap; });
+    empIds().forEach(function (id) { delete P.row.rows[id].snap; });
     saveWeek(); paint(false);
   }
 
-  /* ----- for the accountant ----- */
-  function payTypeText(i) { return i.pay_type === 'salary' ? 'Salary' : 'Hourly'; }
-  function rateText(i) { return i.pay_type === 'salary' ? (i.weekly_salary == null ? '' : money(i.weekly_salary) + '/wk') : (i.rate == null ? '' : money(i.rate) + '/hr'); }
-  function fileBase() { return 'Eden payroll ' + iso(P.week) + ' to ' + iso(addDays(P.week, 6)); }
+  /* ---------------- Square: "Export shifts" from Staff → Time tracking → Timecards ---------------- */
+  function parseCSV(text) {
+    var rows = [], row = [], f = '', q = false, i, c;
+    text = String(text).replace(/^﻿/, '');
+    for (i = 0; i < text.length; i++) {
+      c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true;
+      else if (c === ',') { row.push(f); f = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+      else f += c;
+    }
+    if (f !== '' || row.length) { row.push(f); rows.push(row); }
+    return rows.filter(function (r) { return r.some(function (x) { return String(x).trim(); }); });
+  }
+  function parseDate(s) {
+    s = String(s || '').trim(); var m;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) return new Date(+m[1], +m[2] - 1, +m[3]);
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(s))) return new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[1] - 1, +m[2]);
+    var t = Date.parse(s); if (!isNaN(t)) { var d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+    return null;
+  }
+  function parseTime(s) {   // minutes after midnight
+    var m = /(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap])?\.?m?\.?/i.exec(String(s || '')); if (!m) return null;
+    var hh = +m[1] % 12; if (!m[3]) hh = +m[1]; else if (/p/i.test(m[3])) hh += 12;
+    return hh * 60 + +m[2];
+  }
+  function hoursVal(s) {   // "7.5", "7:30", "7h 30m"
+    s = String(s || '').trim(); var m;
+    if (!s) return null;
+    if ((m = /^(\d+):(\d{2})$/.exec(s))) return +m[1] + +m[2] / 60;
+    if ((m = /(\d+(?:\.\d+)?)\s*h(?:\D+(\d+)\s*m)?/i.exec(s))) return +m[1] + (m[2] ? +m[2] / 60 : 0);
+    var n = parseFloat(s.replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : null;
+  }
+  function squareShifts(text) {
+    var rows = parseCSV(text); if (rows.length < 2) throw new Error('That file is empty.');
+    var hi = 0; for (var k = 0; k < Math.min(rows.length, 8); k++) { if (rows[k].some(function (x) { return /clock|team member|employee|hours/i.test(x); })) { hi = k; break; } }
+    var H = rows[hi].map(function (x) { return String(x).trim().toLowerCase(); });
+    var col = function (re, not) { for (var i = 0; i < H.length; i++) if (re.test(H[i]) && !(not && not.test(H[i]))) return i; return -1; };
+    var C = {
+      first: col(/first name/), last: col(/last name/),
+      name: col(/team member|employee|^name$|staff|^member$/, /\bid\b|number|first|last|email|phone/),
+      date: col(/(clock[\s-]*in|start|shift).*date|^date$|^in date$/), inT: col(/(clock[\s-]*in|start).*time|^in$|^time in$/),
+      outD: col(/(clock[\s-]*out|end).*date/), outT: col(/(clock[\s-]*out|end).*time|^out$|^time out$/),
+      paid: col(/paid hours|total hours|hours worked|^hours$|total paid|^duration$/, /unpaid|regular|overtime|double|break/),
+      reg: col(/regular hours|^regular$/), ot: col(/overtime hours|^overtime$/), dt: col(/double/),
+      brk: col(/unpaid break|break/), job: col(/job|role|position/)
+    };
+    if (C.date < 0) C.date = col(/date/);
+    if (C.name < 0 && C.first < 0) throw new Error('Couldn’t find the team member column. Make sure it’s Square’s “Export shifts” file.');
+    if (C.date < 0) throw new Error('Couldn’t find the date column. Make sure it’s Square’s “Export shifts” file.');
+    var out = [];
+    rows.slice(hi + 1).forEach(function (r) {
+      var name = C.first >= 0 ? (String(r[C.first] || '') + ' ' + String(C.last >= 0 ? r[C.last] || '' : '')).trim() : String(r[C.name] || '').trim();
+      if (!name || /^total/i.test(name)) return;
+      var d = parseDate(r[C.date]); if (!d) return;
+      var hrsv = C.paid >= 0 ? hoursVal(r[C.paid]) : null;
+      if (hrsv == null && C.reg >= 0) hrsv = (hoursVal(r[C.reg]) || 0) + (C.ot >= 0 ? hoursVal(r[C.ot]) || 0 : 0) + (C.dt >= 0 ? hoursVal(r[C.dt]) || 0 : 0);
+      if (hrsv == null && C.inT >= 0 && C.outT >= 0) {
+        var a = parseTime(r[C.inT]), b = parseTime(r[C.outT]);
+        if (a != null && b != null) {
+          var od = C.outD >= 0 ? parseDate(r[C.outD]) : null, span = b - a + (od ? Math.round((od - d) / 864e5) * 1440 : (b < a ? 1440 : 0));
+          var br = C.brk >= 0 ? hoursVal(r[C.brk]) || 0 : 0; if (br > 12) br = br / 60;   // minutes or hours
+          hrsv = span / 60 - br;
+        }
+      }
+      if (hrsv == null || hrsv <= 0) return;
+      out.push({ name: name, date: d, hours: r2(hrsv), job: C.job >= 0 ? String(r[C.job] || '').trim() : '' });
+    });
+    if (!out.length) throw new Error('Couldn’t find any shifts with hours in that file.');
+    return out;
+  }
+  function matchEmp(name) {
+    var n = String(name).toLowerCase().trim(), list = P.emps.filter(onStaff);
+    var hit = list.filter(function (e) { var r = P.rates[e.id] || {}; return r.square_name && r.square_name.toLowerCase().trim() === n; })[0]
+      || list.filter(function (e) { return String(e.name).toLowerCase().trim() === n; })[0]
+      || list.filter(function (e) { return sameName(e.name, name); })[0];
+    return hit ? hit.id : '';
+  }
+  function readSquare(f) {
+    var rd = new FileReader();
+    rd.onload = function () {
+      var shifts; try { shifts = squareShifts(rd.result); } catch (e) { alert(e.message); return; }
+      importDialog(shifts, f.name);
+    };
+    rd.onerror = function () { alert('That file couldn’t be read.'); };
+    rd.readAsText(f);
+  }
+  function importDialog(shifts, fname) {
+    var wk = P.week, people = {}, outside = 0, dates = [];
+    shifts.forEach(function (s) {
+      var i = Math.round((s.date - wk) / 864e5);
+      dates.push(s.date);
+      if (i < 0 || i > 6) { outside++; return; }
+      var p = people[s.name] || (people[s.name] = { name: s.name, days: [0, 0, 0, 0, 0, 0, 0], kdays: [0, 0, 0, 0, 0, 0, 0], jobs: {}, emp: matchEmp(s.name) });
+      var kitchen = KITCHEN_JOB.test(s.job);
+      (kitchen ? p.kdays : p.days)[i] = r2((kitchen ? p.kdays : p.days)[i] + s.hours);
+      if (s.job) p.jobs[s.job] = 1;
+    });
+    var names = Object.keys(people).sort();
+    var dlg = h('dialog', { cls: 'pr-dlg', 'aria-label': 'Import from Square' }), staff = P.emps.filter(onStaff).sort(function (a, b) { return String(a.name).localeCompare(b.name); });
+    var first = new Date(Math.min.apply(null, dates)), last = new Date(Math.max.apply(null, dates));
+    var intro = names.length ? 'Found ' + shifts.length + ' shifts for ' + names.length + ' people in ' + fname + '.' : 'None of the shifts in ' + fname + ' fall in the week of ' + weekLabel(wk) + '.';
+    var kids = [h('h2', { text: 'Hours from Square' }), h('p', { text: intro })];
+    if (outside) kids.push(h('p', { cls: 'pr-warn', text: outside + ' shift' + (outside === 1 ? ' is' : 's are') + ' outside this week (the file runs ' + md(first) + ' to ' + md(last) + ') and will be left out.' + (!names.length ? ' Go to the right week first, or export Sunday to Saturday.' : '') }));
+    var tb = h('tbody');
+    names.forEach(function (n) {
+      var p = people[n], sel = h('select', { 'aria-label': 'Staff member for ' + n }, [h('option', { value: '', text: '— Leave out —' })].concat(staff.map(function (e) { return h('option', { value: e.id, text: e.name }); })));
+      sel.value = p.emp; sel.addEventListener('change', function () { p.emp = sel.value; p.picked = true; tr.classList.toggle('pr-unm', !p.emp); });
+      var kit = sum(p.kdays), main = sum(p.days);
+      var tr = h('tr', { cls: p.emp ? null : 'pr-unm' }, [h('td', null, [h('b', { text: n }), Object.keys(p.jobs).length ? h('small', { text: Object.keys(p.jobs).join(', ') }) : null]), h('td', null, [sel]),
+        h('td', { cls: 'pr-num', text: hrs(main + kit) + (kit ? ' (' + hrs(kit) + ' kitchen)' : '') })]);
+      tb.appendChild(tr);
+    });
+    if (names.length) {
+      kids.push(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [h('tr', null, [h('th', { text: 'In Square' }), h('th', { text: 'Staff member' }), h('th', { cls: 'pr-num', text: 'Hours' })])]), tb])]));
+      if (names.some(function (n) { return !people[n].emp; })) kids.push(h('p', { cls: 'pr-warn', text: 'Pick the staff member for anyone highlighted, or leave them out. Your picks are remembered for next time.' }));
+    }
+    var clear = h('input', { type: 'checkbox', checked: true });
+    if (names.length) kids.push(h('label', { cls: 'pr-chk' }, [clear, ' Clear hours for anyone who isn’t in the file (Square is the record of who worked)']));
+    var useBtn = h('button', { type: 'button', cls: 'ed-btn small', text: 'Use these hours', disabled: !names.length });
+    kids.push(h('div', { cls: 'pr-acts' }, [useBtn, h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Cancel', on: { click: function () { dlg.close(); dlg.remove(); } } })]));
+    kids.forEach(function (k) { dlg.appendChild(k); });
+    useBtn.addEventListener('click', function () {
+      var got = {};
+      names.forEach(function (n) {
+        var p = people[n]; if (!p.emp) return;
+        var g = got[p.emp] || (got[p.emp] = { days: [0, 0, 0, 0, 0, 0, 0], kdays: [0, 0, 0, 0, 0, 0, 0] });
+        var info = empInfo(p.emp), toKitchen = info.kitchen_rate != null;
+        for (var i = 0; i < 7; i++) { g.days[i] = r2(g.days[i] + p.days[i] + (toKitchen ? 0 : p.kdays[i])); if (toKitchen) g.kdays[i] = r2(g.kdays[i] + p.kdays[i]); }
+        if (p.picked && P.v2) { var r = P.rates[p.emp] || (P.rates[p.emp] = { emp: p.emp, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' }); r.square_name = n; saveRate(p.emp); }
+      });
+      shownEmps().forEach(function (e) {
+        var r = rowFor(e.id), g = got[e.id];
+        if (g) { r.hours = g.days.map(function (x) { return x || null; }); if (sum(g.kdays) || r.khours) r.khours = g.kdays.map(function (x) { return x || null; }); }
+        else if (clear.checked) { r.hours = seven(); if (r.khours) r.khours = seven(); }
+      });
+      Object.keys(got).forEach(function (id) { if (!P.row.rows[id]) { var r = rowFor(id); r.hours = got[id].days.map(function (x) { return x || null; }); } });
+      P.row.source = 'square'; P.row.square_file = fname; P.row.square_at = new Date().toISOString();
+      dlg.close(); dlg.remove(); saveSoon(); paint(false);
+      status('Hours filled in from Square for ' + Object.keys(got).length + ' people.', 'ok');
+    });
+    document.body.appendChild(dlg);
+    try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+  }
+
+  /* ---------------- the two sheets ---------------- */
+  function fileWeek() { return iso(P.week) + ' to ' + iso(addDays(P.week, 6)); }
   function loadXLSX() {
     if (window.XLSX) return Promise.resolve();
     return new Promise(function (res, rej) { var s = document.createElement('script'); s.src = SHEETJS; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
   }
-  function download() {
-    var c = calc(), wk = P.week;
-    var dayHead = DOW.map(function (d, i) { return d + ' ' + md(addDays(wk, i)); });
-    var head = ['Employee', 'Position', 'Pay type', 'Hourly rate', 'Weekly salary'].concat(dayHead, ['Total hours', 'Regular hours', 'Overtime hours', 'Regular pay', 'Overtime pay', 'Salary', 'Tips (pool)', 'Adjustment', 'Adjustment note', 'Gross pay']);
-    var rows = c.lines.map(function (L) {
-      var i = L.info;
-      return [i.name, i.position || '', payTypeText(i), i.pay_type === 'salary' ? '' : (i.rate == null ? '' : i.rate), i.pay_type === 'salary' ? (i.weekly_salary == null ? '' : i.weekly_salary) : '']
-        .concat(L.days.map(function (x) { return r2(x); }), [L.total, r2(L.reg), L.ot, L.regPay, L.otPay, L.salary, L.tips, L.adj, L.adjNote, L.gross]);
+  function staffLines(c) { return c.lines.filter(function (L) { return onStaff(L.e); }); }
+  function fmtCells(ws, X, cells, z) { cells.forEach(function (a) { if (ws[a] && typeof ws[a].v === 'number') ws[a].z = z; }); }
+  // For the payroll company: their sheet, their IDs and spellings, people on staff only
+  function downloadHours() {
+    var c = calc(), lines = staffLines(c), used = {}, rows = [], warn = [];
+    PAYCO.forEach(function (p) {
+      var L = lines.filter(function (x) { var pc = payco(x.id); return !used[x.id] && (pc.id === p[0] || (!pc.id && pc.name === p[1])); })[0];
+      if (!L) return;   // not on staff on the staff site
+      used[L.id] = 1; rows.push([p[0], p[1], L]);
     });
-    var tot = ['Total', '', '', '', ''].concat(c.T.days, [c.T.total, r2(c.T.reg), c.T.ot, c.T.regPay, c.T.otPay, c.T.salary, c.T.tips, c.T.adj, '', c.T.gross]);
-    var top = [['Eden payroll, week of ' + weekLabel(wk) + ' (Sunday–Saturday)'], ['Status: ' + (final() ? 'Final' : 'Draft, not finalized')], []];
-    var tipRows = [['Tip pool, week of ' + weekLabel(wk)], [], ['Pool total', c.pool], ['Hours worked by tip-pool staff', c.tipHours], ['Per hour', c.tipHours ? r2(c.pool / c.tipHours) : 0], [], ['Employee', 'Hours', 'Share']]
-      .concat(c.lines.filter(function (L) { return L.info.tip_eligible && L.total > 0; }).map(function (L) { return [L.info.name, L.total, L.tips]; }));
-    var note = [[], ['Notes'], [P.row.notes || '']];
-    var fine = [[], ['Gross pay before taxes and deductions. Overtime: hours over 40 in the week at 1.5x the hourly rate. Salaried staff: weekly salary, no overtime computed.']];
+    lines.forEach(function (L) {   // on staff but not on the payroll company's sheet yet
+      if (used[L.id]) return;
+      if (!(L.total || L.tips || L.comm || L.salary || L.sick || L.hol)) return;
+      var pc = payco(L.id); rows.push([pc.id || '', pc.name || L.info.name, L]); if (!pc.id) warn.push(L.info.name);
+    });
+    var aoa = [['Employee ID', 'Employee Name', 'REGULAR', 'OVERTIME', 'SICK', 'HOLIDAY', 'TIPS CC', 'TIPS PAID', 'Comission'], []];
+    rows.forEach(function (x) {
+      var L = x[2], reg = L.info.pay_type === 'salary' ? (L.reg || OT_AFTER) : L.reg;
+      aoa.push([x[0], x[1], reg || '', L.ot || '', L.sick || '', L.hol || '', L.tipsCard || '', L.tipsCash || '', L.comm || '']);
+    });
+    var first = 3, last = 2 + rows.length;
+    aoa.push([], [], []);
+    var kn = rows.filter(function (x) { return x[2].kit; }).map(function (x) { var L = x[2]; return x[1] + ': ' + hrs(L.kit) + ' of the ' + hrs(L.total) + ' hours are kitchen hours at ' + money(L.info.kitchen_rate) + '/hr; the other ' + hrs(L.main) + ' at ' + money(L.info.rate) + '/hr.'; });
+    var tot = ['', ''].concat(['C', 'D', 'E', 'F', 'G', 'H', 'I'].map(function (col) { return { t: 'n', v: 0, f: 'SUM(' + col + first + ':' + col + Math.max(last, first) + ')' }; }));
+    aoa.push(tot);
+    if (kn.length || P.row.notes) { aoa.push([]); kn.forEach(function (t) { aoa.push(['', t]); }); if (P.row.notes) aoa.push(['', 'Notes: ' + P.row.notes]); }
     loadXLSX().then(function () {
-      var X = window.XLSX, wb = X.utils.book_new();
-      var aoa = top.concat([head], rows, [tot], note, fine), ws = X.utils.aoa_to_sheet(aoa);
-      var moneyCols = [3, 4, 15, 16, 17, 18, 19, 21], first = top.length + 1, last = first + rows.length;
-      for (var r = first; r <= last; r++) moneyCols.forEach(function (col) { var a = X.utils.encode_cell({ r: r, c: col }); if (ws[a] && typeof ws[a].v === 'number') ws[a].z = '$#,##0.00'; });
-      ws['!cols'] = head.map(function (t, i) { return { wch: i === 0 ? 22 : i === 1 ? 16 : i === 20 ? 24 : Math.max(9, String(t).length + 1) }; });
-      X.utils.book_append_sheet(wb, ws, 'Payroll');
-      var ws2 = X.utils.aoa_to_sheet(tipRows); ws2['!cols'] = [{ wch: 30 }, { wch: 10 }, { wch: 12 }];
-      X.utils.book_append_sheet(wb, ws2, 'Tip pool');
-      X.writeFile(wb, fileBase() + '.xlsx');
-    }, function () {   // spreadsheet library couldn't load: a CSV opens in Excel too
-      var csv = top.concat([head], rows, [tot], note).map(function (r) { return r.map(function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
-      var a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: fileBase() + '.csv' });
-      document.body.appendChild(a); a.click(); a.remove();
-      status('Downloaded as a CSV file (opens in Excel).');
-    });
+      var X = window.XLSX, wb = X.utils.book_new(), ws = X.utils.aoa_to_sheet(aoa), cells = [];
+      for (var r = first; r <= last + 4; r++) ['G', 'H', 'I'].forEach(function (col) { cells.push(col + r); });
+      fmtCells(ws, X, cells, '$#,##0.00');
+      ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 11 }, { wch: 8 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }];
+      X.utils.book_append_sheet(wb, ws, 'Sheet1');
+      X.writeFile(wb, 'Eden Hospitality Hours ' + fileWeek() + '.xlsx');
+      if (warn.length) status('Downloaded. Add a payroll company ID in Pay rates for: ' + warn.join(', ') + '.', 'err');
+    }, function () { status('Couldn’t load the spreadsheet tool. Check your connection and try again.', 'err'); });
   }
+  // For Eden's records: the Tip Weighted Payroll layout
+  function downloadTips() {
+    var c = calc(), lines = staffLines(c), wk = P.week, D = c.D, e = P.eod || { sales: [0, 0, 0, 0, 0, 0, 0] };
+    var dayHead = DAYS.map(function (d, i) { return d + ' ' + md(addDays(wk, i)); });
+    var cols = ['Total Regular', 'Total OT', 'Tips', 'Commission', 'Wages', 'Total Hours'];
+    var aoa = [['Eden · Tip Weighted Payroll · week of ' + weekLabel(wk)], ['Payroll'], ['', 'Rate', 'Hours']], money$ = [], rowsOf = {};
+    var put = function (row, moneyIdx) { aoa.push(row); var r = aoa.length; (moneyIdx || []).forEach(function (i) { money$.push(X_(i) + r); }); return r; };
+    var kitchen = lines.filter(function (L) { return !L.info.tip_eligible && !L.info.commission && (L.total || L.salary || L.wages); });
+    var wait = lines.filter(function (L) { return (L.info.tip_eligible || L.info.commission) && (L.total || L.tips || L.comm); });
+    put(['Kitchen', ''].concat(dayHead, cols));
+    kitchen.forEach(function (L) {
+      var i = L.info, rate = i.pay_type === 'salary' ? i.weekly_salary : i.rate;
+      put([sheetName(L), rate == null ? '' : rate].concat(L.days.map(function (x) { return x || ''; }), [r2(L.reg - L.kit) || (i.pay_type === 'salary' ? '' : 0), L.ot, '', '', r2(L.wages - L.kitPay), r2(L.total - L.kit)]), [1, 11, 12, 13]);
+      if (L.kit) put([sheetName(L) + ' (kitchen)', i.kitchen_rate == null ? '' : i.kitchen_rate].concat(L.kdays.map(function (x) { return x || ''; }), [L.kit, '', '', '', L.kitPay, L.kit]), [1, 11, 12, 13]);
+    });
+    put(['Waitstaff', ''].concat(dayHead, cols));
+    wait.forEach(function (L) {
+      var i = L.info;
+      put([sheetName(L), i.rate == null ? '' : i.rate].concat(L.days.map(function (x) { return x || ''; }), [L.reg, L.ot, L.tips, L.comm || '', L.wages, L.total]), [1, 11, 12, 13]);
+    });
+    aoa.push([]);
+    put(['Tips Collected', ''].concat(dayHead, ['Total']));
+    put(['Cash tips', ''].concat(D.map(function (d) { return d.cash; }), [sum(D.map(function (d) { return d.cash; }))]), [2, 3, 4, 5, 6, 7, 8, 9]);
+    put(['Credit card tips', ''].concat(D.map(function (d) { return d.card; }), [sum(D.map(function (d) { return d.card; }))]), [2, 3, 4, 5, 6, 7, 8, 9]);
+    put(['CC Fees 2.75%', ''].concat(D.map(function (d) { return d.fee ? -d.fee : 0; }), [-sum(D.map(function (d) { return d.fee; }))]), [2, 3, 4, 5, 6, 7, 8, 9]);
+    put(['Tip Pool Daily Total', ''].concat(D.map(function (d) { return d.pool; }), [c.pool]), [2, 3, 4, 5, 6, 7, 8, 9]);
+    put(['Tipped Hours', ''].concat(c.tipHrs, [sum(c.tipHrs)]));
+    put(['Tips / Hour', ''].concat(D.map(function (d, i) { return c.tipHrs[i] ? r2(d.pool / c.tipHrs[i]) : 0; }), [sum(c.tipHrs) ? r2(c.pool / sum(c.tipHrs)) : 0]), [2, 3, 4, 5, 6, 7, 8, 9]);
+    aoa.push([]);
+    put(['Tip shares', ''].concat(dayHead, ['Total', 'Credit card', 'Cash']));
+    wait.filter(function (L) { return L.info.tip_eligible; }).forEach(function (L) { put([sheetName(L), ''].concat(L.tipDays, [L.tips, L.tipsCard, L.tipsCash]), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]); });
+    aoa.push([]);
+    var sales = sum(e.sales), wages = r2(c.T.wages + c.T.sickPay + c.T.holPay);
+    put(['Total Wages', '', wages], [2]);
+    put(['Total Tips', '', staffLines(c).reduce(function (a, L) { return r2(a + L.tips); }, 0)], [2]);
+    put(['Total Commission', '', c.T.comm], [2]);
+    put(['Net Sales', '', sales || ''], [2]);
+    var pct = put(['Labor Percentage', '', sales ? wages / sales : '']);
+    if (P.row.notes) { aoa.push([]); aoa.push(['Notes', P.row.notes]); }
+    loadXLSX().then(function () {
+      var X = window.XLSX, wb = X.utils.book_new(), ws = X.utils.aoa_to_sheet(aoa);
+      fmtCells(ws, X, money$, '$#,##0.00'); fmtCells(ws, X, ['C' + pct], '0.00%');
+      ws['!cols'] = [{ wch: 24 }, { wch: 10 }].concat(DAYS.map(function () { return { wch: 12 }; }), [{ wch: 13 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 12 }]);
+      X.utils.book_append_sheet(wb, ws, 'Tip Weighted Payroll');
+      X.writeFile(wb, 'Tip Weighted Payroll ' + fileWeek() + '.xlsx');
+    }, function () { status('Couldn’t load the spreadsheet tool. Check your connection and try again.', 'err'); });
+  }
+  function sheetName(L) {   // the payroll company's spelling, as First Last
+    var pc = payco(L.id), n = pc.name; if (!n) return L.info.name;
+    var p = n.split(','); return p.length > 1 ? (p.slice(1).join(',').trim() + ' ' + p[0].trim()).trim() : n.trim();
+  }
+  function X_(i) { return String.fromCharCode(65 + i); }   // column letter (A–Z is plenty here)
+
+  function rateText(i) { return i.pay_type === 'salary' ? (i.weekly_salary == null ? '' : money(i.weekly_salary) + '/wk') : (i.rate == null ? '' : money(i.rate) + '/hr') + (i.kitchen_rate != null ? ', kitchen ' + money(i.kitchen_rate) + '/hr' : ''); }
   function printSummary() {
     var c = calc(), wk = P.week, old = document.getElementById('prPrint'); if (old) old.remove();
-    var cols = ['Employee', 'Pay', 'Hours', 'Reg', 'OT', 'Regular pay', 'OT pay', 'Salary', 'Tips', 'Adjustment', 'Gross'];
+    var cols = ['Employee', 'Pay', 'Hours', 'Reg', 'OT', 'Wages', 'Sick/Hol', 'Commission', 'Tips (card)', 'Tips (cash)', 'Adjustment', 'Gross'];
     var tbl = h('table', null, [h('thead', null, [h('tr', null, cols.map(function (t) { return h('th', { text: t }); }))]),
       h('tbody', null, c.lines.map(function (L) {
         return h('tr', null, [h('td', null, [h('b', { text: L.info.name }), L.info.position ? h('small', { text: ' ' + L.info.position }) : null]), h('td', { text: rateText(L.info) }),
-          h('td', { text: hrs(L.total) }), h('td', { text: hrs(L.reg) }), h('td', { text: L.ot ? hrs(L.ot) : '' }), h('td', { text: L.regPay ? money(L.regPay) : '' }), h('td', { text: L.otPay ? money(L.otPay) : '' }),
-          h('td', { text: L.salary ? money(L.salary) : '' }), h('td', { text: L.tips ? money(L.tips) : '' }), h('td', { text: L.adj ? money(L.adj) + (L.adjNote ? ' (' + L.adjNote + ')' : '') : '' }), h('td', null, [h('b', { text: money(L.gross) })])]);
+          h('td', { text: hrs(L.total) + (L.kit ? ' (' + hrs(L.kit) + ' kitchen)' : '') }), h('td', { text: hrs(L.reg) }), h('td', { text: L.ot ? hrs(L.ot) : '' }), h('td', { text: L.wages ? money(L.wages) : '' }),
+          h('td', { text: L.sickPay + L.holPay ? money(L.sickPay + L.holPay) : '' }), h('td', { text: L.comm ? money(L.comm) : '' }),
+          h('td', { text: L.tipsCard ? money(L.tipsCard) : '' }), h('td', { text: L.tipsCash ? money(L.tipsCash) : '' }), h('td', { text: L.adj ? money(L.adj) + (L.adjNote ? ' (' + L.adjNote + ')' : '') : '' }), h('td', null, [h('b', { text: money(L.gross) })])]);
       })),
-      h('tfoot', null, [h('tr', null, [h('td', { text: 'Total' }), h('td'), h('td', { text: hrs(c.T.total) }), h('td', { text: hrs(c.T.reg) }), h('td', { text: hrs(c.T.ot) }), h('td', { text: money(c.T.regPay) }), h('td', { text: money(c.T.otPay) }), h('td', { text: money(c.T.salary) }), h('td', { text: money(c.T.tips) }), h('td', { text: money(c.T.adj) }), h('td', { text: money(c.T.gross) })])])]);
+      h('tfoot', null, [h('tr', null, [h('td', { text: 'Total' }), h('td'), h('td', { text: hrs(c.T.total) }), h('td', { text: hrs(c.T.reg) }), h('td', { text: hrs(c.T.ot) }), h('td', { text: money(c.T.wages) }), h('td', { text: money(c.T.sickPay + c.T.holPay) }), h('td', { text: money(c.T.comm) }), h('td', { text: money(c.T.tipsCard) }), h('td', { text: money(c.T.tipsCash) }), h('td', { text: money(c.T.adj) }), h('td', { text: money(c.T.gross) })])])]);
     var days = h('table', { cls: 'pp-days' }, [h('thead', null, [h('tr', null, [h('th', { text: 'Hours by day' })].concat(DOW.map(function (d, i) { return h('th', { text: d + ' ' + md(addDays(wk, i)) }); }), [h('th', { text: 'Total' })]))]),
-      h('tbody', null, c.lines.map(function (L) { return h('tr', null, [h('td', { text: L.info.name })].concat(L.days.map(function (x) { return h('td', { text: x ? hrs(x) : '' }); }), [h('td', { text: hrs(L.total) })])); }))]);
+      h('tbody', null, c.lines.map(function (L) { return h('tr', null, [h('td', { text: L.info.name })].concat(L.days.map(function (x, i) { var t = x + L.kdays[i]; return h('td', { text: t ? hrs(t) : '' }); }), [h('td', { text: hrs(L.total) })])); }))]);
     var box = h('div', { id: 'prPrint' }, [
       h('h1', { text: 'Eden · Payroll summary' }),
       h('p', { text: 'Week of ' + weekLabel(wk) + ' (Sunday–Saturday) · ' + (final() ? 'Final' + (P.row.finalized_at ? ', ' + new Date(P.row.finalized_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '') : 'Draft, not finalized') }),
       tbl,
-      h('p', { text: c.pool ? 'Tip pool ' + money(c.pool) + ', split by ' + hrs(c.tipHours) + ' hours among tip-pool staff (' + money(c.pool / (c.tipHours || 1)) + ' an hour).' : 'No tip pool this week.' }),
+      h('p', { text: c.pool ? 'Tip pool ' + money(c.pool) + ' after the 2.75% card fee, split each day by hours among tip-pool staff.' : 'No tips this week.' }),
       days,
       P.row.notes ? h('div', null, [h('h2', { text: 'Notes' }), h('p', { cls: 'pp-pre', text: P.row.notes })]) : null,
-      h('p', { cls: 'pp-fine', text: 'Gross pay before taxes and deductions. Overtime: hours over 40 in the week at 1.5 × the hourly rate. Salaried staff: weekly salary, no overtime computed. Printed ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '.' })
+      h('p', { cls: 'pp-fine', text: 'Gross pay before taxes and deductions. Overtime: hours over 40 in the week at 1.5×. Printed ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '.' })
     ]);
     document.body.appendChild(box); document.body.classList.add('pr-printing');
     var done = function () { document.body.classList.remove('pr-printing'); box.remove(); window.removeEventListener('afterprint', done); };
@@ -438,19 +833,33 @@
       sync();
       type.addEventListener('change', function () { r.pay_type = type.value; sync(); saveRate(e.id); });
       amt.addEventListener('change', function () { var v = numIn(amt.value); if (v != null && v < 0) v = null; if (type.value === 'salary') r.weekly_salary = v; else r.rate = v; amt.value = v == null ? '' : r2(v).toFixed(2); saveRate(e.id); });
+      var krate = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: r.kitchen_rate == null ? '' : r2(r.kitchen_rate).toFixed(2), placeholder: '–', 'aria-label': e.name + ' kitchen rate per hour' });
+      krate.addEventListener('change', function () { var v = numIn(krate.value); r.kitchen_rate = v == null || v < 0 ? null : v; krate.value = r.kitchen_rate == null ? '' : r2(r.kitchen_rate).toFixed(2); saveRate(e.id); });
       var tip = h('input', { type: 'checkbox', 'aria-label': e.name + ' shares the tip pool' }); tip.checked = !!r.tip_eligible;
       tip.addEventListener('change', function () { r.tip_eligible = tip.checked; saveRate(e.id); });
+      var comm = h('input', { type: 'checkbox', 'aria-label': e.name + ' is paid commission' }); comm.checked = !!r.commission;
+      comm.addEventListener('change', function () { r.commission = comm.checked; saveRate(e.id); });
+      var pc = payco(e.id);
+      var pid = h('input', { type: 'text', cls: 'pr-pid', value: r.payroll_id || '', placeholder: pc.auto ? pc.id : 'ID', 'aria-label': e.name + ' payroll company ID' });
+      var pname = h('input', { type: 'text', cls: 'pr-note', value: r.payroll_name || '', placeholder: pc.auto ? pc.name : 'Last, First', 'aria-label': e.name + ' name on the payroll company sheet' });
+      pid.addEventListener('change', function () { r.payroll_id = pid.value.trim(); if (!r.payroll_name && pc.auto && r.payroll_id === pc.id) r.payroll_name = pc.name; saveRate(e.id); });
+      pname.addEventListener('change', function () { r.payroll_name = pname.value.trim(); if (!r.payroll_id && pc.auto) r.payroll_id = pc.id; saveRate(e.id); });
       var notes = h('input', { type: 'text', cls: 'pr-note', value: r.notes || '', placeholder: 'e.g. tip credit, start date', 'aria-label': e.name + ' notes' });
       notes.addEventListener('change', function () { r.notes = notes.value; saveRate(e.id); });
       body.appendChild(h('tr', { cls: e.active === false ? 'inactive' : null }, [
-        h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: e.name }), h('small', { text: (e.position || '') + (e.active === false ? (e.position ? ' · ' : '') + 'Inactive' : '') })]),
-        h('td', null, [type]), h('td', { cls: 'pr-amt' }, [h('span', { cls: 'pr-dollar' }, ['$', amt]), unit]), h('td', { cls: 'pr-c' }, [tip]), h('td', null, [notes])
+        h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: e.name }), h('small', { text: (e.position || '') + (e.active === false ? (e.position ? ' · ' : '') + 'Not on staff' : '') + (r.square_name ? ' · Square: ' + r.square_name : '') })]),
+        h('td', null, [type]), h('td', null, [h('div', { cls: 'pr-amt' }, [h('span', { cls: 'pr-dollar' }, ['$', amt]), unit])]),
+        h('td', null, [h('span', { cls: 'pr-dollar' }, ['$', krate])]),
+        h('td', { cls: 'pr-c' }, [tip]), h('td', { cls: 'pr-c' }, [comm]),
+        h('td', null, [h('div', { cls: 'pr-amt' }, [pid, pname]), pc.auto && !r.payroll_id ? h('small', { cls: 'pr-auto', text: 'Matched from the payroll company sheet' }) : (!pc.id && e.active !== false ? h('small', { cls: 'pr-warn', text: 'Not on the payroll company sheet' }) : null)]),
+        h('td', null, [notes])
       ]));
     });
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table pr-rates' }, [
-      h('thead', null, [h('tr', null, [h('th', { scope: 'col', cls: 'pr-name', text: 'Employee' }), h('th', { scope: 'col', text: 'Paid' }), h('th', { scope: 'col', text: 'Rate' }), h('th', { scope: 'col', cls: 'pr-c', text: 'Tip pool' }), h('th', { scope: 'col', text: 'Notes' })])]),
+      h('thead', null, [h('tr', null, [h('th', { scope: 'col', cls: 'pr-name', text: 'Employee' }), h('th', { scope: 'col', text: 'Paid' }), h('th', { scope: 'col', text: 'Rate' }), h('th', { scope: 'col', text: 'Kitchen rate' }),
+        h('th', { scope: 'col', cls: 'pr-c', text: 'Tip pool' }), h('th', { scope: 'col', cls: 'pr-c', text: 'Commission' }), h('th', { scope: 'col', text: 'Payroll company ID and name' }), h('th', { scope: 'col', text: 'Notes' })])]),
       body])]));
-    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tip pool: people checked here share the weekly tip pool by hours worked. Employees are added and removed in Schedule → Employees.' }));
+    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tip pool: shares each day’s tips by hours worked. Kitchen rate: adds a Kitchen line to that person’s timesheet, paid at this rate and not in the tip pool (and Square shifts with a kitchen job go there). Commission: adds a weekly commission amount. Payroll company ID and name: as they appear on the Eden Hospitality Hours sheet; grey means it was matched automatically. Employees are added and removed in Schedule → Employees; anyone not on staff is left off both sheets.' }));
   }
 
   window.addEventListener('beforeunload', function (e) { if (P.t) { saveWeek(); e.preventDefault(); e.returnValue = ''; } });
@@ -465,6 +874,7 @@
       if (sub !== P.sub || first || !P.row) { P.sub = sub; flush().then(load); }
       else paint(false);
     },
-    hide: function () { flush(); }
+    hide: function () { flush(); },
+    _test: { squareShifts: squareShifts, sameName: sameName, splitCents: splitCents, P: P, calc: calc, payco: payco }
   };
 })();
