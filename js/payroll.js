@@ -146,6 +146,17 @@
   }
   function tipsRow() { var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] }; t.cash = seven(t.cash); t.card = seven(t.card); return t; }
   // Days where the Square file's tips and the End of day report's tips aren't the same
+  // The week's sales: from the Transactions CSV (or, without one, the End of day reports)
+  function weekSales() {
+    var x = P.row && P.row.rows._sales;
+    if (x) return { net: sum(x.net), gross: sum(x.gross), tax: sum(x.tax), days: x.net, src: 'Transactions CSV' };
+    var e = P.eod; if (e && sum(e.sales)) return { net: sum(e.sales), gross: 0, tax: 0, days: e.sales, src: 'End of day reports' };
+    return null;
+  }
+  function labor(c) {
+    var S = weekSales(), wages = r2(c.T.wages + c.T.sickPay + c.T.holPay);
+    return { sales: S, wages: wages, comm: c.T.comm, pct: S && S.net ? wages / S.net : null, pctC: S && S.net ? (wages + c.T.comm) / S.net : null };
+  }
   function diffTxt(a, b) { var d = r2(a - b); return (d > 0 ? '+' : '−') + money(Math.abs(d)); }
   function tipMismatch() {   // every way the week's tips disagree: [{ day, text }]
     var t = P.row && P.row.rows._tips, e = P.eod, out = [];
@@ -525,6 +536,9 @@
     el.appendChild(P.row.source === 'square' ? h('p', { cls: 'pr-key', text: 'Hours are from the Square file. Hover a day to see what was scheduled.' })
       : h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
 
+    // labor percentage for the week
+    P.refs.labor = h('div', { cls: 'pr-labor' });
+    el.appendChild(P.refs.labor);
     // step 4: the sheets
     var notes = h('textarea', { cls: 'pr-notes', rows: '3', placeholder: 'Anything the payroll company should know this week (new hire, bonus, unpaid leave…)', disabled: ro, 'aria-label': 'Notes for payroll' });
     notes.value = P.row.notes || '';
@@ -662,6 +676,15 @@
       T.adj.textContent = money(c.T.adj); T.gross.textContent = money(c.T.gross);
     }
     paintDetail(c);
+    if (P.refs.labor) {
+      var Lb = labor(c), box = P.refs.labor; box.innerHTML = '';
+      var pct = function (v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; };
+      box.appendChild(h('div', { cls: 'pr-lbig' }, [h('span', { text: 'Labor this week' }), h('b', { text: pct(Lb.pct) })]));
+      box.appendChild(h('div', { cls: 'pr-lmath' }, Lb.sales ? [
+        h('p', { text: money(Lb.wages) + ' wages ÷ ' + money(Lb.sales.net) + ' net sales' }),
+        h('small', { text: 'Wages include salary, overtime, kitchen, sick and holiday pay; not tips' + (Lb.comm ? ' or commission (with ' + money(Lb.comm) + ' commission: ' + pct(Lb.pctC) + ')' : '') + '. Net sales from the ' + Lb.sales.src + (Lb.sales.tax ? ', before ' + money(Lb.sales.tax) + ' sales tax' : '') + '.' })
+      ] : [h('p', { text: 'Drop the Transactions CSV to see the week’s labor percentage.' })]));
+    }
     var R = P.refs.tips; if (R) {
       var tc = 0, tk = 0;
       c.D.forEach(function (d, i) {
@@ -819,22 +842,32 @@
     var rows = parseCSV(text), H = (rows[0] || []).map(function (x) { return String(x).trim().toLowerCase(); });
     var di = H.indexOf('date'), ti = H.indexOf('tip'); if (ti < 0) ti = H.indexOf('tips');
     var ei = H.indexOf('event type'), st = H.indexOf('transaction status');
+    var ni = H.indexOf('net sales'), gi = H.indexOf('gross sales'), xi = H.indexOf('tax');
+    var money0 = function (v) { v = String(v || '').trim(); var neg = /^\(.*\)$/.test(v) || /^-/.test(v); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : (neg ? -n : n); };
+    var sales = { net: [0, 0, 0, 0, 0, 0, 0], gross: [0, 0, 0, 0, 0, 0, 0], tax: [0, 0, 0, 0, 0, 0, 0] };
     if (di < 0 || ti < 0) return fname + ': couldn’t find the Date and Tip columns.';
     var days = [0, 0, 0, 0, 0, 0, 0], seen = [false, false, false, false, false, false, false], outside = 0;
     rows.slice(1).forEach(function (r) {
       var d = parseDate(r[di]); if (!d) return;
-      if (ei >= 0 && /refund/i.test(r[ei] || '')) return;            // refunds don't change the tip pool here
       if (st >= 0 && /fail|cancel|void/i.test(r[st] || '')) return;
+      var si = Math.round((d - P.week) / 864e5);
+      if (si >= 0 && si <= 6) {   // sales for the labor percentage (refunds count against them)
+        if (ni >= 0) sales.net[si] = r2(sales.net[si] + money0(r[ni]));
+        if (gi >= 0) sales.gross[si] = r2(sales.gross[si] + money0(r[gi]));
+        if (xi >= 0) sales.tax[si] = r2(sales.tax[si] + money0(r[xi]));
+      }
+      if (ei >= 0 && /refund/i.test(r[ei] || '')) return;            // refunds don't change the tip pool here
       var v = numIn(String(r[ti] || '').replace(/[()]/g, '')); if (!v) return;
       var i = Math.round((d - P.week) / 864e5);
       if (i < 0 || i > 6) { outside++; return; }
       days[i] = r2(days[i] + v); seen[i] = true;
     });
-    if (!seen.some(Boolean)) return fname + ': no tips in this week' + (outside ? ' (the file is for other dates)' : '') + '.';
+    if (ni >= 0 && sum(sales.net)) { sales.file = fname; P.row.rows._sales = sales; }
+    if (!seen.some(Boolean)) return fname + ': no tips in this week' + (outside ? ' (the file is for other dates)' : '') + (P.row.rows._sales ? '; net sales ' + money(sum(sales.net)) + ' read.' : '.');
     var t = tipsRow(); t.team = t.team || [null, null, null, null, null, null, null]; t.src = t.src || []; t.teamLabel = 'Transactions';
     P.row.tx_file = fname; P.row.tx_at = new Date().toISOString();
     for (var i = 0; i < 7; i++) { t.team[i] = seen[i] ? days[i] : null; if (seen[i]) { t.card[i] = days[i]; t.src[i] = 'team'; } }
-    return 'Transactions: ' + money(sum(days)) + ' in tips this week, by day.' + (outside ? ' ' + outside + (outside === 1 ? ' payment' : ' payments') + ' outside this week left out.' : '');
+    return 'Transactions: ' + money(sum(days)) + ' in tips' + (ni >= 0 ? ' and ' + money(sum(sales.net)) + ' in net sales' : '') + ' this week.' + (outside ? ' ' + outside + (outside === 1 ? ' payment' : ' payments') + ' outside this week left out.' : '');
   }
   // Square → Reports → Team sales, exported (download button). One day: that day's tips. The whole week: a check.
   function teamFile(text, fname) {
@@ -1043,11 +1076,12 @@
     put(['Tip shares', ''].concat(dayHead, ['Total', 'Credit card', 'Cash']));
     wait.filter(function (L) { return L.info.tip_eligible; }).forEach(function (L) { put([sheetName(L), ''].concat(L.tipDays, [L.tips, L.tipsCard, L.tipsCash]), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]); });
     aoa.push([]);
-    var sales = sum(e.sales), wages = r2(c.T.wages + c.T.sickPay + c.T.holPay);
+    var Lw = labor(c), sales = Lw.sales ? Lw.sales.net : 0, wages = Lw.wages;
     put(['Total Wages', '', wages], [2]);
     put(['Total Tips', '', staffLines(c).reduce(function (a, L) { return r2(a + L.tips); }, 0)], [2]);
     put(['Total Commission', '', c.T.comm], [2]);
-    put(['Net Sales', '', sales || ''], [2]);
+    put(['Net Sales', '', sales || '', Lw.sales ? 'from the ' + Lw.sales.src : ''], [2]);
+    if (Lw.sales && Lw.sales.tax) put(['Sales Tax', '', Lw.sales.tax], [2]);
     var pct = put(['Labor Percentage', '', sales ? wages / sales : '']);
     if (P.row.notes) { aoa.push([]); aoa.push(['Notes', P.row.notes]); }
     loadXLSX().then(function () {
