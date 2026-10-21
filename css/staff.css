@@ -1109,18 +1109,21 @@ body.nt-open #app{visibility:hidden!important}
 .pr-setup ol{margin:12px 0 12px 20px;line-height:1.8}
 @media (max-width:820px){.pr-wk{font-size:1.2rem}.pr-toolbar{padding:12px}.pr-table .pr-name{min-width:120px}}
 #prPrint{display:none}
+/* the payroll summary's type (also used to measure it so it fits one landscape page) */
+#prPrint{font:9pt/1.35 Georgia,serif;color:#000}
+#prPrint h1{font-size:15pt;margin:0 0 2px}#prPrint h2{font-size:11pt;margin:10px 0 3px}
+#prPrint p{margin:2px 0}
+#prPrint table{width:100%;border-collapse:collapse;margin:6px 0;font-size:8.5pt}
+#prPrint th,#prPrint td{border-bottom:1px solid #bbb;padding:2px 5px;text-align:right}
+#prPrint th:first-child,#prPrint td:first-child{text-align:left}
+#prPrint tfoot td{border-top:2px solid #000;font-weight:bold}
+#prPrint small{color:#555}
+#prPrint .pp-pre{white-space:pre-wrap}
+#prPrint .pp-fine{font-size:7.5pt;color:#555}
 @media print{
   body.pr-printing>*:not(#prPrint){display:none!important}
   body.pr-printing{background:#fff;color:#000}
-  body.pr-printing #prPrint{display:block;font:10pt/1.4 Georgia,serif;color:#000}
-  #prPrint h1{font-size:16pt;margin:0 0 4px}#prPrint h2{font-size:12pt;margin:14px 0 4px}
-  #prPrint table{width:100%;border-collapse:collapse;margin:10px 0;font-size:9pt}
-  #prPrint th,#prPrint td{border-bottom:1px solid #bbb;padding:3px 5px;text-align:right}
-  #prPrint th:first-child,#prPrint td:first-child{text-align:left}
-  #prPrint tfoot td{border-top:2px solid #000;font-weight:bold}
-  #prPrint small{color:#555}
-  #prPrint .pp-pre{white-space:pre-wrap}
-  #prPrint .pp-fine{font-size:8pt;color:#555}
+  body.pr-printing #prPrint{display:block}
   @page{size:landscape;margin:.5in}
 }
 
@@ -2685,3 +2688,12 @@ body.nt-open #app{visibility:hidden!important}
 .fn-h{font-weight:400;font-size:1.1rem;margin:18px 0 8px}
 .fn-table small{font-size:.72rem;color:var(--stone)}.fn-table .fn-draft{color:#9a5a1c}
 @media (max-width:820px){.fn-tiles{grid-template-columns:1fr}.fn-tile b{font-size:1.6rem}}
+/* Payroll: highlighted actions, past weeks */
+.ed-btn.small.pr-accent{background:var(--ember,#b0703f);border-color:var(--ember,#b0703f);color:var(--ivory,#f3eee5)}
+.ed-btn.small.pr-accent:hover{background:#8a5226;border-color:#8a5226;color:var(--ivory,#f3eee5)}
+.pr-pastq{font:inherit;font-size:.9rem;padding:8px 12px;border:1px solid var(--line);background:#fff;min-width:min(320px,100%)}
+.pr-pasttbl th[scope=row]{white-space:nowrap}
+.pr-pasttbl th[scope=row] a{margin-right:8px}
+.pr-pacts{white-space:nowrap;text-align:right}
+.pr-plink{font:inherit;font-size:.78rem;background:none;border:0;padding:2px 6px;color:#8a5226;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.pr-plink:hover{color:var(--ink,#0f1215)}

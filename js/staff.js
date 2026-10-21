@@ -161,7 +161,7 @@
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
     if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
     if (v === 'financials') { v = 'payroll'; sub = 'overview'; }   // Financials: the overview, Payroll and Pay rates
-    else if (v.indexOf('payroll/') === 0) { sub = { rates: 'rates', overview: 'overview' }[v.slice(8)] || 'week'; v = 'payroll'; }
+    else if (v.indexOf('payroll/') === 0) { sub = { rates: 'rates', overview: 'overview', past: 'past' }[v.slice(8)] || 'week'; v = 'payroll'; }
     else if (v === 'payroll') sub = 'week';
     if (v.indexOf('eod/') === 0) { sub = v.slice(4); v = 'eod'; if (!/^(past|download|r\/[0-9a-f-]{36})$/.test(sub) || (sub === 'download' && role !== 'owner')) sub = sub === 'download' ? 'past' : ''; }
     if (v.indexOf('employees/') === 0) { sub = v.slice(10) === 'permissions' && role === 'owner' ? 'permissions' : ''; v = 'employees'; }
@@ -172,7 +172,7 @@
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
     if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
-    var want = v === 'payroll' ? (sub === 'overview' ? '#financials' : sub === 'rates' ? '#payroll/rates' : '#payroll') : '#' + v + (sub ? '/' + sub : '');
+    var want = v === 'payroll' ? (sub === 'overview' ? '#financials' : sub === 'rates' ? '#payroll/rates' : sub === 'past' ? '#payroll/past' : '#payroll') : '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
     if (view === 'payroll' && v !== 'payroll' && window.EdenPayroll) window.EdenPayroll.hide();
@@ -186,7 +186,7 @@
     document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
     $('printMenusBtn').hidden = v !== 'menu' || !window.EdenMenuPrint;
-    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll', past: 'Past payroll' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
     if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }

@@ -127,6 +127,7 @@
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
       else { P.row = { week_start: wk, status: 'draft', tip_pool: 0, rows: {}, notes: '' }; P.fresh = true; fillFromSchedule(); }
       if (!P.fresh && !P.row.rows._summary) setTimeout(function () { if (P.row && !P.row.rows._summary) saveWeek(); }, 0);   // weeks from before the Financials overview
+      if (P.after) { var act = P.after; P.after = null; setTimeout(function () { var f = { print: printSummary, hours: downloadHours, tips: downloadTips, email: emailHours }[act]; if (f) f(); }, 300); }
       if (!final() && P.row.rows._tips) {   // tips come only from the Square file: drop any filled from End of day reports
         var t0 = tipsRow(); (t0.src || []).forEach(function (x, i) { if (x === 'eod') { t0.card[i] = null; t0.cash[i] = null; t0.src[i] = ''; } });
       }
@@ -363,6 +364,7 @@
     var tabs = h('nav', { cls: 'an-tabs', 'aria-label': 'Financials pages' }, [
       h('a', { href: '#financials', 'data-sub': 'overview', text: 'Overview' }),
       h('a', { href: '#payroll', 'data-sub': 'week', text: 'Weekly payroll' }),
+      h('a', { href: '#payroll/past', 'data-sub': 'past', text: 'Past payroll' }),
       h('a', { href: '#payroll/rates', 'data-sub': 'rates', text: 'Pay rates' })
     ]);
     wrap.appendChild(h('div', { cls: 'an-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'Financials' })]), tabs]));
@@ -383,6 +385,7 @@
     P.el.querySelectorAll('.an-tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-sub') === P.sub ? 'page' : 'false'); });
     var el = P.pane; el.innerHTML = ''; P.refs = {};
     if (P.sub === 'overview') { paintOverview(el, loading); return; }
+    if (P.sub === 'past') { paintPast(el, loading); return; }
     if (loading && !P.row) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
     if (P.missing) { el.appendChild(setupNote('supabase/payroll.sql')); return; }
     if (P.err) { el.appendChild(h('p', { cls: 'pr-err', role: 'alert', text: P.err })); }
@@ -593,10 +596,10 @@
     el.appendChild(h('div', { cls: 'pr-out' }, [
       h('div', null, [h('b', { text: 'The two sheets' }), h('p', { text: 'Eden Hospitality Hours goes to the payroll company. Tip Weighted Payroll is for Eden’s records. Only people on staff on the staff site are included.' })]),
       h('div', { cls: 'pr-acts' }, [
+        h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Email Hours from ' + PAYROLL_FROM, on: { click: emailHours } }),
+        h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Print summary', on: { click: printSummary } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Eden Hospitality Hours (.xlsx)', on: { click: downloadHours } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Email Hours from ' + PAYROLL_FROM, on: { click: emailHours } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Tip Weighted Payroll (.xlsx)', on: { click: downloadTips } }),
-        h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Print summary', on: { click: printSummary } }),
         ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
           : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })])
     ]));
@@ -764,6 +767,49 @@
     el.appendChild(h('h2', { cls: 'fn-h', text: 'Week by week' }));
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
     el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
+  }
+  /* ----- Past payroll: every week, to open, print, download or email again ----- */
+  var PAST = { q: '' };
+  function openWeek(wk, act) { P.week = new Date(wk + 'T12:00:00'); P.row = null; P.after = act || null; if (location.hash === '#payroll') { P.sub = 'week'; load(); } else location.hash = '#payroll'; }
+  function paintPast(el, loading) {
+    if (loading || !OV.weeks) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
+    if (P.missing) { el.appendChild(setupNote('supabase/payroll.sql')); return; }
+    if (OV.err) el.appendChild(h('p', { cls: 'pr-err', text: OV.err }));
+    var search = h('input', { type: 'search', cls: 'pr-pastq', placeholder: 'Find a week: “October”, “2026”, “10/11”…', value: PAST.q, 'aria-label': 'Find a week' });
+    el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Every payroll week, newest first. Open one to see it, or print, download or email it again.' }), search]));
+    var list = h('div', { cls: 'pr-past' }); el.appendChild(list);
+    var label = function (w) { var d = new Date(w.week + 'T12:00:00'); return weekLabel(d); };
+    var match = function (w) {
+      var q = PAST.q.trim().toLowerCase(); if (!q) return true;
+      var d = new Date(w.week + 'T12:00:00'), e = addDays(d, 6);
+      var hay = [label(w), w.week, md(d), md(e), d.toLocaleDateString('en-US', { month: 'long' }), e.toLocaleDateString('en-US', { month: 'long' }), String(d.getFullYear()), w.status === 'final' ? 'final' : 'draft'].join(' ').toLowerCase();
+      return q.split(/\s+/).every(function (t) { return hay.indexOf(t) >= 0; });
+    };
+    function draw() {
+      list.innerHTML = '';
+      var ws = OV.weeks.filter(match);
+      if (!OV.weeks.length) { list.appendChild(h('p', { cls: 'an-sub', text: 'No payroll weeks yet. Start one in Weekly payroll.' })); return; }
+      if (!ws.length) { list.appendChild(h('p', { cls: 'an-sub', text: 'No weeks match “' + PAST.q + '”.' })); return; }
+      var year = null, tb = null;
+      ws.forEach(function (w) {
+        var y = w.week.slice(0, 4);
+        if (y !== year) {
+          year = y; tb = h('tbody');
+          list.appendChild(h('h2', { cls: 'fn-h', text: y }));
+          list.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table pr-pasttbl' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Gross pay', 'Hours', ''].map(function (t, i) { return h('th', { scope: 'col', cls: i && i < 7 ? 'pr-num' : null, text: t }); }))]), tb])]));
+        }
+        var s = w.s || {}, act = function (t, a, title) { return h('button', { type: 'button', cls: 'pr-plink', text: t, title: title, on: { click: function () { openWeek(w.week, a); } } }); };
+        tb.appendChild(h('tr', null, [
+          h('th', { scope: 'row' }, [h('a', { href: '#payroll', text: label(w), on: { click: function (ev) { ev.preventDefault(); openWeek(w.week); } } }),
+            h('span', { cls: 'sc-pill ' + (w.status === 'final' ? 'ok' : 'warn'), text: w.status === 'final' ? 'Final' : 'Draft' })]),
+          h('td', { cls: 'pr-num', text: s.net != null ? money(s.net) : '–' }), h('td', { cls: 'pr-num', text: s.cost != null ? money(s.cost) : '–' }), h('td', { cls: 'pr-num', text: pctTxt(s.pct) }),
+          h('td', { cls: 'pr-num', text: s.tips != null ? money(s.tips) : '–' }), h('td', { cls: 'pr-num', text: s.gross != null ? money(s.gross) : '–' }), h('td', { cls: 'pr-num', text: s.hours != null ? hrs(s.hours) : '–' }),
+          h('td', { cls: 'pr-pacts' }, [act('Open', null, 'Open this week'), act('Print', 'print', 'Print the summary'), act('Hours file', 'hours', 'Download the Eden Hospitality Hours sheet'), act('Tip sheet', 'tips', 'Download the Tip Weighted Payroll sheet'), act('Email', 'email', 'Email the Hours sheet from ' + PAYROLL_FROM)])
+        ]));
+      });
+    }
+    search.addEventListener('input', function () { PAST.q = search.value; draw(); });
+    draw();
   }
   function niceMax(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
   function svgEl(tag, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.keys(a || {}).forEach(function (k) { e.setAttribute(k, a[k]); }); return e; }
@@ -1367,6 +1413,11 @@
       h('p', { cls: 'pp-fine', text: 'Gross pay before taxes and deductions. Overtime: hours over 40 in the week at 1.5×. Printed ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '.' })
     ]);
     document.body.appendChild(box); document.body.classList.add('pr-printing');
+    // one landscape page: lay it out at the page's printable size (10 × 7.5 in, after margins) and shrink to fit
+    box.style.cssText = 'display:block;position:absolute;left:-10000px;top:0;width:10in';
+    var pageH = 7.5 * 96, hgt = box.scrollHeight;
+    box.style.cssText = '';
+    box.style.zoom = hgt > pageH ? Math.max(0.55, (pageH - 8) / hgt).toFixed(3) : '';
     var done = function () { document.body.classList.remove('pr-printing'); box.remove(); window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
     setTimeout(function () { window.print(); if (!('onafterprint' in window)) done(); }, 50);
@@ -1423,10 +1474,10 @@
     show: function (ctx) {
       P.ctx = ctx;
       if (P.el !== ctx.el || !ctx.el.firstChild) { P.el = ctx.el; shell(); }
-      var sub = ctx.sub === 'rates' ? 'rates' : ctx.sub === 'overview' ? 'overview' : 'week';
+      var sub = { rates: 'rates', overview: 'overview', past: 'past' }[ctx.sub] || 'week';
       var first = !P.week;
       if (first) P.week = addDays(sunday(new Date()), -7);   // payroll is usually done for the week that just ended
-      if (sub === 'overview') { P.sub = sub; flush().then(loadOverview); return; }
+      if (sub === 'overview' || sub === 'past') { P.sub = sub; flush().then(loadOverview); return; }
       if (sub !== P.sub || first || !P.row) { P.sub = sub; flush().then(load); }
       else paint(false);
     },
