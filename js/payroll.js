@@ -423,7 +423,7 @@
         h('p', { cls: 'pr-zoneh', text: 'Drag both Square files here' }),
         h('div', { cls: 'pr-slots' }, [
           slot(1, 'Timecards: hours', 'Staff → Time tracking → Timecards → this Sunday–Saturday → Export → Export shifts', P.row.source === 'square' ? P.row.square_file : '', P.row.square_at),
-          slot(2, 'Transactions CSV: tips', 'Transactions → this Sunday–Saturday → Export → Transactions CSV', P.row.tx_file || '', P.row.tx_at)
+          slot(2, 'Transactions CSV: tips', 'Payments & invoices → Transactions → this Sunday–Saturday → Export → Transactions CSV', P.row.tx_file || '', P.row.tx_at)
         ]),
         h('p', { cls: 'pr-zonef', text: 'or click here to choose the files. Dropping a new file replaces the old one.' })
       ]);
