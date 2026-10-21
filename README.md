@@ -177,3 +177,11 @@ Click it once; it copies `js/menu-seed.js` (the website's menu at the time of se
 ## Local preview
 
 Any static file server works, for example `npx serve .` or `python3 -m http.server 8090`.
+
+## Temperatures (Elitech RCW-800W loggers)
+Run `supabase/temperatures.sql` once. Set up each cooler and freezer under **Kitchen & bar → Temperatures → Set up**, with the serial / GUID from the logger's label or Elitech iCold.
+Readings come in from export files dropped on the page, readings typed by hand, and — once Elitech's API access for iCold is bought — a live feed every 5 minutes.
+For the live feed, add these as **secrets** in Cloudflare (Workers → eden-admin → Settings → Variables and Secrets), never in this repository or in chat:
+`ELITECH_KEY_ID`, `ELITECH_KEY_SECRET`, and if Elitech's API document asks for them, `ELITECH_USER` and `ELITECH_PASSWORD` (the iCold login).
+Optional plain variables: `ELITECH_URL` (the API address from Elitech's document), `ELITECH_UNIT` (`C` or `F`, default `C`).
+The feed's status (last check, any error, loggers not yet set up) shows on the Set up tab.

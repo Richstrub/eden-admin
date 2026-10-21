@@ -531,6 +531,55 @@ async function inbound(req, env) {
   return json({ ok: true, matched: !!(r && r.id) });
 }
 
+/* ---------- Temperatures: Elitech RCW-800W loggers, read from Elitech's cloud (iCold) every 5 minutes ----------
+   Switched on by Cloudflare secrets (Workers > eden-admin > Settings > Variables and Secrets), never in this file:
+     ELITECH_KEY_ID, ELITECH_KEY_SECRET   from Elitech's API access for iCold
+     ELITECH_USER, ELITECH_PASSWORD       the iCold login the loggers are registered to (if Elitech's API asks for it)
+   Optional variables: ELITECH_URL (the API address in Elitech's API document), ELITECH_UNIT ('C' or 'F', default C),
+   ELITECH_DEVICES (extra GUIDs, comma-separated). Units and their logger serials are set up on the Temperatures page.
+   The calls follow Elitech's Open API (getToken, then getRealTimeData); check them against the document Elitech sends. */
+async function elitechPull(env) {
+  if (!env.ELITECH_KEY_ID || !env.ELITECH_KEY_SECRET) return;
+  const key = inqKey(env); if (!key || !env.SUPABASE_URL) return;
+  const rows = []; let err = '';
+  try {
+    const base = String(env.ELITECH_URL || 'https://www.i-elitech.com').replace(/\/+$/, '');
+    const post = async (path, body, token) => {
+      const headers = { 'content-type': 'application/json' }; if (token) headers.Authorization = token;
+      const r = await fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
+      const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
+      if (!r.ok || !j) throw new Error(path.split('/').pop() + ' answered ' + r.status);
+      if (j.code != null && +j.code !== 0 && +j.code !== 200) throw new Error(path.split('/').pop() + ': ' + String(j.msg || j.message || 'code ' + j.code).slice(0, 120));
+      return j;
+    };
+    const auth = { keyId: env.ELITECH_KEY_ID, keySecret: env.ELITECH_KEY_SECRET };
+    const tok = await post('/api/data-api/elitechAccess/getToken', Object.assign({ userName: env.ELITECH_USER || '', password: env.ELITECH_PASSWORD || '' }, auth));
+    const token = typeof tok.data === 'string' ? tok.data : (tok.data && (tok.data.token || tok.data.accessToken)) || tok.token || '';
+    let guids = await rpc(env, 'temp_serials_server', { p_key: key }).catch(() => []);
+    if (!Array.isArray(guids)) guids = [];
+    String(env.ELITECH_DEVICES || '').split(/[\s,;]+/).filter(Boolean).forEach(g => { if (guids.indexOf(g) < 0) guids.push(g); });
+    if (!guids.length) throw new Error('no loggers set up yet: add each unit with its logger serial or GUID on the Temperatures page');
+    const res = await post('/api/data-api/elitechAccess/getRealTimeData', Object.assign({ deviceGuids: guids }, auth), token);
+    const list = Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
+    const F = String(env.ELITECH_UNIT || 'C').toUpperCase() === 'F';
+    const pick = (o, ks) => { for (const k of ks) if (o[k] != null && o[k] !== '') return o[k]; return null; };
+    list.forEach(d => {
+      const serial = String(pick(d, ['deviceGuid', 'guid', 'deviceSn', 'sn', 'serialNumber', 'deviceId']) || '');
+      let t = pick(d, ['tmp1', 'temperature', 'temp', 'tmp', 'temperature1']);
+      if (!serial || t == null || isNaN(parseFloat(t))) return;
+      t = parseFloat(t); const tf = F ? t : t * 9 / 5 + 32;
+      let at = pick(d, ['lastSessionTime', 'monitorTime', 'dataTime', 'time', 'createTime', 'updateTime']);
+      let when = at == null ? null : typeof at === 'number' || /^\d{10,13}$/.test(String(at)) ? new Date(+at < 1e12 ? +at * 1000 : +at) : new Date(String(at).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(at)) ? '' : 'Z'));
+      if (!when || isNaN(when) || Math.abs(Date.now() - when.getTime()) > 864e5) when = new Date();   // can't tell when: now
+      when.setSeconds(0, 0);
+      const hum = pick(d, ['hum1', 'humidity', 'hum']);
+      rows.push({ serial, name: String(pick(d, ['deviceName', 'name', 'alias']) || ''), at: when.toISOString(), temp_f: Math.round(tf * 100) / 100, humidity: hum == null || isNaN(parseFloat(hum)) ? null : parseFloat(hum) });
+    });
+    if (!rows.length) err = 'Elitech answered, but with no readings';
+  } catch (e) { err = String(e && e.message || e).slice(0, 200); }
+  await rpc(env, 'temp_ingest_server', { p_key: key, p_rows: rows, p_error: err });
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -551,6 +600,8 @@ export default {
   async scheduled(evt, env, ctx) {
     // every 5 minutes: promotional emails that are due
     ctx.waitUntil(promoRun(env, inqKey(env)).catch(() => null));
+    // every 5 minutes: cooler and freezer temperatures from Elitech's cloud (only once its API keys are saved)
+    ctx.waitUntil(elitechPull(env).catch(() => null));
     // every 20 minutes (on the hour, :20 and :40): Pre-shift and the Prep List
     const min = new Date(evt && evt.scheduledTime ? evt.scheduledTime : Date.now()).getUTCMinutes();
     if (min % 20 >= 5) return;
