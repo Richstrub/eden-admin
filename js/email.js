@@ -204,6 +204,10 @@
   function flushDraft() {
     if (!M.pending || !M.shown || !M.el || M.el.hidden || !mine().length) return;
     var o = M.pending; M.pending = null;
+    // a draft can ask for a particular mailbox (Payroll emails from rich@edencny.com)
+    var want = o.from ? mine().filter(function (a) { return String(a.address || '').toLowerCase() === String(o.from).toLowerCase(); })[0] : null;
+    if (want && want.id !== M.acct) { M.acct = want.id; M.label = 'INBOX'; M.q = ''; M.page = ''; M.open = ''; M.thread = null; if (typeof render === 'function') try { render(); } catch (e) {} }
+    else if (o.from && !want) say('You don’t have ' + o.from + ' in Business email, so this is from ' + ((acct() && acct().mine ? acct() : mine()[0]).address) + '.', 'err');
     if (!acct() || !acct().mine) M.acct = mine()[0].id;
     compose(o);
   }
@@ -870,6 +874,7 @@
         return api('send', { raw: raw, threadId: o.mode === 'Forward' ? '' : (o.threadId || '') });
       }).then(function () {
         w.remove(); say('Sent from ' + s.email + '. It’s in Sent here and in Gmail.', 'ok');
+        if (o.onSent) try { o.onSent({ to: T }); } catch (e) {}
         if (M.thread && o.threadId === M.thread.id && o.mode !== 'Forward') openThread(M.thread.id);
         loadList(true);
       }, function (e) { err.textContent = e.message || 'The email couldn’t be sent.'; send.disabled = false; send.lastChild.textContent = 'Send'; });

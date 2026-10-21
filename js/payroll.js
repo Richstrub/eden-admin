@@ -594,6 +594,7 @@
       h('div', null, [h('b', { text: 'The two sheets' }), h('p', { text: 'Eden Hospitality Hours goes to the payroll company. Tip Weighted Payroll is for Eden’s records. Only people on staff on the staff site are included.' })]),
       h('div', { cls: 'pr-acts' }, [
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Eden Hospitality Hours (.xlsx)', on: { click: downloadHours } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Email Hours from ' + PAYROLL_FROM, on: { click: emailHours } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Tip Weighted Payroll (.xlsx)', on: { click: downloadTips } }),
         h('button', { type: 'button', cls: 'ed-btn ghost small', text: 'Print summary', on: { click: printSummary } }),
         ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
@@ -1221,7 +1222,28 @@
   function staffLines(c) { return c.lines.filter(function (L) { return onStaff(L.e); }); }
   function fmtCells(ws, X, cells, z) { cells.forEach(function (a) { if (ws[a] && typeof ws[a].v === 'number') ws[a].z = z; }); }
   // For the payroll company: their sheet, their IDs and spellings, people on staff only
-  function downloadHours() {
+  function downloadHours() { hoursBook(function (wb, name) { window.XLSX.writeFile(wb, name); }); }
+  // Email the Hours sheet from rich@edencny.com: a new email opens on Business email with the file attached
+  var PAYROLL_FROM = 'rich@edencny.com';
+  function emailHours() {
+    hoursBook(function (wb, name) {
+      var X = window.XLSX, bytes = X.write(wb, { type: 'array', bookType: 'xlsx' });
+      var mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', file = new File([bytes], name, { type: mime });
+      var range = weekLabel(P.week), subject = 'Eden Hospitality Payroll (' + range + ')';
+      var to = ''; try { to = localStorage.getItem('eden-payroll-to') || ''; } catch (e) {}
+      var body = 'Hello,\n\nAttached are Eden Hospitality’s hours for the week of ' + range + ' (Sunday–Saturday).' + (P.row.notes ? '\n\n' + P.row.notes : '') + '\n\nThank you,';
+      var M = window.EdenMail;
+      if (M && M.draft && M.canDraft && M.canDraft()) {
+        M.draft({ from: PAYROLL_FROM, to: to ? [{ email: to }] : [], subject: subject, body: body, files: [{ file: file, name: name, mime: mime, size: file.size }], onSent: function (o) { try { if (o && o.to && o.to[0]) localStorage.setItem('eden-payroll-to', o.to[0].email); } catch (e) {} } });
+        location.hash = '#email';
+      } else {   // no Business email mailbox here: save the file and open the mail app
+        X.writeFile(wb, name);
+        location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body.replace('Attached are', 'Attached (saved to your downloads as “' + name + '”) are'));
+        status('Business email isn’t connected here, so the file was saved and your mail app opened. Attach “' + name + '” and send it.', 'err');
+      }
+    });
+  }
+  function hoursBook(done) {
     var c = calc(), lines = staffLines(c), used = {}, rows = [], warn = [];
     PAYCO.forEach(function (p) {
       var L = lines.filter(function (x) { var pc = payco(x.id); return !used[x.id] && (pc.id === p[0] || (!pc.id && pc.name === p[1])); })[0];
@@ -1255,9 +1277,10 @@
       for (var r = first; r <= last + 4; r++) ['G', 'H', 'I'].forEach(function (col) { cells.push(col + r); });
       fmtCells(ws, X, cells, '$#,##0.00');
       ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 11 }, { wch: 8 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }];
-      X.utils.book_append_sheet(wb, ws, 'Sheet1');
-      X.writeFile(wb, 'Eden Hospitality Hours ' + fileWeek() + '.xlsx');
-      if (warn.length) status('Downloaded. Add a payroll company ID in Pay rates for: ' + warn.join(', ') + '.', 'err');
+      var range = weekLabel(P.week);   // e.g. Oct 11 – 17, 2026: the sheet's tab and the file's name
+      X.utils.book_append_sheet(wb, ws, range.replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31));
+      done(wb, 'Eden Hospitality Hours ' + range.replace(/\s*–\s*/g, '-') + '.xlsx');   // plain hyphen: some browsers drop names with a dash
+      if (warn.length) status('Add a payroll company ID in Pay rates for: ' + warn.join(', ') + '.', 'err');
     }, function () { status('Couldn’t load the spreadsheet tool. Check your connection and try again.', 'err'); });
   }
   // For Eden's records: the Tip Weighted Payroll layout
