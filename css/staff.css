@@ -2723,3 +2723,11 @@ body.nt-open #app{visibility:hidden!important}
 .fn-note{font-size:.8rem;color:var(--stone);margin:-4px 0 14px;max-width:90ch}
 @media (max-width:1100px){.fn-tiles{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:820px){.fn-tiles{grid-template-columns:1fr}}
+/* Financials: unemployment wage base */
+.fn-cap{margin:8px 0 22px}
+.fn-captbl td.fn-capc{min-width:220px}
+.fn-meter{height:8px;border-radius:4px;background:color-mix(in srgb,var(--stone,#8a8580) 22%,transparent);overflow:hidden;margin:2px 0 4px}
+.fn-meter span{display:block;height:100%;border-radius:4px;background:#b0703f}
+.fn-captbl small{font-size:.74rem;color:var(--stone)}
+.fn-captbl tr.fn-capped th,.fn-captbl tr.fn-capped td.pr-num{color:var(--stone)}
+.fn-captbl tr.fn-capped .fn-meter span{background:#8a8580}

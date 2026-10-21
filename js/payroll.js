@@ -114,9 +114,11 @@
       sb().from('payroll_weeks').select('*').eq('week_start', wk).maybeSingle(),
       sb().from('schedule_weeks').select('week_start,shifts,status,published').eq('week_start', wk).maybeSingle(),
       sb().from('eod_reports').select('*').gte('report_date', wk).lte('report_date', end),
-      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle()
+      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle(),
+      sb().from('payroll_weeks').select('week_start,summary:rows->_summary').lt('week_start', wk).gte('week_start', iso(addDays(P.week, -380)))
     ]).then(function (res) {
       setInvoice(res[5]);
+      P.yweeks = (res[6] && !res[6].error ? res[6].data || [] : []).map(function (w) { return { week: w.week_start, s: w.summary && typeof w.summary === 'object' ? w.summary : null }; });
       if (my !== P.seq) return;
       var bad = res[1].error || res[2].error;
       P.missing = !!(bad && isMissing(bad));
@@ -129,7 +131,7 @@
       P.eod = eodDays(res[4].error ? [] : res[4].data || []);
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
       else { P.row = { week_start: wk, status: 'draft', tip_pool: 0, rows: {}, notes: '' }; P.fresh = true; fillFromSchedule(); }
-      if (!P.fresh && !P.row.rows._summary) setTimeout(function () { if (P.row && !P.row.rows._summary) saveWeek(); }, 0);   // weeks from before the Financials overview
+      if (!P.fresh && !(P.row.rows._summary && P.row.rows._summary.emp)) setTimeout(function () { if (P.row && !(P.row.rows._summary && P.row.rows._summary.emp)) saveWeek(); }, 0);   // weeks from before the Financials overview
       if (P.after) { var act = P.after; P.after = null; setTimeout(function () { var f = { print: printSummary, hours: downloadHours, tips: downloadTips, email: emailHours }[act]; if (f) f(); }, 300); }
       if (!final() && P.row.rows._tips) {   // tips come only from the Square file: drop any filled from End of day reports
         var t0 = tipsRow(); (t0.src || []).forEach(function (x, i) { if (x === 'eod') { t0.card[i] = null; t0.cash[i] = null; t0.src[i] = ''; } });
@@ -169,34 +171,81 @@
   // what the Financials overview reads for each week (kept with the week whenever it saves)
   /* ---------- the payroll company's invoice (Pinnacle), estimated from the week's gross pay ----------
      Rates from invoice 061939 (10/16/2026): employer costs as % of gross pay (tips included), plus flat weekly amounts.
-     The unemployment rates fall during the year as people pass the yearly wage base; update them from a new invoice. */
-  var INV_DEFAULT = { fica: 7.65, futa: 0.0207, suta: 1.8623, sdi: 0.6, service: 1.8, k401: 3, benefits: 325.63, shipping: 10, source: 'Invoice 061939, 10/16/2026' };
+     Unemployment is per person: state 6% on each employee's first $17,600 of the year, federal 0.6% on the first $7,000.
+     Pay so far this year starts from Pinnacle's Payroll Check Journal (pay dates 1/1–10/16/2026) and adds each payroll week after it. */
+  var YTD_SEED = { year: 2026, through: '2026-10-04', asOf: '10/16/2026', src: 'Pinnacle Payroll Check Journal, pay dates 1/1–10/16/2026',
+    wages: { E18629: 60474.51, K15347: 63981.80, W26589: 23823.20, S07721: 11004.79, X25654: 12068.03, U13555: 32406.75, P11703: 52251.49, N23918: 6754.40,
+      Z26136: 28679.58, U28579: 7171.62, Z32304: 7967.40, W32085: 8839.22, C00507: 60577.02, H32480: 3328.66, J30874: 23149.94, T31170: 17575.00 } };
+  var INV_DEFAULT = { fica: 7.65, suta: 6, sutaBase: 17600, futa: 0.6, futaBase: 7000, sdi: 0.6, service: 1.8, k401: 3, benefits: 325.63, shipping: 10, source: 'Invoice 061939, 10/16/2026' };
   var INV = Object.assign({}, INV_DEFAULT), INV_SAVED = false, INV_TABLE = true;
   function setInvoice(r) {
     if (!r) return;
     if (r.error) { INV_TABLE = !isMissing(r.error); return; }
     INV_TABLE = true;
-    if (r.data && r.data.invoice && Object.keys(r.data.invoice).length) { INV = Object.assign({}, INV_DEFAULT, r.data.invoice); INV_SAVED = true; }
+    if (r.data && r.data.invoice && Object.keys(r.data.invoice).length) {
+      var sv = Object.assign({}, r.data.invoice);
+      if (sv.sutaBase == null) { delete sv.suta; delete sv.futa; }   // saved before unemployment was per person: those were the week's blended rates
+      INV = Object.assign({}, INV_DEFAULT, sv); INV_SAVED = true;
+    }
   }
-  var INV_LINES = [['fica', 'Social Security & Medicare', '%'], ['suta', 'State unemployment', '%'], ['futa', 'Federal unemployment', '%'], ['sdi', 'SDI (NY disability)', '%'], ['service', 'Service fee', '%'], ['k401', '401(k) match', 'k'], ['benefits', 'Benefits', '$'], ['shipping', 'Shipping', '$']];
+  var INV_LINES = [['fica', 'Social Security & Medicare', '%'], ['suta', 'State unemployment', 'u'], ['futa', 'Federal unemployment', 'u'], ['sdi', 'SDI (NY disability)', '%'], ['service', 'Service fee', '%'], ['k401', '401(k) match', 'k'], ['benefits', 'Benefits', '$'], ['shipping', 'Shipping', '$']];
+  var INV_EDIT = [['fica', 'Social Security & Medicare', '%'], ['suta', 'State unemployment rate', 'u'], ['sutaBase', 'State unemployment wage base', 'b'], ['futa', 'Federal unemployment rate', 'u'], ['futaBase', 'Federal unemployment wage base', 'b'], ['sdi', 'SDI (NY disability)', '%'], ['service', 'Service fee', '%'], ['k401', '401(k) match', 'k'], ['benefits', 'Benefits', '$'], ['shipping', 'Shipping', '$']];
+  // the tax year a week is paid in: its check comes the Friday after the week ends
+  function dollars(v) { return '$' + Math.round(+v || 0).toLocaleString('en-US'); }
+  function payYear(wkIso) { return addDays(new Date(wkIso + 'T12:00:00'), 12).getFullYear(); }
+  function seed() { return INV.ytd && INV.ytd.wages ? INV.ytd : YTD_SEED; }
+  // an employee's taxable pay this year before the week starting wkIso, from the seed plus the payroll weeks after it
+  function ytdBefore(id, weeks, wkIso) {
+    var y = payYear(wkIso), S = seed(), pid = (payco(id).id || '').toUpperCase(), tot = 0, from = '';
+    if (+S.year === y) { from = S.through; if (pid && S.wages[pid] != null) tot = +S.wages[pid]; }
+    (weeks || []).forEach(function (w) {
+      if (w.week < wkIso && payYear(w.week) === y && (!from || w.week > from) && w.s && w.s.emp && w.s.emp[id] != null) tot += +w.s.emp[id] || 0;
+    });
+    return r2(tot);
+  }
+  function weeksUncounted(weeks, wkIso) {   // payroll weeks this year that don't have per-person pay saved yet
+    var y = payYear(wkIso), S = seed(), from = +S.year === y ? S.through : '';
+    return (weeks || []).filter(function (w) { return w.week < wkIso && payYear(w.week) === y && (!from || w.week > from) && !(w.s && w.s.emp); }).map(function (w) { return w.week; });
+  }
+  function unemp(c) {
+    var wk = P.row ? P.row.week_start : iso(P.week), sb_ = +INV.sutaBase || 0, fb = +INV.futaBase || 0, out = { suta: { taxable: 0, n: 0 }, futa: { taxable: 0, n: 0 }, people: [] };
+    c.lines.forEach(function (L) {
+      var g = r2(L.gross - L.adj); if (g <= 0) return;
+      var before = ytdBefore(L.id, P.yweeks, wk), st = r2(Math.min(g, Math.max(0, sb_ - before))), ft = r2(Math.min(g, Math.max(0, fb - before)));
+      if (st > 0) { out.suta.taxable = r2(out.suta.taxable + st); out.suta.n++; }
+      if (ft > 0) { out.futa.taxable = r2(out.futa.taxable + ft); out.futa.n++; }
+      out.people.push({ id: L.id, name: L.info.name || L.e.name, before: before, gross: g, st: st, ft: ft, capsNow: st > 0 && st < g });
+    });
+    out.suta.amt = r2(out.suta.taxable * (+INV.suta || 0) / 100); out.futa.amt = r2(out.futa.taxable * (+INV.futa || 0) / 100);
+    out.missing = weeksUncounted(P.yweeks, wk);
+    return out;
+  }
   function invoiceEst(c) {
-    var gross = r2(c.T.gross - c.T.adj), tips = c.T.tips, base = r2(gross - tips), kpay = 0;
+    var gross = r2(c.T.gross - c.T.adj), tips = c.T.tips, base = r2(gross - tips), kpay = 0, U = unemp(c);
     c.lines.forEach(function (L) { var r = P.rates[L.id] || {}; if (r.k401 && onStaff(L.e)) kpay += L.gross - L.adj; });
     var lines = INV_LINES.map(function (x) {
-      var k = x[0], rate = +INV[k] || 0, amt = x[2] === '%' ? gross * rate / 100 : x[2] === 'k' ? kpay * rate / 100 : (gross > 0 ? rate : 0);
-      return { key: k, label: x[1], how: x[2] === '%' ? rate + '% of ' + money(gross) : x[2] === 'k' ? rate + '% of ' + money(kpay) + ' (employees in the 401(k))' : 'a week', amt: r2(amt) };
+      var k = x[0], rate = +INV[k] || 0, amt, how;
+      if (x[2] === 'u') {
+        var u = U[k], cap = +INV[k + 'Base'] || 0;
+        amt = u.amt; how = rate + '% of ' + money(u.taxable) + (u.n ? ' (' + u.n + (u.n === 1 ? ' person' : ' people') + ' still under the ' + dollars(cap) + ' wage base)' : ' (everyone paid this week is past the ' + dollars(cap) + ' wage base)');
+      } else {
+        amt = x[2] === '%' ? gross * rate / 100 : x[2] === 'k' ? kpay * rate / 100 : (gross > 0 ? rate : 0);
+        how = x[2] === '%' ? rate + '% of ' + money(gross) : x[2] === 'k' ? rate + '% of ' + money(kpay) + ' (employees in the 401(k))' : 'a week';
+      }
+      return { key: k, label: x[1], how: how, amt: r2(amt) };
     });
     var extra = r2(lines.reduce(function (a, l) { return a + l.amt; }, 0)), total = r2(gross + extra);
-    return { gross: gross, tips: tips, base: base, lines: lines, extra: extra, total: total, pctGross: gross ? extra / gross : null, pctBase: base ? extra / base : null };
+    return { gross: gross, tips: tips, base: base, lines: lines, extra: extra, total: total, pctGross: gross ? extra / gross : null, pctBase: base ? extra / base : null, U: U };
   }
   function summary() {
     try {
       var c = calc(), lb = labor(c);
       var iv = invoiceEst(c), act = P.row.rows._invoice && +P.row.rows._invoice.actual || null;
       var inv = act || iv.total, net = lb.sales ? lb.sales.net : null, trueCost = r2(inv - iv.tips);   // tips pass through to staff; the taxes on them don't
+      var emp = {}; c.lines.forEach(function (L) { var g = r2(L.gross - L.adj); if (g) emp[L.id] = g; });
       return { net: net, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
         pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, invEst: iv.total, invActual: act, extra: r2(inv - iv.gross), extraPct: iv.gross ? (inv - iv.gross) / iv.gross : null,
-        trueCost: trueCost, truePct: net ? trueCost / net : null, at: new Date().toISOString() };
+        trueCost: trueCost, truePct: net ? trueCost / net : null, emp: emp, at: new Date().toISOString() };
     } catch (e) { return null; }
   }
   function diffTxt(a, b) { var d = r2(a - b); return (d > 0 ? '+' : '−') + money(Math.abs(d)); }
@@ -695,9 +744,9 @@
   // Pay rates: the payroll company's invoice rates (saved for every week)
   function invoiceRates() {
     var box = h('div', { cls: 'pr-invrates' }, [h('h2', { cls: 'fn-h', text: 'Payroll company invoice rates' }),
-      h('p', { cls: 'an-sub', text: 'Used for the estimated invoice on each week. Percentages are of gross pay (tips included); the 401(k) match is of the pay of employees ticked 401(k) above. Taken from ' + (INV.source || 'the last invoice') + '.' })]);
+      h('p', { cls: 'an-sub', text: 'Used for the estimated invoice on each week. Percentages are of gross pay (tips included); the 401(k) match is of the pay of employees ticked 401(k) above. Unemployment is charged only on each person’s pay up to the yearly wage base; New York raises its base every January, and your state rate comes on the notice mailed each February. Taken from ' + (INV.source || 'the last invoice') + '.' })]);
     var grid = h('div', { cls: 'pr-invgrid' });
-    INV_LINES.forEach(function (x) {
+    INV_EDIT.forEach(function (x) {
       var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: String(INV[x[0]] == null ? '' : INV[x[0]]), disabled: !INV_TABLE, 'aria-label': x[1] });
       inp.addEventListener('change', function () {
         var v = numIn(inp.value); if (v == null || v < 0) { inp.value = INV[x[0]]; return; }
@@ -705,7 +754,7 @@
         status('Saving…', 'dirty');
         sb().from('payroll_settings').upsert({ id: 1, invoice: INV }, { onConflict: 'id' }).then(function (r) { status(r.error ? 'Couldn’t save: ' + (r.error.message || '') : 'Saved.', r.error ? 'err' : ''); });
       });
-      grid.appendChild(h('label', { cls: 'pr-invrate' }, [h('span', { text: x[1] }), h('span', { cls: 'pr-dollar' }, x[2] === '$' ? ['$', inp, h('small', { text: 'a week' })] : [inp, h('small', { text: x[2] === 'k' ? '% of 401(k) pay' : '% of gross' })])]));
+      grid.appendChild(h('label', { cls: 'pr-invrate' }, [h('span', { text: x[1] }), h('span', { cls: 'pr-dollar' }, x[2] === '$' ? ['$', inp, h('small', { text: 'a week' })] : x[2] === 'b' ? ['$', inp, h('small', { text: 'per person a year' })] : [inp, h('small', { text: x[2] === 'k' ? '% of 401(k) pay' : x[2] === 'u' ? '% of pay under the base' : '% of gross' })])]));
     });
     box.appendChild(grid);
     if (!INV_TABLE) box.appendChild(h('p', { cls: 'pr-err', text: 'To change these, run supabase/payroll-invoice.sql in Supabase first. Until then the estimate uses the 10/16/2026 invoice.' }));
@@ -735,7 +784,12 @@
         .concat(iv.lines.map(function (l) { return h('tr', null, [h('td', { text: l.label }), h('td', { cls: 'pr-how', text: l.how }), h('td', { cls: 'pr-num', text: money(l.amt) })]); }))
         .concat([h('tr', { cls: 'pr-invt' }, [h('td', { text: 'Estimated invoice' }), h('td', { cls: 'pr-how', text: pct(iv.pctGross) + ' on top of gross pay' }), h('td', { cls: 'pr-num', text: money(iv.total) })])]);
       box.appendChild(h('table', { cls: 'pr-invtbl' }, [h('tbody', null, rows)]));
-      box.appendChild(h('p', { cls: 'pr-schednote', text: 'Rates from ' + (INV.source || 'the last invoice') + '. Unemployment taxes stop once someone passes the yearly wage base, so those lines shrink through the year; update the rates under Pay rates when a new invoice changes them.' + (INV_TABLE ? '' : ' (Run supabase/payroll-invoice.sql to save rate changes and 401(k) settings.)') }));
+      var U = iv.U, under = U.people.filter(function (p) { return p.st > 0; });
+      box.appendChild(h('p', { cls: 'pr-schednote' }, [h('b', { text: 'Unemployment, person by person. ' }),
+        under.length ? 'Still under the ' + dollars(INV.sutaBase) + ' state wage base this week: ' + under.map(function (p) { return p.name + ' (' + money(p.before) + ' paid so far' + (p.capsNow ? ', reaches the base this week' : '') + ')'; }).join('; ') + '. Everyone else paid this week has passed it, so their pay adds nothing to unemployment.'
+          : 'Everyone paid this week has passed the ' + dollars(INV.sutaBase) + ' state wage base, so unemployment adds nothing this week.',
+        ' Pay so far this year is ' + seed().src + ', plus each payroll week since.' + (U.missing.length ? ' ' + U.missing.length + (U.missing.length === 1 ? ' week since then hasn’t' : ' weeks since then haven’t') + ' been opened yet (' + U.missing.map(wkLabel).join(', ') + '), so ' + (U.missing.length === 1 ? 'it isn’t' : 'they aren’t') + ' counted: open ' + (U.missing.length === 1 ? 'it' : 'them') + ' once to include ' + (U.missing.length === 1 ? 'it' : 'them') + '.' : '')]));
+      box.appendChild(h('p', { cls: 'pr-schednote', text: 'Rates from ' + (INV.source || 'the last invoice') + '; change them under Pay rates when a new invoice or New York’s yearly rate notice changes them.' + (INV_TABLE ? '' : ' (Run supabase/payroll-invoice.sql to save rate changes and 401(k) settings.)') }));
     }
   }
 
@@ -787,8 +841,17 @@
   try { OV.range = +localStorage.getItem('eden-fin-range') || 13; } catch (e) {}
   function loadOverview() {
     var my = ++P.seq; OV.err = ''; paint(true);
-    sb().from('payroll_weeks').select('week_start,status,finalized_at,summary:rows->_summary').order('week_start', { ascending: false }).limit(104).then(function (r) {
+    Promise.all([
+      sb().from('payroll_weeks').select('week_start,status,finalized_at,summary:rows->_summary').order('week_start', { ascending: false }).limit(104),
+      sb().from('employees').select('*').order('name'),
+      sb().from('pay_rates').select('*'),
+      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle()
+    ]).then(function (all) {
+      var r = all[0];
       if (my !== P.seq) return;
+      if (!all[1].error) P.emps = (all[1].data || []).filter(function (e) { return String(e.name || '').trim(); });
+      if (!all[2].error) { P.rates = {}; (all[2].data || []).forEach(function (x) { P.rates[x.emp] = x; }); }
+      setInvoice(all[3]);
       if (r.error) { P.missing = isMissing(r.error); OV.err = P.missing ? '' : 'Couldn’t load the weeks. ' + (r.error.message || ''); OV.weeks = []; }
       else OV.weeks = (r.data || []).map(function (w) { return { week: w.week_start, status: w.status, s: w.summary && typeof w.summary === 'object' ? w.summary : null }; });
       paint(false);
@@ -851,9 +914,41 @@
     var foot = h('tr', { cls: 'pr-total' }, [h('th', { scope: 'row', text: shown.length + ' weeks' }), h('td', { cls: 'pr-num', text: money(totNet) }), h('td', { cls: 'pr-num', text: money(totCost) }), h('td', { cls: 'pr-num', text: pctTxt(totNet ? totCost / totNet : null) }),
       h('td', { cls: 'pr-num', text: invW.length ? money(totInv) : '–' }), h('td', { cls: 'pr-num', text: invW.length ? pctTxt(invW.reduce(function (a, w) { return a + (w.s.extraPct || 0); }, 0) / invW.length) : '–' }), h('td', { cls: 'pr-num', text: netInv ? pctTxt(totTrue / netInv) : '–' }),
       h('td', { cls: 'pr-num', text: money(shown.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) }), h('td', { cls: 'pr-num', text: hrs(shown.reduce(function (a, w) { return a + (w.s.hours || 0); }, 0)) })]);
+    el.appendChild(capView());
     el.appendChild(h('h2', { cls: 'fn-h', text: 'Week by week' }));
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Payroll invoice', 'On top of pay', 'True labor %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
     el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue. Payroll invoice is the payroll company’s bill (estimated until you enter the real one on the week). True labor % = (invoice − tips) ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
+  }
+  /* ----- Financials: each person's pay this year toward the unemployment wage bases ----- */
+  function capView() {
+    var weeks = OV.weeks || [], latest = weeks[0] ? weeks[0].week : iso(new Date()), y = payYear(latest);
+    var next = iso(addDays(new Date(latest + 'T12:00:00'), 7)), sB = +INV.sutaBase || 0, fB = +INV.futaBase || 0, sr = +INV.suta || 0;
+    var S = seed(), byPid = {};
+    var ppl = (P.emps || []).map(function (e) {
+      var pc = payco(e.id), ytd = ytdBefore(e.id, weeks, next);
+      if (pc.id) byPid[pc.id.toUpperCase()] = true;
+      return { e: e, ytd: ytd, on: onStaff(e) };
+    }).filter(function (p) { return p.on; });
+    ppl.sort(function (a, b) { return (a.ytd >= sB) - (b.ytd >= sB) || b.ytd - a.ytd; });
+    var box = h('section', { cls: 'fn-cap' }, [h('h2', { cls: 'fn-h', text: 'Unemployment wage base, ' + y }),
+      h('p', { cls: 'fn-note', text: 'Pay so far this year for each person (tips included), toward New York’s ' + dollars(sB) + ' state unemployment wage base (' + sr + '%) and the ' + dollars(fB) + ' federal base (' + (+INV.futa || 0) + '%). Once someone passes a base, the rest of their pay this year adds nothing to that tax. Starts from the ' + S.src + ' and adds each payroll week since; both bases start over every January.' })]);
+    if (!ppl.length) { box.appendChild(h('p', { cls: 'an-sub', text: 'No staff to show yet.' })); return box; }
+    var left = 0, nUnder = 0;
+    var tb = h('tbody', null, ppl.map(function (p) {
+      var pct = sB ? Math.min(1, p.ytd / sB) : 1, capped = p.ytd >= sB, togo = r2(Math.max(0, sB - p.ytd));
+      if (!capped && p.on) { left += togo * sr / 100; nUnder++; }
+      return h('tr', { cls: capped ? 'fn-capped' : null }, [
+        h('th', { scope: 'row', text: p.e.name }),
+        h('td', { cls: 'pr-num', text: money(p.ytd) }),
+        h('td', { cls: 'fn-capc' }, [h('div', { cls: 'fn-meter', role: 'img', 'aria-label': Math.round(pct * 100) + '% of the state wage base' }, [h('span', { style: 'width:' + (pct * 100).toFixed(1) + '%' })]),
+          h('small', { text: capped ? 'Past the base' : money(togo) + ' to go · up to ' + money(togo * sr / 100) + ' more' })]),
+        h('td', { cls: 'pr-num', text: p.ytd >= fB ? 'Past' : money(r2(fB - p.ytd)) + ' to go' })
+      ]);
+    }));
+    box.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table fn-captbl' }, [h('thead', null, [h('tr', null, [h('th', { scope: 'col', text: 'Employee' }), h('th', { scope: 'col', cls: 'pr-num', text: 'Paid this year' }), h('th', { scope: 'col', text: 'State base (' + dollars(sB) + ')' }), h('th', { scope: 'col', cls: 'pr-num', text: 'Federal base (' + dollars(fB) + ')' })])]), tb])]));
+    var miss = weeksUncounted(weeks, next);
+    box.appendChild(h('p', { cls: 'pr-fine', text: (nUnder ? nUnder + (nUnder === 1 ? ' person on staff is' : ' people on staff are') + ' still under the state base: at most ' + money(r2(left)) + ' more state unemployment this year, less if they earn less than the base before December 31.' : 'Everyone on staff has passed the state base for ' + y + ': no more state unemployment until January.') + ' Through the week of ' + wkLabel(latest) + ', drafts included.' + (miss.length ? ' Not counted yet (open once to include): week of ' + miss.map(wkLabel).join(', ') + '.' : '') }));
+    return box;
   }
   /* ----- Past payroll: every week, to open, print, download or email again ----- */
   var PAST = { q: '' };

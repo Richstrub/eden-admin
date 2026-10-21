@@ -19,8 +19,10 @@ create policy "owner only" on public.payroll_settings for all to authenticated
 
 insert into public.payroll_settings (id, invoice) values (1, jsonb_build_object(
   'fica', 7.65,        -- Social Security & Medicare, % of gross pay (tips included)
-  'futa', 0.0207,      -- federal unemployment, % of gross (falls to 0 as people pass the yearly wage base)
-  'suta', 1.8623,      -- NY state unemployment, % of gross (falls as people pass the yearly wage base)
+  'suta', 6.00,        -- NY state unemployment, % of each person's pay up to the yearly wage base (Pinnacle bills 6%)
+  'sutaBase', 17600,   -- NY wage base for 2026, per person (raised every January)
+  'futa', 0.60,        -- federal unemployment, % of each person's pay up to the federal wage base
+  'futaBase', 7000,    -- federal wage base, per person
   'sdi', 0.60,         -- NY disability (SDI), % of gross
   'service', 1.80,     -- service fee, % of gross
   'k401', 3.00,        -- 401(k) match, % of pay for employees who contribute
