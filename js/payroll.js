@@ -171,12 +171,12 @@
       // Team sales (all tips on the day's checks) vs the timecard file (only tips taken while someone was clocked in)
       var lbl = t.teamLabel || 'Team sales';
       if (t.team && t.team[i] != null && t.sq && Math.abs(t.team[i] - (t.sq[i] || 0)) >= 0.01)
-        out.push({ day: i, text: dl(i) + ': ' + lbl + ' tips ' + money(t.team[i]) + ', timecard file ' + money(t.sq[i] || 0) + ' (' + diffTxt(t.team[i], t.sq[i] || 0) + ' on checks paid outside the server’s clock-in, or rung under another Square profile). Payroll uses ' + lbl + '.' });
+        out.push({ key: 'src-' + i + '-' + r2(t.team[i]) + '-' + r2(t.sq[i] || 0), day: i, text: dl(i) + ': ' + lbl + ' tips ' + money(t.team[i]) + ', timecard file ' + money(t.sq[i] || 0) + ' (' + diffTxt(t.team[i], t.sq[i] || 0) + ' on checks paid outside the server’s clock-in, or rung under another Square profile). Payroll uses ' + lbl + '.' });
       if (e && e.has[i]) {
         var bits = [];
         if (Math.abs(used - r2(e.card[i])) >= 0.01) bits.push('credit card ' + money(used) + ' in Square vs ' + money(e.card[i]) + ' on the End of day report (' + diffTxt(used, e.card[i]) + ')');
         if (Math.abs(r2(+t.cash[i] || 0) - r2(e.cash[i])) >= 0.01) bits.push('cash ' + money(+t.cash[i] || 0) + ' in Square vs ' + money(e.cash[i]) + ' on the End of day report');
-        if (bits.length) out.push({ day: i, text: dl(i) + ': ' + bits.join('; ') + '.' });
+        if (bits.length) out.push({ key: 'eod-' + i + '-' + used + '-' + r2(e.card[i]) + '-' + r2(+t.cash[i] || 0) + '-' + r2(e.cash[i]), day: i, text: dl(i) + ': ' + bits.join('; ') + '.' });
       }
     }
     // a whole-week Team sales file: does the week add up?
@@ -190,7 +190,7 @@
         var open = [], tm = t.team || [];
         for (var k = 0; k < 7; k++) if ((t.sq && t.sq[k]) && tm[k] == null) open.push(DAYS[k]);
         var anyDay = tm.some(function (x) { return x != null; });
-        out.push({ day: -1, text: 'Week: Team sales tips ' + money(w.total) + ', but the tips by day add up to ' + money(have) + ' (' + diffTxt(w.total, have) + ').' +
+        out.push({ key: 'week-' + r2(w.total) + '-' + r2(have), day: -1, text: 'Week: Team sales tips ' + money(w.total) + ', but the tips by day add up to ' + money(have) + ' (' + diffTxt(w.total, have) + ').' +
           (!anyDay && who.length ? ' Not in the timecard file: ' + who.join(', ') + '.' : '') +
           (open.length ? ' Drop the one-day Team sales export for ' + open.join(', ') + ' to put the rest on the right days.' : ' Check the one-day Team sales files add up to the week.') });
       }
@@ -446,12 +446,32 @@
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
 
     // tips that don't match the End of day reports
-    var mm = tipMismatch();
-    if (mm.length) el.appendChild(h('div', { cls: 'pr-alert', role: 'alert' }, [
-      h('b', { text: 'The tip numbers don’t all agree' }),
-      h('ul', null, mm.map(function (m) { return h('li', { text: m.text }); })),
-      h('p', { text: 'Each day’s tip pool uses the Transactions CSV (or a Team sales export) when you’ve dropped one in, otherwise the timecard file. Check anything listed here before finalizing.' })
-    ]));
+    var mm = tipMismatch(), rec = P.row.rows._recon || {};
+    var openM = mm.filter(function (m) { return !rec[m.key]; }), doneM = mm.filter(function (m) { return rec[m.key]; });
+    var tickItem = function (m, done) {
+      var cb = h('input', { type: 'checkbox', disabled: ro, 'aria-label': (done ? 'Reconciled: ' : 'Mark reconciled: ') + m.text });
+      cb.checked = !!done;
+      cb.addEventListener('change', function () {
+        var R = P.row.rows._recon || (P.row.rows._recon = {});
+        if (cb.checked) R[m.key] = { at: new Date().toISOString(), by: (P.ctx && P.ctx.name) || '' }; else delete R[m.key];
+        saveSoon(); paint(false);
+      });
+      var info = done && rec[m.key] ? h('small', { text: 'Reconciled ' + new Date(rec[m.key].at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (rec[m.key].by ? ' · ' + rec[m.key].by : '') }) : null;
+      return h('li', null, [h('label', { cls: 'pr-recon' }, [cb, h('span', null, [m.text, info])])]);
+    };
+    if (mm.length) {
+      var box = h('div', { cls: 'pr-alert' + (openM.length ? '' : ' ok'), role: openM.length ? 'alert' : null });
+      if (openM.length) {
+        box.appendChild(h('b', { text: openM.length === 1 ? 'One tip number doesn’t agree' : openM.length + ' tip numbers don’t agree' }));
+        box.appendChild(h('ul', null, openM.map(function (m) { return tickItem(m, false); })));
+        box.appendChild(h('p', { text: 'Tick each one once you’ve checked it in Square; it moves to Reconciled below. Each day’s tip pool uses the Transactions CSV (or a Team sales export) when you’ve dropped one in, otherwise the timecard file.' }));
+      } else box.appendChild(h('b', { text: 'Tip numbers reconciled' }));
+      if (doneM.length) box.appendChild(h('details', { cls: 'pr-recdone' }, [
+        h('summary', { text: 'Reconciled (' + doneM.length + ')' }),
+        h('ul', null, doneM.map(function (m) { return tickItem(m, true); }))
+      ]));
+      el.appendChild(box);
+    }
     // step 2: tips by day
     el.appendChild(tipsTable(ro));
 
@@ -721,8 +741,8 @@
   function finalize() {
     var c = calc(), missing = c.lines.filter(function (L) { return L.warn; });
     if (missing.length && !confirm(missing.map(function (L) { return L.info.name + ': ' + L.warn; }).join('\n') + '\n\nFinalize anyway?')) return;
-    var mm = tipMismatch();
-    if (mm.length && !confirm('The tip numbers don’t all agree:\n\n' + mm.map(function (m) { return '• ' + m.text; }).join('\n') + '\n\nFinalize anyway?')) return;
+    var rcn = P.row.rows._recon || {}, mm = tipMismatch().filter(function (m) { return !rcn[m.key]; });
+    if (mm.length && !confirm('These tip numbers haven’t been reconciled:\n\n' + mm.map(function (m) { return '• ' + m.text; }).join('\n') + '\n\nFinalize anyway?')) return;
     if (!confirm('Finalize the week of ' + weekLabel(P.week) + '? Gross pay ' + money(c.T.gross) + '. The hours and pay rates are locked as they are now; you can reopen it later.')) return;
     c.lines.forEach(function (L) {
       var r = rowFor(L.id), i = L.info;

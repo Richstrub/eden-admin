@@ -207,7 +207,7 @@
       if (window.EdenAnalytics) window.EdenAnalytics.show({ sb: sb, el: $('viewAnalytics'), status: status, sub: sub });
     } else if (v === 'payroll') {
       status('');
-      if (window.EdenPayroll) window.EdenPayroll.show({ sb: sb, el: $('viewPayroll'), status: status, sub: sub });
+      if (window.EdenPayroll) window.EdenPayroll.show({ sb: sb, el: $('viewPayroll'), status: status, sub: sub, name: staffName });
     } else if (v === 'calendar') {
       status('');
       if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr(), focus: calFocus });

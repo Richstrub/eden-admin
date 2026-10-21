@@ -2619,3 +2619,11 @@ body.nt-open #app{visibility:hidden!important}
 .pr-lbig span{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
 .pr-lbig b{font-family:var(--serif,inherit);font-weight:400;font-size:2rem;line-height:1.1;color:var(--ink)}
 .pr-lmath p{margin:0;font-size:.95rem}.pr-lmath small{display:block;font-size:.76rem;color:var(--stone);margin-top:3px;max-width:70ch}
+.pr-alert ul{list-style:none;margin:6px 0 8px;padding:0}
+.pr-recon{display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:4px 0}
+.pr-recon input{flex:none;width:16px;height:16px;margin-top:2px;accent-color:#5d7a4f}
+.pr-recon small{display:block;font-size:.72rem;color:#7a6a58;margin-top:2px}
+.pr-alert.ok{border-color:#b9cfae;border-left-color:#5d7a4f;background:#f1f6ee;color:#2f4627}
+.pr-recdone{margin-top:6px;border-top:1px solid rgba(0,0,0,.08);padding-top:6px}
+.pr-recdone summary{cursor:pointer;font-size:.84rem;font-weight:500}
+.pr-recdone li span{opacity:.75}
