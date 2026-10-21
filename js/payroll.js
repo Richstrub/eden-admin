@@ -712,7 +712,7 @@
       paint(false);
     }, function () { if (my === P.seq) { OV.err = 'Couldn’t reach the database.'; OV.weeks = []; paint(false); } });
   }
-  var REV = '#b0703f', PAY = '#2b7aa6';
+  var REV = '#2a2e33', PAY = '#b0703f';   // Eden's charcoal and ember
   function pctTxt(v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; }
   function wkLabel(iso_) { var d = new Date(iso_ + 'T12:00:00'); return (d.getMonth() + 1) + '/' + d.getDate(); }
   function paintOverview(el, loading) {
@@ -799,7 +799,7 @@
   }
   // payroll % per week, with the range's overall % as a reference line
   function pctChart(ws, overall) {
-    var cb = chartBox('Payroll %', [['Payroll %', PAY, true], ['Average for these weeks', '#8b8a86', true]]);
+    var cb = chartBox('Payroll %', [['Payroll %', PAY, true], ['Average for these weeks', '#7f7a71', true]]);
     var W = 760, H = 200, L = 64, R = 12, T = 14, B = 30, n = ws.length;
     var vals = ws.map(function (w) { return w.s.pct; }).filter(function (v) { return v != null; });
     var hi = Math.max.apply(null, vals.concat([overall || 0])), lo = Math.min.apply(null, vals.concat([overall || 1]));

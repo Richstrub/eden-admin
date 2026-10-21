@@ -2664,19 +2664,19 @@ body.nt-open #app{visibility:hidden!important}
 .fn-rbtn[aria-pressed=true]{background:var(--ink,#0f1215);color:#fff}
 .fn-wk{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone);margin:6px 0 8px}
 .fn-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-.fn-tile{background:#fff;border:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
+.fn-tile{background:#fffdf9;border:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
 .fn-tl{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone);display:flex;align-items:center;gap:6px}
 .fn-tile b{font-family:var(--serif,inherit);font-weight:400;font-size:2rem;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums}
 .fn-delta{font-size:.78rem;color:var(--stone)}.fn-delta.good{color:#3f6b33}.fn-delta.bad{color:#a3452a}
 .fn-sub{font-size:.74rem;color:var(--stone)}
 .fn-sw{display:inline-block;width:10px;height:10px;border-radius:2px}.fn-sw.line{height:3px;width:14px;border-radius:2px}
-.fn-chart{position:relative;margin:0 0 14px;padding:12px 14px 6px;background:#fff;border:1px solid var(--line)}
+.fn-chart{position:relative;margin:0 0 14px;padding:14px 16px 8px;background:#fffdf9;border:1px solid var(--line)}
 .fn-chart figcaption{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
-.fn-chart figcaption b{font-weight:500}
+.fn-chart figcaption b{font-family:var(--serif,Georgia,serif);font-weight:400;font-size:1.25rem;color:var(--ink,#0f1215)}
 .fn-legend{display:flex;gap:14px;font-size:.76rem;color:var(--stone)}.fn-legend span{display:flex;align-items:center;gap:6px}
 .fn-svg{width:100%;height:auto;display:block}
-.fn-grid{stroke:#ece9e4;stroke-width:1}.fn-base{stroke:#8b8a86;stroke-width:1}
-.fn-avg{stroke:#8b8a86;stroke-width:1.5;stroke-dasharray:5 4}
+.fn-grid{stroke:#ebe5da;stroke-width:1}.fn-base{stroke:#8b8a86;stroke-width:1}
+.fn-avg{stroke:#7f7a71;stroke-width:1.5;stroke-dasharray:5 4}
 .fn-ax{font-size:11px;fill:#7f7a71;font-family:inherit}
 .fn-lab{font-size:12px;fill:#1d2024;font-weight:500}
 .fn-tip{position:absolute;z-index:3;min-width:160px;background:#0f1215;color:#f3eee5;font-size:.78rem;padding:8px 10px;border-radius:4px;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.2)}
