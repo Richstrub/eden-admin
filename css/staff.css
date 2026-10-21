@@ -2697,3 +2697,29 @@ body.nt-open #app{visibility:hidden!important}
 .pr-pacts{white-space:nowrap;text-align:right}
 .pr-plink{font:inherit;font-size:.78rem;background:none;border:0;padding:2px 6px;color:#8a5226;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .pr-plink:hover{color:var(--ink,#0f1215)}
+/* Payroll: estimated payroll invoice */
+.pr-inv{margin:6px 0 14px;padding:14px 16px 10px;background:#fffdf9;border:1px solid var(--line);border-left:4px solid var(--ember,#b0703f)}
+.pr-invtop{display:flex;align-items:flex-start;gap:16px 32px;flex-wrap:wrap}
+.pr-invbig{display:flex;flex-direction:column;min-width:200px}
+.pr-invbig span{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.pr-invbig b{font-family:var(--serif,Georgia,serif);font-weight:400;font-size:2.1rem;line-height:1.1;color:var(--ink,#0f1215);font-variant-numeric:tabular-nums}
+.pr-invbig small{font-size:.74rem;color:var(--stone)}
+.pr-invsplit{display:flex;gap:28px;flex-wrap:wrap;flex:1}
+.pr-invsplit p{margin:4px 0 0;font-size:.9rem}.pr-invsplit b{font-weight:500;font-variant-numeric:tabular-nums}
+.pr-invsplit small{display:block;font-size:.74rem;color:var(--stone)}
+.pr-invact{display:flex;flex-direction:column;gap:3px;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.pr-invact .pr-money{width:9em;font-size:.95rem;text-align:right}
+.pr-invact small{letter-spacing:0;text-transform:none;font-size:.74rem}
+.pr-invmore{font:inherit;font-size:.78rem;background:none;border:0;padding:6px 0 0;color:#8a5226;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.pr-invtbl{width:100%;max-width:720px;border-collapse:collapse;font-size:.84rem;margin-top:8px;font-variant-numeric:tabular-nums}
+.pr-invtbl td{padding:4px 8px 4px 0;border-bottom:1px solid var(--line)}
+.pr-invtbl td.pr-how{color:var(--stone);font-size:.76rem}
+.pr-invtbl tr.pr-invg td{font-weight:500}.pr-invtbl tr.pr-invt td{border-top:2px solid var(--ink,#0f1215);font-weight:600}
+.pr-invrates{margin-top:22px}
+.pr-invgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 16px;margin-top:8px}
+.pr-invrate{display:flex;flex-direction:column;gap:4px;font-size:.8rem}
+.pr-invrate .pr-money{width:7em;text-align:right}.pr-invrate small{font-size:.74rem;color:var(--stone);margin-left:6px}
+.fn-tiles{grid-template-columns:repeat(4,1fr)}
+.fn-note{font-size:.8rem;color:var(--stone);margin:-4px 0 14px;max-width:90ch}
+@media (max-width:1100px){.fn-tiles{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:820px){.fn-tiles{grid-template-columns:1fr}}

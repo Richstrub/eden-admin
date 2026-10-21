@@ -113,8 +113,10 @@
       sb().from('pay_rates').select('*'),
       sb().from('payroll_weeks').select('*').eq('week_start', wk).maybeSingle(),
       sb().from('schedule_weeks').select('week_start,shifts,status,published').eq('week_start', wk).maybeSingle(),
-      sb().from('eod_reports').select('*').gte('report_date', wk).lte('report_date', end)
+      sb().from('eod_reports').select('*').gte('report_date', wk).lte('report_date', end),
+      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle()
     ]).then(function (res) {
+      setInvoice(res[5]);
       if (my !== P.seq) return;
       var bad = res[1].error || res[2].error;
       P.missing = !!(bad && isMissing(bad));
@@ -122,6 +124,7 @@
       P.emps = (res[0].data || []).filter(function (e) { return String(e.name || '').trim(); });
       P.rates = {}; (res[1].data || []).forEach(function (r) { P.rates[r.emp] = r; });
       P.v2 = !(res[1].data || []).length || 'kitchen_rate' in res[1].data[0];
+      P.k401 = !!(res[1].data || []).length && 'k401' in res[1].data[0];
       P.sched = res[3].error ? null : res[3].data;
       P.eod = eodDays(res[4].error ? [] : res[4].data || []);
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
@@ -164,11 +167,36 @@
     return { sales: S, wages: wages, comm: c.T.comm, cost: cost, pct: S && S.net ? cost / S.net : null };
   }
   // what the Financials overview reads for each week (kept with the week whenever it saves)
+  /* ---------- the payroll company's invoice (Pinnacle), estimated from the week's gross pay ----------
+     Rates from invoice 061939 (10/16/2026): employer costs as % of gross pay (tips included), plus flat weekly amounts.
+     The unemployment rates fall during the year as people pass the yearly wage base; update them from a new invoice. */
+  var INV_DEFAULT = { fica: 7.65, futa: 0.0207, suta: 1.8623, sdi: 0.6, service: 1.8, k401: 3, benefits: 325.63, shipping: 10, source: 'Invoice 061939, 10/16/2026' };
+  var INV = Object.assign({}, INV_DEFAULT), INV_SAVED = false, INV_TABLE = true;
+  function setInvoice(r) {
+    if (!r) return;
+    if (r.error) { INV_TABLE = !isMissing(r.error); return; }
+    INV_TABLE = true;
+    if (r.data && r.data.invoice && Object.keys(r.data.invoice).length) { INV = Object.assign({}, INV_DEFAULT, r.data.invoice); INV_SAVED = true; }
+  }
+  var INV_LINES = [['fica', 'Social Security & Medicare', '%'], ['suta', 'State unemployment', '%'], ['futa', 'Federal unemployment', '%'], ['sdi', 'SDI (NY disability)', '%'], ['service', 'Service fee', '%'], ['k401', '401(k) match', 'k'], ['benefits', 'Benefits', '$'], ['shipping', 'Shipping', '$']];
+  function invoiceEst(c) {
+    var gross = r2(c.T.gross - c.T.adj), tips = c.T.tips, base = r2(gross - tips), kpay = 0;
+    c.lines.forEach(function (L) { var r = P.rates[L.id] || {}; if (r.k401 && onStaff(L.e)) kpay += L.gross - L.adj; });
+    var lines = INV_LINES.map(function (x) {
+      var k = x[0], rate = +INV[k] || 0, amt = x[2] === '%' ? gross * rate / 100 : x[2] === 'k' ? kpay * rate / 100 : (gross > 0 ? rate : 0);
+      return { key: k, label: x[1], how: x[2] === '%' ? rate + '% of ' + money(gross) : x[2] === 'k' ? rate + '% of ' + money(kpay) + ' (employees in the 401(k))' : 'a week', amt: r2(amt) };
+    });
+    var extra = r2(lines.reduce(function (a, l) { return a + l.amt; }, 0)), total = r2(gross + extra);
+    return { gross: gross, tips: tips, base: base, lines: lines, extra: extra, total: total, pctGross: gross ? extra / gross : null, pctBase: base ? extra / base : null };
+  }
   function summary() {
     try {
       var c = calc(), lb = labor(c);
-      return { net: lb.sales ? lb.sales.net : null, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
-        pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, at: new Date().toISOString() };
+      var iv = invoiceEst(c), act = P.row.rows._invoice && +P.row.rows._invoice.actual || null;
+      var inv = act || iv.total, net = lb.sales ? lb.sales.net : null, trueCost = r2(inv - iv.tips);   // tips pass through to staff; the taxes on them don't
+      return { net: net, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
+        pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, invEst: iv.total, invActual: act, extra: r2(inv - iv.gross), extraPct: iv.gross ? (inv - iv.gross) / iv.gross : null,
+        trueCost: trueCost, truePct: net ? trueCost / net : null, at: new Date().toISOString() };
     } catch (e) { return null; }
   }
   function diffTxt(a, b) { var d = r2(a - b); return (d > 0 ? '+' : '−') + money(Math.abs(d)); }
@@ -348,6 +376,7 @@
   function saveRate(id) {
     var r = P.rates[id];
     var row = { emp: id, pay_type: r.pay_type || 'hourly', rate: r.rate == null ? null : r2(r.rate), weekly_salary: r.weekly_salary == null ? null : r2(r.weekly_salary), tip_eligible: !!r.tip_eligible, notes: r.notes || '' };
+    if (P.k401) row.k401 = !!r.k401;
     if (P.v2) Object.assign(row, { kitchen_rate: r.kitchen_rate == null ? null : r2(r.kitchen_rate), commission: !!r.commission, payroll_id: r.payroll_id || '', payroll_name: r.payroll_name || '', square_name: r.square_name || '' });
     status('Saving…', 'dirty');
     return sb().from('pay_rates').upsert(row, { onConflict: 'emp' }).then(function (x) {
@@ -460,6 +489,8 @@
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
 
+    // the payroll company's invoice for this week
+    P.refs.inv = h('div', { cls: 'pr-inv' }); el.appendChild(P.refs.inv);
     // tips that don't match the End of day reports
     var mm = tipMismatch(), rec = P.row.rows._recon || {};
     var openM = mm.filter(function (m) { return !rec[m.key]; }), doneM = mm.filter(function (m) { return rec[m.key]; });
@@ -661,6 +692,53 @@
       : 'Tips come from the Square file. Drop this week’s file above to fill them in. ';
     return box;
   }
+  // Pay rates: the payroll company's invoice rates (saved for every week)
+  function invoiceRates() {
+    var box = h('div', { cls: 'pr-invrates' }, [h('h2', { cls: 'fn-h', text: 'Payroll company invoice rates' }),
+      h('p', { cls: 'an-sub', text: 'Used for the estimated invoice on each week. Percentages are of gross pay (tips included); the 401(k) match is of the pay of employees ticked 401(k) above. Taken from ' + (INV.source || 'the last invoice') + '.' })]);
+    var grid = h('div', { cls: 'pr-invgrid' });
+    INV_LINES.forEach(function (x) {
+      var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: String(INV[x[0]] == null ? '' : INV[x[0]]), disabled: !INV_TABLE, 'aria-label': x[1] });
+      inp.addEventListener('change', function () {
+        var v = numIn(inp.value); if (v == null || v < 0) { inp.value = INV[x[0]]; return; }
+        INV[x[0]] = v; INV.source = 'Edited ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        status('Saving…', 'dirty');
+        sb().from('payroll_settings').upsert({ id: 1, invoice: INV }, { onConflict: 'id' }).then(function (r) { status(r.error ? 'Couldn’t save: ' + (r.error.message || '') : 'Saved.', r.error ? 'err' : ''); });
+      });
+      grid.appendChild(h('label', { cls: 'pr-invrate' }, [h('span', { text: x[1] }), h('span', { cls: 'pr-dollar' }, x[2] === '$' ? ['$', inp, h('small', { text: 'a week' })] : [inp, h('small', { text: x[2] === 'k' ? '% of 401(k) pay' : '% of gross' })])]));
+    });
+    box.appendChild(grid);
+    if (!INV_TABLE) box.appendChild(h('p', { cls: 'pr-err', text: 'To change these, run supabase/payroll-invoice.sql in Supabase first. Until then the estimate uses the 10/16/2026 invoice.' }));
+    return box;
+  }
+  function paintInvoice(c) {
+    var box = P.refs.inv; if (!box) return;
+    var iv = invoiceEst(c), I = P.row.rows._invoice || {}, act = +I.actual || null, open = box.dataset.open === '1';
+    box.innerHTML = '';
+    var actIn = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-money', value: act ? r2(act).toFixed(2) : '', placeholder: 'When it arrives', disabled: final() && !!act, 'aria-label': 'Actual invoice total' });
+    actIn.addEventListener('change', function () { var v = numIn(actIn.value); P.row.rows._invoice = Object.assign({}, P.row.rows._invoice || {}, { actual: v == null ? null : r2(v), at: new Date().toISOString() }); saveSoon(); refresh(); });
+    var pct = function (v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; };
+    box.appendChild(h('div', { cls: 'pr-invtop' }, [
+      h('div', { cls: 'pr-invbig' }, [h('span', { text: 'Estimated payroll invoice' }), h('b', { text: money(iv.total) }), h('small', { text: 'Pinnacle, for this week' })]),
+      h('div', { cls: 'pr-invsplit' }, [
+        h('p', null, [h('b', { text: money(iv.gross) }), ' gross pay', h('small', { text: money(iv.base) + ' base pay + ' + money(iv.tips) + ' tips' })]),
+        h('p', null, [h('b', { text: '+ ' + money(iv.extra) }), ' on top', h('small', { text: pct(iv.pctGross) + ' of gross pay · ' + pct(iv.pctBase) + ' of base pay' })])
+      ]),
+      h('label', { cls: 'pr-invact' }, [h('span', { text: 'Actual invoice' }), h('span', { cls: 'pr-dollar' }, ['$', actIn]),
+        act ? h('small', { cls: Math.abs(act - iv.total) < 0.5 ? '' : 'pr-warn', text: (Math.abs(act - iv.total) < 0.5 ? 'Matches the estimate' : diffTxt(act, iv.total) + ' vs the estimate') }) : null])
+    ]));
+    var more = h('button', { type: 'button', cls: 'pr-invmore', 'aria-expanded': open ? 'true' : 'false', text: open ? 'Hide the breakdown' : 'Show the breakdown' });
+    more.addEventListener('click', function () { box.dataset.open = open ? '0' : '1'; paintInvoice(calc()); });
+    box.appendChild(more);
+    if (open) {
+      var rows = [h('tr', { cls: 'pr-invg' }, [h('td', { text: 'Gross pay' }), h('td', { cls: 'pr-how', text: 'wages, salary, overtime, commission and tips paid through payroll' }), h('td', { cls: 'pr-num', text: money(iv.gross) })])]
+        .concat(iv.lines.map(function (l) { return h('tr', null, [h('td', { text: l.label }), h('td', { cls: 'pr-how', text: l.how }), h('td', { cls: 'pr-num', text: money(l.amt) })]); }))
+        .concat([h('tr', { cls: 'pr-invt' }, [h('td', { text: 'Estimated invoice' }), h('td', { cls: 'pr-how', text: pct(iv.pctGross) + ' on top of gross pay' }), h('td', { cls: 'pr-num', text: money(iv.total) })])]);
+      box.appendChild(h('table', { cls: 'pr-invtbl' }, [h('tbody', null, rows)]));
+      box.appendChild(h('p', { cls: 'pr-schednote', text: 'Rates from ' + (INV.source || 'the last invoice') + '. Unemployment taxes stop once someone passes the yearly wage base, so those lines shrink through the year; update the rates under Pay rates when a new invoice changes them.' + (INV_TABLE ? '' : ' (Run supabase/payroll-invoice.sql to save rate changes and 401(k) settings.)') }));
+    }
+  }
+
   /* ----- scheduled vs worked: who went over or under their scheduled time, day by day ----- */
   function schedGrid(emps, sch) {
     var box = h('div', { cls: 'pr-sched' });
@@ -716,7 +794,7 @@
       paint(false);
     }, function () { if (my === P.seq) { OV.err = 'Couldn’t reach the database.'; OV.weeks = []; paint(false); } });
   }
-  var REV = '#2a2e33', PAY = '#b0703f';   // Eden's charcoal and ember
+  var REV = '#2a2e33', PAY = '#b0703f', TRUE_C = '#2a2e33';   // Eden's charcoal and ember
   function pctTxt(v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; }
   function wkLabel(iso_) { var d = new Date(iso_ + 'T12:00:00'); return (d.getMonth() + 1) + '/' + d.getDate(); }
   function paintOverview(el, loading) {
@@ -752,21 +830,30 @@
     el.appendChild(h('div', { cls: 'fn-tiles' }, [
       tile('Revenue', last.s.net != null ? money(last.s.net) : '–', 'Average ' + money(avg('net') || 0) + ' a week', delta(last.s.net, prev && prev.s.net, false, false), REV),
       tile('Payroll cost', money(last.s.cost), 'Average ' + money(avg('cost') || 0) + ' a week', delta(last.s.cost, prev && prev.s.cost, false, true), PAY),
-      tile('Payroll %', pctTxt(last.s.pct), 'Over these ' + shown.length + ' weeks: ' + pctTxt(totNet ? totCost / totNet : null), delta(last.s.pct, prev && prev.s.pct, true, true))
+      tile('Payroll %', pctTxt(last.s.pct), 'Over these ' + shown.length + ' weeks: ' + pctTxt(totNet ? totCost / totNet : null), delta(last.s.pct, prev && prev.s.pct, true, true), PAY),
+      tile('True labor %', pctTxt(last.s.truePct), last.s.invEst != null ? (last.s.invActual ? 'Invoice ' : 'Est. invoice ') + money(last.s.invActual || last.s.invEst) + ' less tips · ' + pctTxt(last.s.extraPct) + ' on top of pay' : 'Open the week to estimate its invoice', delta(last.s.truePct, prev && prev.s.truePct, true, true), TRUE_C)
     ]));
     el.appendChild(barsChart(shown));
     el.appendChild(pctChart(shown, totNet ? totCost / totNet : null));
+    var withInv = shown.filter(function (w) { return w.s.extraPct != null; });
+    if (withInv.length) {
+      var avgOn = withInv.reduce(function (a, w) { return a + w.s.extraPct; }, 0) / withInv.length;
+      el.appendChild(h('p', { cls: 'fn-note', text: 'On top of gross pay (payroll taxes, unemployment, SDI, benefits, 401(k) match, service fee and shipping): ' + pctTxt(avgOn) + ' on average over ' + withInv.length + (withInv.length === 1 ? ' week' : ' weeks') + '. True labor % is the payroll invoice less tips (tips pass through to staff, the taxes on them don’t) ÷ revenue.' }));
+    }
     // table
     var tb = h('tbody', null, shown.slice().reverse().map(function (w) {
       return h('tr', null, [h('th', { scope: 'row' }, [h('a', { href: '#payroll', text: 'Week of ' + wkLabel(w.week), on: { click: function (ev) { ev.preventDefault(); P.week = new Date(w.week + 'T12:00:00'); P.row = null; location.hash = '#payroll'; } } }), w.status === 'final' ? h('small', { text: ' final' }) : h('small', { cls: 'fn-draft', text: ' draft' })]),
         h('td', { cls: 'pr-num', text: w.s.net != null ? money(w.s.net) : '–' }), h('td', { cls: 'pr-num', text: money(w.s.cost) }), h('td', { cls: 'pr-num fn-pctc', text: pctTxt(w.s.pct) }),
+        h('td', { cls: 'pr-num', title: w.s.invActual ? 'Actual invoice' : 'Estimated', text: w.s.invEst != null ? money(w.s.invActual || w.s.invEst) + (w.s.invActual ? '' : ' est.') : '–' }), h('td', { cls: 'pr-num', text: pctTxt(w.s.extraPct) }), h('td', { cls: 'pr-num fn-pctc', text: pctTxt(w.s.truePct) }),
         h('td', { cls: 'pr-num', text: money(w.s.tips || 0) }), h('td', { cls: 'pr-num', text: hrs(w.s.hours || 0) })]);
     }));
+    var invW = shown.filter(function (w) { return w.s.invEst != null; }), totInv = invW.reduce(function (a, w) { return a + (w.s.invActual || w.s.invEst); }, 0), totTrue = invW.reduce(function (a, w) { return a + (w.s.trueCost || 0); }, 0), netInv = invW.reduce(function (a, w) { return a + (w.s.net || 0); }, 0), grossInv = invW.reduce(function (a, w) { return a + (w.s.gross || 0) - 0; }, 0);
     var foot = h('tr', { cls: 'pr-total' }, [h('th', { scope: 'row', text: shown.length + ' weeks' }), h('td', { cls: 'pr-num', text: money(totNet) }), h('td', { cls: 'pr-num', text: money(totCost) }), h('td', { cls: 'pr-num', text: pctTxt(totNet ? totCost / totNet : null) }),
+      h('td', { cls: 'pr-num', text: invW.length ? money(totInv) : '–' }), h('td', { cls: 'pr-num', text: invW.length ? pctTxt(invW.reduce(function (a, w) { return a + (w.s.extraPct || 0); }, 0) / invW.length) : '–' }), h('td', { cls: 'pr-num', text: netInv ? pctTxt(totTrue / netInv) : '–' }),
       h('td', { cls: 'pr-num', text: money(shown.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) }), h('td', { cls: 'pr-num', text: hrs(shown.reduce(function (a, w) { return a + (w.s.hours || 0); }, 0)) })]);
     el.appendChild(h('h2', { cls: 'fn-h', text: 'Week by week' }));
-    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
-    el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
+    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Payroll invoice', 'On top of pay', 'True labor %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
+    el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue. Payroll invoice is the payroll company’s bill (estimated until you enter the real one on the week). True labor % = (invoice − tips) ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
   }
   /* ----- Past payroll: every week, to open, print, download or email again ----- */
   var PAST = { q: '' };
@@ -846,9 +933,10 @@
   }
   // payroll % per week, with the range's overall % as a reference line
   function pctChart(ws, overall) {
-    var cb = chartBox('Payroll %', [['Payroll %', PAY, true], ['Average for these weeks', '#7f7a71', true]]);
+    var hasTrue = ws.some(function (w) { return w.s.truePct != null; });
+    var cb = chartBox('Payroll % and true labor %', [['Payroll %', PAY, true]].concat(hasTrue ? [['True labor % (invoice less tips)', TRUE_C, true]] : [], [['Average payroll %', '#7f7a71', true]]));
     var W = 760, H = 200, L = 64, R = 12, T = 14, B = 30, n = ws.length;
-    var vals = ws.map(function (w) { return w.s.pct; }).filter(function (v) { return v != null; });
+    var vals = ws.map(function (w) { return w.s.pct; }).concat(ws.map(function (w) { return w.s.truePct; })).filter(function (v) { return v != null; });
     var hi = Math.max.apply(null, vals.concat([overall || 0])), lo = Math.min.apply(null, vals.concat([overall || 1]));
     var top = Math.ceil((hi + 0.02) * 20) / 20, bot = Math.max(0, Math.floor((lo - 0.02) * 20) / 20);
     var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'fn-svg', role: 'img', 'aria-label': 'Payroll percentage by week' });
@@ -856,6 +944,13 @@
     var band = (W - L - R) / n, x = function (i) { return L + band * i + band / 2; };
     for (var g = 0; g <= 4; g++) { var v = bot + (top - bot) * g / 4; svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'fn-grid' })); var t = svgEl('text', { x: L - 8, y: y(v) + 4, class: 'fn-ax', 'text-anchor': 'end' }); t.textContent = Math.round(v * 100) + '%'; svg.appendChild(t); }
     if (overall != null) svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(overall), y2: y(overall), class: 'fn-avg' }));
+    if (hasTrue) {   // true labor % first, so payroll % sits on top
+      var tp = ws.map(function (w, i) { return w.s.truePct == null ? null : [x(i), y(w.s.truePct)]; }), td = '';
+      tp.forEach(function (p) { if (p) td += (td ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); });
+      svg.appendChild(svgEl('path', { d: td, fill: 'none', stroke: TRUE_C, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      tp.forEach(function (p) { if (p) svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 4, fill: TRUE_C, stroke: '#fff', 'stroke-width': 2 })); });
+      var lt2 = tp[tp.length - 1]; if (lt2) { var t2 = svgEl('text', { x: Math.min(lt2[0] + 8, W - R - 40), y: lt2[1] - 8, class: 'fn-lab' }); t2.textContent = pctTxt(ws[ws.length - 1].s.truePct); svg.appendChild(t2); }
+    }
     var pts = ws.map(function (w, i) { return w.s.pct == null ? null : [x(i), y(w.s.pct)]; });
     var d = ''; pts.forEach(function (p) { if (p) d += (d && d.slice(-1) !== 'M' ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); });
     svg.appendChild(svgEl('path', { d: d, fill: 'none', stroke: PAY, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
@@ -864,7 +959,7 @@
       if (p) svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 4.5, fill: PAY, stroke: '#fff', 'stroke-width': 2 }));
       if (n <= 13 || i % Math.ceil(n / 13) === 0) { var t = svgEl('text', { x: x(i), y: H - 10, class: 'fn-ax', 'text-anchor': 'middle' }); t.textContent = wkLabel(w.week); svg.appendChild(t); }
       var hit = svgEl('rect', { x: L + band * i, y: T, width: band, height: H - T - B, fill: 'transparent' });
-      hit.addEventListener('mouseenter', function () { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var rc = svg.getBoundingClientRect(), sc = rc.width / W; showTip(cb, cb.tip, '<b>Week of ' + wkLabel(w.week) + '</b><span>Payroll % ' + pctTxt(w.s.pct) + '</span><span>' + money(w.s.cost) + ' ÷ ' + money(w.s.net || 0) + '</span>', x(i) * sc, (p ? p[1] : y(bot)) * sc + 40); });
+      hit.addEventListener('mouseenter', function () { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var rc = svg.getBoundingClientRect(), sc = rc.width / W; showTip(cb, cb.tip, '<b>Week of ' + wkLabel(w.week) + '</b><span><i style="background:' + PAY + '"></i>Payroll % ' + pctTxt(w.s.pct) + '</span>' + (w.s.truePct != null ? '<span><i style="background:' + TRUE_C + '"></i>True labor % ' + pctTxt(w.s.truePct) + '</span>' : '') + '<span>' + money(w.s.cost) + ' ÷ ' + money(w.s.net || 0) + '</span>', x(i) * sc, (p ? p[1] : y(bot)) * sc + 40); });
       hit.addEventListener('mouseleave', function () { hit.setAttribute('fill', 'transparent'); cb.tip.hidden = true; });
       svg.appendChild(hit);
     });
@@ -944,6 +1039,7 @@
       T.adj.textContent = money(c.T.adj); T.gross.textContent = money(c.T.gross);
     }
     paintDetail(c);
+    paintInvoice(c);
     if (P.refs.labor) {
       var Lb = labor(c), box = P.refs.labor; box.innerHTML = '';
       var pct = function (v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; };
@@ -1444,6 +1540,8 @@
       var tip = h('input', { type: 'checkbox', 'aria-label': e.name + ' shares the tip pool' }); tip.checked = !!r.tip_eligible;
       tip.addEventListener('change', function () { r.tip_eligible = tip.checked; saveRate(e.id); });
       var comm = h('input', { type: 'checkbox', 'aria-label': e.name + ' is paid commission' }); comm.checked = !!r.commission;
+      var k4 = h('input', { type: 'checkbox', disabled: !P.k401, 'aria-label': e.name + ' contributes to the 401(k)', title: P.k401 ? '' : 'Run supabase/payroll-invoice.sql first' }); k4.checked = !!r.k401;
+      k4.addEventListener('change', function () { r.k401 = k4.checked; saveRate(e.id); });
       comm.addEventListener('change', function () { r.commission = comm.checked; saveRate(e.id); });
       var pc = payco(e.id);
       var pid = h('input', { type: 'text', cls: 'pr-pid', value: r.payroll_id || '', placeholder: pc.auto ? pc.id : 'ID', 'aria-label': e.name + ' payroll company ID' });
@@ -1456,16 +1554,17 @@
         h('th', { scope: 'row', cls: 'pr-name' }, [h('b', { text: e.name }), h('small', { text: (e.position || '') + (e.active === false ? (e.position ? ' · ' : '') + 'Not on staff' : '') + (r.square_name ? ' · Square: ' + r.square_name : '') })]),
         h('td', null, [type]), h('td', null, [h('div', { cls: 'pr-amt' }, [h('span', { cls: 'pr-dollar' }, ['$', amt]), unit])]),
         h('td', null, [h('span', { cls: 'pr-dollar' }, ['$', krate])]),
-        h('td', { cls: 'pr-c' }, [tip]), h('td', { cls: 'pr-c' }, [comm]),
+        h('td', { cls: 'pr-c' }, [tip]), h('td', { cls: 'pr-c' }, [comm]), h('td', { cls: 'pr-c' }, [k4]),
         h('td', null, [h('div', { cls: 'pr-amt' }, [pid, pname]), pc.auto && !r.payroll_id ? h('small', { cls: 'pr-auto', text: 'Matched from the payroll company sheet' }) : (!pc.id && e.active !== false ? h('small', { cls: 'pr-warn', text: 'Not on the payroll company sheet' }) : null)]),
         h('td', null, [notes])
       ]));
     });
     el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table pr-rates' }, [
       h('thead', null, [h('tr', null, [h('th', { scope: 'col', cls: 'pr-name', text: 'Employee' }), h('th', { scope: 'col', text: 'Paid' }), h('th', { scope: 'col', text: 'Rate' }), h('th', { scope: 'col', text: 'Kitchen rate' }),
-        h('th', { scope: 'col', cls: 'pr-c', text: 'Tip pool' }), h('th', { scope: 'col', cls: 'pr-c', text: 'Commission' }), h('th', { scope: 'col', text: 'Payroll company ID and name' }), h('th', { scope: 'col', text: 'Notes' })])]),
+        h('th', { scope: 'col', cls: 'pr-c', text: 'Tip pool' }), h('th', { scope: 'col', cls: 'pr-c', text: 'Commission' }), h('th', { scope: 'col', cls: 'pr-c', text: '401(k)' }), h('th', { scope: 'col', text: 'Payroll company ID and name' }), h('th', { scope: 'col', text: 'Notes' })])]),
       body])]));
-    el.appendChild(h('p', { cls: 'pr-fine', text: 'Tip pool: shares each day’s tips by hours worked. Kitchen rate: adds a Kitchen line to that person’s timesheet, paid at this rate and not in the tip pool (and Square shifts with a kitchen job go there). Commission: adds a weekly commission amount. Payroll company ID and name: as they appear on the Eden Hospitality Hours sheet; grey means it was matched automatically. Employees are added and removed in Schedule → Employees; anyone not on staff is left off both sheets.' }));
+    el.appendChild(invoiceRates());
+    el.appendChild(h('p', { cls: 'pr-fine', text: '401(k): the employer match on the payroll invoice applies to their pay. Tip pool: shares each day’s tips by hours worked. Kitchen rate: adds a Kitchen line to that person’s timesheet, paid at this rate and not in the tip pool (and Square shifts with a kitchen job go there). Commission: adds a weekly commission amount. Payroll company ID and name: as they appear on the Eden Hospitality Hours sheet; grey means it was matched automatically. Employees are added and removed in Schedule → Employees; anyone not on staff is left off both sheets.' }));
   }
 
   window.addEventListener('beforeunload', function (e) { if (P.t) { saveWeek(); e.preventDefault(); e.returnValue = ''; } });
