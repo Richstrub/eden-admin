@@ -2627,3 +2627,61 @@ body.nt-open #app{visibility:hidden!important}
 .pr-recdone{margin-top:6px;border-top:1px solid rgba(0,0,0,.08);padding-top:6px}
 .pr-recdone summary{cursor:pointer;font-size:.84rem;font-weight:500}
 .pr-recdone li span{opacity:.75}
+/* Payroll: scheduled vs worked */
+.pr-sched{margin:16px 0 12px;padding:14px 16px;background:#fff;border:1px solid var(--line)}
+.pr-schedhead{display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;margin-bottom:10px}
+.pr-schedhead b{font-weight:500}
+.pr-schedkey{display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--stone);flex-wrap:wrap}
+.pr-schedkey i{display:inline-block;width:14px;height:12px;border-radius:2px;margin-left:8px}
+.pr-schedkey .k-under{background:#2b7aa6}.pr-schedkey .k-on{background:#e4e1dc}.pr-schedkey .k-over{background:#b0703f}
+.pr-schedwrap{border:0}
+.pr-schedtbl{border-collapse:separate;border-spacing:3px;width:100%;font-size:.8rem;font-variant-numeric:tabular-nums}
+.pr-schedtbl th{font-weight:400;text-align:left;white-space:nowrap;padding:2px 8px 2px 0;font-size:.82rem}
+.pr-schedtbl thead th{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--stone);text-align:center}
+.pr-schedtbl thead th small{display:block;letter-spacing:0;font-size:.68rem;text-transform:none}
+.pr-schedtbl td.pr-sc{text-align:center;min-width:52px;height:30px;border-radius:3px;color:#1d2024}
+.pr-sc.none{background:transparent}
+.pr-sc.on{background:#e4e1dc;color:#5a5650}
+.pr-sc.over.l1{background:#f1dcc8}.pr-sc.over.l2{background:#d9a77c}.pr-sc.over.l3{background:#b0703f;color:#fff}
+.pr-sc.under.l1{background:#d3e4ee}.pr-sc.under.l2{background:#83b3cf}.pr-sc.under.l3{background:#2b7aa6;color:#fff}
+.pr-sc.extra{background:#fff;box-shadow:inset 0 0 0 1.5px #b0703f;color:#8a5226}
+.pr-sc.miss{background:#fff;box-shadow:inset 0 0 0 1.5px #2b7aa6;color:#1f5f82;font-size:.72rem}
+.pr-sc.approx{text-decoration:underline dotted;text-underline-offset:3px}
+.pr-dtoth{min-width:150px}
+.pr-dtotc{display:flex;align-items:center;gap:8px;min-width:150px;padding-left:8px}
+.pr-dbar{position:relative;flex:1;height:12px;background:#f3f1ed;border-radius:2px}
+.pr-dzero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#8b8a86}
+.pr-dfill{position:absolute;top:2px;bottom:2px;border-radius:2px}
+.pr-dfill.over{background:#b0703f}.pr-dfill.under{background:#2b7aa6}.pr-dfill.on{background:#c9c5be}
+.pr-dnum{font-size:.78rem;min-width:52px;text-align:right}
+.pr-schednote{font-size:.74rem;color:var(--stone);margin:8px 0 0;max-width:90ch}
+/* Financials overview */
+.fn-top{display:flex;justify-content:space-between;align-items:center;gap:10px 20px;flex-wrap:wrap;margin-bottom:12px}
+.fn-top .an-sub{margin:0;max-width:70ch}
+.fn-range{display:flex;border:1px solid var(--line);background:#fff}
+.fn-rbtn{font:inherit;font-size:.8rem;padding:7px 12px;border:0;background:none;cursor:pointer;color:var(--stone)}
+.fn-rbtn+.fn-rbtn{border-left:1px solid var(--line)}
+.fn-rbtn[aria-pressed=true]{background:var(--ink,#0f1215);color:#fff}
+.fn-wk{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone);margin:6px 0 8px}
+.fn-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.fn-tile{background:#fff;border:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
+.fn-tl{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone);display:flex;align-items:center;gap:6px}
+.fn-tile b{font-family:var(--serif,inherit);font-weight:400;font-size:2rem;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums}
+.fn-delta{font-size:.78rem;color:var(--stone)}.fn-delta.good{color:#3f6b33}.fn-delta.bad{color:#a3452a}
+.fn-sub{font-size:.74rem;color:var(--stone)}
+.fn-sw{display:inline-block;width:10px;height:10px;border-radius:2px}.fn-sw.line{height:3px;width:14px;border-radius:2px}
+.fn-chart{position:relative;margin:0 0 14px;padding:12px 14px 6px;background:#fff;border:1px solid var(--line)}
+.fn-chart figcaption{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.fn-chart figcaption b{font-weight:500}
+.fn-legend{display:flex;gap:14px;font-size:.76rem;color:var(--stone)}.fn-legend span{display:flex;align-items:center;gap:6px}
+.fn-svg{width:100%;height:auto;display:block}
+.fn-grid{stroke:#ece9e4;stroke-width:1}.fn-base{stroke:#8b8a86;stroke-width:1}
+.fn-avg{stroke:#8b8a86;stroke-width:1.5;stroke-dasharray:5 4}
+.fn-ax{font-size:11px;fill:#7f7a71;font-family:inherit}
+.fn-lab{font-size:12px;fill:#1d2024;font-weight:500}
+.fn-tip{position:absolute;z-index:3;min-width:160px;background:#0f1215;color:#f3eee5;font-size:.78rem;padding:8px 10px;border-radius:4px;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.fn-tip[hidden]{display:none}
+.fn-tip b{display:block;font-weight:500;margin-bottom:3px}.fn-tip span{display:flex;align-items:center;gap:6px}.fn-tip i{display:inline-block;width:9px;height:9px;border-radius:2px}
+.fn-h{font-weight:400;font-size:1.1rem;margin:18px 0 8px}
+.fn-table small{font-size:.72rem;color:var(--stone)}.fn-table .fn-draft{color:#9a5a1c}
+@media (max-width:820px){.fn-tiles{grid-template-columns:1fr}.fn-tile b{font-size:1.6rem}}

@@ -158,8 +158,16 @@
     return null;
   }
   function labor(c) {
-    var S = weekSales(), wages = r2(c.T.wages + c.T.sickPay + c.T.holPay);
-    return { sales: S, wages: wages, comm: c.T.comm, pct: S && S.net ? wages / S.net : null, pctC: S && S.net ? (wages + c.T.comm) / S.net : null };
+    var S = weekSales(), wages = r2(c.T.wages + c.T.sickPay + c.T.holPay), cost = r2(wages + c.T.comm);
+    return { sales: S, wages: wages, comm: c.T.comm, cost: cost, pct: S && S.net ? cost / S.net : null };
+  }
+  // what the Financials overview reads for each week (kept with the week whenever it saves)
+  function summary() {
+    try {
+      var c = calc(), lb = labor(c);
+      return { net: lb.sales ? lb.sales.net : null, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
+        pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, at: new Date().toISOString() };
+    } catch (e) { return null; }
   }
   function diffTxt(a, b) { var d = r2(a - b); return (d > 0 ? '+' : '−') + money(Math.abs(d)); }
   function tipMismatch() {   // every way the week's tips disagree: [{ day, text }]
@@ -325,6 +333,7 @@
   }
   function saveWeek() {
     clearTimeout(P.t);
+    var sm = summary(); if (sm) P.row.rows._summary = sm;
     var row = { week_start: P.row.week_start, status: P.row.status, tip_pool: r2(P.row.tip_pool), rows: P.row.rows, notes: P.row.notes || '', finalized_at: P.row.finalized_at || null };
     P.t = null;
     var my = P.saving = sb().from('payroll_weeks').upsert(row, { onConflict: 'week_start' }).then(function (r) {
@@ -350,11 +359,12 @@
   function shell() {
     var el = P.el; el.innerHTML = '';
     var wrap = h('div', { cls: 'an-in pr-in' });
-    var tabs = h('nav', { cls: 'an-tabs', 'aria-label': 'Payroll pages' }, [
+    var tabs = h('nav', { cls: 'an-tabs', 'aria-label': 'Financials pages' }, [
+      h('a', { href: '#financials', 'data-sub': 'overview', text: 'Overview' }),
       h('a', { href: '#payroll', 'data-sub': 'week', text: 'Weekly payroll' }),
       h('a', { href: '#payroll/rates', 'data-sub': 'rates', text: 'Pay rates' })
     ]);
-    wrap.appendChild(h('div', { cls: 'an-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'Payroll' })]), tabs]));
+    wrap.appendChild(h('div', { cls: 'an-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'Financials' })]), tabs]));
     P.pane = h('div', { cls: 'pr-pane' });
     wrap.appendChild(P.pane);
     el.appendChild(wrap);
@@ -371,6 +381,7 @@
   function paint(loading) {
     P.el.querySelectorAll('.an-tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-sub') === P.sub ? 'page' : 'false'); });
     var el = P.pane; el.innerHTML = ''; P.refs = {};
+    if (P.sub === 'overview') { paintOverview(el, loading); return; }
     if (loading && !P.row) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
     if (P.missing) { el.appendChild(setupNote('supabase/payroll.sql')); return; }
     if (P.err) { el.appendChild(h('p', { cls: 'pr-err', role: 'alert', text: P.err })); }
@@ -568,6 +579,8 @@
     el.appendChild(P.row.source === 'square' ? h('p', { cls: 'pr-key', text: 'Hours are from the Square file. Hover a day to see what was scheduled.' })
       : h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
 
+    // scheduled vs worked, day by day
+    el.appendChild(schedGrid(shownEmps(), sch));
     // labor percentage for the week
     P.refs.labor = h('div', { cls: 'pr-labor' });
     el.appendChild(P.refs.labor);
@@ -643,6 +656,177 @@
       : 'Tips come from the Square file. Drop this week’s file above to fill them in. ';
     return box;
   }
+  /* ----- scheduled vs worked: who went over or under their scheduled time, day by day ----- */
+  function schedGrid(emps, sch) {
+    var box = h('div', { cls: 'pr-sched' });
+    box.appendChild(h('div', { cls: 'pr-schedhead' }, [h('b', { text: 'Scheduled vs worked' }),
+      h('span', { cls: 'pr-schedkey' }, [h('i', { cls: 'k-under' }), 'Under schedule', h('i', { cls: 'k-on' }), 'Within 15 min', h('i', { cls: 'k-over' }), 'Over schedule'])]));
+    if (!sch.source || sch.source === 'none') { box.appendChild(h('p', { cls: 'pr-schednote', text: 'There’s no schedule for this week to compare with.' })); return box; }
+    var rows = [], maxT = 0;
+    emps.forEach(function (e) {
+      var r = rowFor(e.id), sd = sch.hours[e.id] || [0, 0, 0, 0, 0, 0, 0], ap = sch.approx[e.id] || {};
+      var wd = [0, 1, 2, 3, 4, 5, 6].map(function (i) { return r2((+r.hours[i] || 0) + (r.nhours ? +r.nhours[i] || 0 : 0) + (r.khours ? +r.khours[i] || 0 : 0)); });
+      if (!sum(sd) && !sum(wd)) return;
+      var tot = r2(sum(wd) - sum(sd)); maxT = Math.max(maxT, Math.abs(tot));
+      rows.push({ e: e, sd: sd, wd: wd, ap: ap, tot: tot });
+    });
+    if (!rows.length) { box.appendChild(h('p', { cls: 'pr-schednote', text: 'Nobody was scheduled or worked this week yet.' })); return box; }
+    var tb = h('tbody');
+    rows.forEach(function (x) {
+      var tr = h('tr', null, [h('th', { scope: 'row', text: empInfo(x.e.id).name || x.e.name })]);
+      for (var i = 0; i < 7; i++) {
+        var s = x.sd[i], w = x.wd[i], d = r2(w - s), cls = 'pr-sc', txt = '', tip;
+        if (!s && !w) { cls += ' none'; }
+        else if (!s) { cls += ' extra'; txt = '+' + hrs(w); tip = 'Not scheduled · worked ' + hrs(w) + ' h'; }
+        else if (!w) { cls += ' miss'; txt = 'off'; tip = 'Scheduled ' + hrs(s) + ' h · didn’t work'; }
+        else {
+          var a = Math.abs(d), lvl = a < 0.25 ? 0 : a < 1 ? 1 : a < 2 ? 2 : 3;
+          cls += lvl === 0 ? ' on' : (d > 0 ? ' over' : ' under') + ' l' + lvl;
+          txt = lvl === 0 ? '✓' : (d > 0 ? '+' : '−') + hrs(a);
+          tip = 'Scheduled ' + hrs(s) + ' h' + (x.ap[i] ? ' (to a cut or close, counted as 8, 9 or 10 pm)' : '') + ' · worked ' + hrs(w) + ' h · ' + (lvl === 0 ? 'on schedule' : (d > 0 ? '+' : '−') + hrs(a) + ' h');
+        }
+        tr.appendChild(h('td', { cls: cls + (x.ap[i] && s && w ? ' approx' : ''), title: tip || '', 'aria-label': tip ? DAYS[i] + ': ' + tip : DAYS[i] + ': not scheduled' }, [txt]));
+      }
+      // the week: a bar centred on zero
+      var pct = maxT ? Math.min(50, Math.abs(x.tot) / maxT * 50) : 0;
+      var bar = h('div', { cls: 'pr-dbar' }, [h('span', { cls: 'pr-dzero' }), h('span', { cls: 'pr-dfill ' + (Math.abs(x.tot) < 0.25 ? 'on' : x.tot > 0 ? 'over' : 'under'), style: (x.tot >= 0 ? 'left:50%;' : 'right:50%;') + 'width:' + pct + '%' })]);
+      tr.appendChild(h('td', { cls: 'pr-dtotc', title: 'Scheduled ' + hrs(sum(x.sd)) + ' h · worked ' + hrs(sum(x.wd)) + ' h' }, [bar, h('span', { cls: 'pr-dnum', text: (Math.abs(x.tot) < 0.25 ? '±0' : (x.tot > 0 ? '+' : '−') + hrs(Math.abs(x.tot))) + ' h' })]));
+      tb.appendChild(tr);
+    });
+    var head = h('tr', null, [h('th', { text: '' })].concat(DOW.map(function (d, i) { return h('th', null, [d, h('small', { text: md(addDays(P.week, i)) })]); }), [h('th', { cls: 'pr-dtoth', text: 'Week' })]));
+    box.appendChild(h('div', { cls: 'pr-scroll pr-schedwrap' }, [h('table', { cls: 'pr-schedtbl' }, [h('thead', null, [head]), tb])]));
+    box.appendChild(h('p', { cls: 'pr-schednote', text: 'Worked hours (from Square or this timesheet) minus scheduled hours. “off” means scheduled but didn’t work; a + on its own means worked without being scheduled. Shifts scheduled to a server cut or close are counted as ending at 8, 9 or 10 pm (dotted underline), so check those against the real out time.' }));
+    return box;
+  }
+
+  /* ----- Financials overview: revenue, payroll cost and payroll % week by week ----- */
+  var OV = { weeks: null, range: 13, err: '' };
+  try { OV.range = +localStorage.getItem('eden-fin-range') || 13; } catch (e) {}
+  function loadOverview() {
+    var my = ++P.seq; OV.err = ''; paint(true);
+    sb().from('payroll_weeks').select('week_start,status,finalized_at,summary:rows->_summary').order('week_start', { ascending: false }).limit(104).then(function (r) {
+      if (my !== P.seq) return;
+      if (r.error) { P.missing = isMissing(r.error); OV.err = P.missing ? '' : 'Couldn’t load the weeks. ' + (r.error.message || ''); OV.weeks = []; }
+      else OV.weeks = (r.data || []).map(function (w) { return { week: w.week_start, status: w.status, s: w.summary && typeof w.summary === 'object' ? w.summary : null }; });
+      paint(false);
+    }, function () { if (my === P.seq) { OV.err = 'Couldn’t reach the database.'; OV.weeks = []; paint(false); } });
+  }
+  var REV = '#b0703f', PAY = '#2b7aa6';
+  function pctTxt(v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; }
+  function wkLabel(iso_) { var d = new Date(iso_ + 'T12:00:00'); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function paintOverview(el, loading) {
+    if (loading || !OV.weeks) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
+    if (P.missing) { el.appendChild(setupNote('supabase/payroll.sql')); return; }
+    if (OV.err) el.appendChild(h('p', { cls: 'pr-err', text: OV.err }));
+    var all = OV.weeks.filter(function (w) { return w.s && (w.s.net || w.s.cost); });
+    var pending = OV.weeks.filter(function (w) { return !w.s; });
+    // range
+    var ranges = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Weeks shown' }, [8, 13, 26, 52].map(function (n) {
+      return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === n ? 'true' : 'false', text: n === 13 ? 'Quarter' : n === 52 ? 'Year' : n + ' weeks', on: { click: function () { OV.range = n; try { localStorage.setItem('eden-fin-range', n); } catch (e) {} paint(false); } } });
+    }));
+    el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Each week’s revenue (net sales), payroll cost and payroll percentage, from the weekly payroll. A week appears here once its Square files are in.' }), ranges]));
+    if (!all.length) {
+      el.appendChild(h('div', { cls: 'pr-setup' }, [h('h2', { cls: 'an-h2', text: 'No weeks yet' }), h('p', { text: 'Open Weekly payroll, drop in the week’s two Square files, and it will show up here.' }), h('a', { cls: 'ed-btn small', href: '#payroll', text: 'Go to Weekly payroll' })]));
+      return;
+    }
+    var shown = all.slice(0, OV.range).reverse();   // oldest first
+    var last = shown[shown.length - 1], prev = shown[shown.length - 2];
+    var avg = function (k) { var v = shown.filter(function (w) { return w.s[k] != null; }); return v.length ? v.reduce(function (a, w) { return a + w.s[k]; }, 0) / v.length : null; };
+    var totNet = shown.reduce(function (a, w) { return a + (w.s.net || 0); }, 0), totCost = shown.reduce(function (a, w) { return a + (w.s.cost || 0); }, 0);
+    // KPI tiles: the latest week, against the week before and the range
+    var delta = function (a, b, isPct, lowerGood) {
+      if (a == null || b == null) return null;
+      var d = a - b; if (Math.abs(d) < (isPct ? 0.0005 : 0.5)) return h('small', { cls: 'fn-delta', text: 'same as the week before' });
+      var good = lowerGood ? d < 0 : d > 0;
+      return h('small', { cls: 'fn-delta ' + (good ? 'good' : 'bad') }, [(d > 0 ? '▲ ' : '▼ ') + (isPct ? (Math.abs(d) * 100).toFixed(1) + ' pts' : money(Math.abs(d))) + ' vs the week before']);
+    };
+    var tile = function (label, val, sub, dEl, color) {
+      return h('div', { cls: 'fn-tile' }, [h('span', { cls: 'fn-tl' }, [color ? h('i', { cls: 'fn-sw', style: 'background:' + color }) : null, label]), h('b', { text: val }), dEl, h('small', { cls: 'fn-sub', text: sub })]);
+    };
+    el.appendChild(h('p', { cls: 'fn-wk', text: 'Week of ' + weekLabel(new Date(last.week + 'T12:00:00')) + (last.status === 'final' ? ' · final' : ' · draft') }));
+    el.appendChild(h('div', { cls: 'fn-tiles' }, [
+      tile('Revenue', last.s.net != null ? money(last.s.net) : '–', 'Average ' + money(avg('net') || 0) + ' a week', delta(last.s.net, prev && prev.s.net, false, false), REV),
+      tile('Payroll cost', money(last.s.cost), 'Average ' + money(avg('cost') || 0) + ' a week', delta(last.s.cost, prev && prev.s.cost, false, true), PAY),
+      tile('Payroll %', pctTxt(last.s.pct), 'Over these ' + shown.length + ' weeks: ' + pctTxt(totNet ? totCost / totNet : null), delta(last.s.pct, prev && prev.s.pct, true, true))
+    ]));
+    el.appendChild(barsChart(shown));
+    el.appendChild(pctChart(shown, totNet ? totCost / totNet : null));
+    // table
+    var tb = h('tbody', null, shown.slice().reverse().map(function (w) {
+      return h('tr', null, [h('th', { scope: 'row' }, [h('a', { href: '#payroll', text: 'Week of ' + wkLabel(w.week), on: { click: function (ev) { ev.preventDefault(); P.week = new Date(w.week + 'T12:00:00'); P.row = null; location.hash = '#payroll'; } } }), w.status === 'final' ? h('small', { text: ' final' }) : h('small', { cls: 'fn-draft', text: ' draft' })]),
+        h('td', { cls: 'pr-num', text: w.s.net != null ? money(w.s.net) : '–' }), h('td', { cls: 'pr-num', text: money(w.s.cost) }), h('td', { cls: 'pr-num fn-pctc', text: pctTxt(w.s.pct) }),
+        h('td', { cls: 'pr-num', text: money(w.s.tips || 0) }), h('td', { cls: 'pr-num', text: hrs(w.s.hours || 0) })]);
+    }));
+    var foot = h('tr', { cls: 'pr-total' }, [h('th', { scope: 'row', text: shown.length + ' weeks' }), h('td', { cls: 'pr-num', text: money(totNet) }), h('td', { cls: 'pr-num', text: money(totCost) }), h('td', { cls: 'pr-num', text: pctTxt(totNet ? totCost / totNet : null) }),
+      h('td', { cls: 'pr-num', text: money(shown.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) }), h('td', { cls: 'pr-num', text: hrs(shown.reduce(function (a, w) { return a + (w.s.hours || 0); }, 0)) })]);
+    el.appendChild(h('h2', { cls: 'fn-h', text: 'Week by week' }));
+    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
+    el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
+  }
+  function niceMax(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
+  function svgEl(tag, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.keys(a || {}).forEach(function (k) { e.setAttribute(k, a[k]); }); return e; }
+  function chartBox(title, legend) {
+    var box = h('figure', { cls: 'fn-chart' }, [h('figcaption', null, [h('b', { text: title }), legend ? h('span', { cls: 'fn-legend' }, legend.map(function (l) { return h('span', null, [h('i', { cls: 'fn-sw' + (l[2] ? ' line' : ''), style: 'background:' + l[1] }), l[0]]); })) : null])]);
+    var tip = h('div', { cls: 'fn-tip', hidden: true }); box.appendChild(tip);
+    return { box: box, tip: tip };
+  }
+  function showTip(cb, tip, html, x, y) { tip.innerHTML = html; tip.hidden = false; var bw = cb.box.clientWidth; tip.style.left = Math.min(Math.max(x - 80, 0), bw - 170) + 'px'; tip.style.top = (y - 10) + 'px'; }
+  // revenue and payroll cost per week, side by side, on one dollar axis
+  function barsChart(ws) {
+    var cb = chartBox('Revenue and payroll cost', [['Revenue', REV], ['Payroll cost', PAY]]);
+    var W = 760, H = 240, L = 64, R = 12, T = 12, B = 30, n = ws.length;
+    var max = niceMax(Math.max.apply(null, ws.map(function (w) { return Math.max(w.s.net || 0, w.s.cost || 0); })));
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'fn-svg', role: 'img', 'aria-label': 'Revenue and payroll cost by week' });
+    var y = function (v) { return T + (H - T - B) * (1 - v / max); };
+    for (var g = 0; g <= 4; g++) { var v = max * g / 4; svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'fn-grid' })); var t = svgEl('text', { x: L - 8, y: y(v) + 4, class: 'fn-ax', 'text-anchor': 'end' }); t.textContent = '$' + (v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k' : v); svg.appendChild(t); }
+    var band = (W - L - R) / n, bw = Math.max(4, Math.min(18, band * 0.32));
+    ws.forEach(function (w, i) {
+      var cx = L + band * i + band / 2;
+      [[w.s.net || 0, REV, -1], [w.s.cost || 0, PAY, 1]].forEach(function (b) {
+        var x = b[2] < 0 ? cx - bw - 1 : cx + 1, top = y(b[0]), hgt = Math.max(0, y(0) - top), r = Math.min(4, bw / 2, hgt);
+        svg.appendChild(svgEl('path', { d: 'M' + x + ',' + y(0) + 'V' + (top + r) + 'Q' + x + ',' + top + ' ' + (x + r) + ',' + top + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + top + ' ' + (x + bw) + ',' + (top + r) + 'V' + y(0) + 'Z', fill: b[1] }));
+      });
+      if (n <= 13 || i % Math.ceil(n / 13) === 0) { var t = svgEl('text', { x: cx, y: H - 10, class: 'fn-ax', 'text-anchor': 'middle' }); t.textContent = wkLabel(w.week); svg.appendChild(t); }
+      var hit = svgEl('rect', { x: L + band * i, y: T, width: band, height: H - T - B, fill: 'transparent', class: 'fn-hit' });
+      hit.addEventListener('mouseenter', function (ev) { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var rc = svg.getBoundingClientRect(), sc = rc.width / W; showTip(cb, cb.tip, '<b>Week of ' + wkLabel(w.week) + '</b><span><i style="background:' + REV + '"></i>Revenue ' + money(w.s.net || 0) + '</span><span><i style="background:' + PAY + '"></i>Payroll cost ' + money(w.s.cost) + '</span><span>Payroll % ' + pctTxt(w.s.pct) + '</span>', cx * sc, y(Math.max(w.s.net || 0, w.s.cost)) * sc + 40); });
+      hit.addEventListener('mouseleave', function () { hit.setAttribute('fill', 'transparent'); cb.tip.hidden = true; });
+      svg.appendChild(hit);
+    });
+    svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), class: 'fn-base' }));
+    cb.box.appendChild(svg);
+    return cb.box;
+  }
+  // payroll % per week, with the range's overall % as a reference line
+  function pctChart(ws, overall) {
+    var cb = chartBox('Payroll %', [['Payroll %', PAY, true], ['Average for these weeks', '#8b8a86', true]]);
+    var W = 760, H = 200, L = 64, R = 12, T = 14, B = 30, n = ws.length;
+    var vals = ws.map(function (w) { return w.s.pct; }).filter(function (v) { return v != null; });
+    var hi = Math.max.apply(null, vals.concat([overall || 0])), lo = Math.min.apply(null, vals.concat([overall || 1]));
+    var top = Math.ceil((hi + 0.02) * 20) / 20, bot = Math.max(0, Math.floor((lo - 0.02) * 20) / 20);
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'fn-svg', role: 'img', 'aria-label': 'Payroll percentage by week' });
+    var y = function (v) { return T + (H - T - B) * (1 - (v - bot) / ((top - bot) || 1)); };
+    var band = (W - L - R) / n, x = function (i) { return L + band * i + band / 2; };
+    for (var g = 0; g <= 4; g++) { var v = bot + (top - bot) * g / 4; svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'fn-grid' })); var t = svgEl('text', { x: L - 8, y: y(v) + 4, class: 'fn-ax', 'text-anchor': 'end' }); t.textContent = Math.round(v * 100) + '%'; svg.appendChild(t); }
+    if (overall != null) svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(overall), y2: y(overall), class: 'fn-avg' }));
+    var pts = ws.map(function (w, i) { return w.s.pct == null ? null : [x(i), y(w.s.pct)]; });
+    var d = ''; pts.forEach(function (p) { if (p) d += (d && d.slice(-1) !== 'M' ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); });
+    svg.appendChild(svgEl('path', { d: d, fill: 'none', stroke: PAY, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    ws.forEach(function (w, i) {
+      var p = pts[i];
+      if (p) svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 4.5, fill: PAY, stroke: '#fff', 'stroke-width': 2 }));
+      if (n <= 13 || i % Math.ceil(n / 13) === 0) { var t = svgEl('text', { x: x(i), y: H - 10, class: 'fn-ax', 'text-anchor': 'middle' }); t.textContent = wkLabel(w.week); svg.appendChild(t); }
+      var hit = svgEl('rect', { x: L + band * i, y: T, width: band, height: H - T - B, fill: 'transparent' });
+      hit.addEventListener('mouseenter', function () { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var rc = svg.getBoundingClientRect(), sc = rc.width / W; showTip(cb, cb.tip, '<b>Week of ' + wkLabel(w.week) + '</b><span>Payroll % ' + pctTxt(w.s.pct) + '</span><span>' + money(w.s.cost) + ' ÷ ' + money(w.s.net || 0) + '</span>', x(i) * sc, (p ? p[1] : y(bot)) * sc + 40); });
+      hit.addEventListener('mouseleave', function () { hit.setAttribute('fill', 'transparent'); cb.tip.hidden = true; });
+      svg.appendChild(hit);
+    });
+    // direct label on the last point
+    var lp = pts[pts.length - 1];
+    if (lp) { var lt = svgEl('text', { x: Math.min(lp[0] + 8, W - R - 40), y: lp[1] - 8, class: 'fn-lab' }); lt.textContent = pctTxt(ws[ws.length - 1].s.pct); svg.appendChild(lt); }
+    cb.box.appendChild(svg);
+    return cb.box;
+  }
+
   function paintDetail(c) {
     var box = P.refs.detail; if (!box || box.hidden) return;
     box.innerHTML = '';
@@ -717,8 +901,8 @@
       var pct = function (v) { return v == null ? '–' : (v * 100).toFixed(1) + '%'; };
       box.appendChild(h('div', { cls: 'pr-lbig' }, [h('span', { text: 'Labor this week' }), h('b', { text: pct(Lb.pct) })]));
       box.appendChild(h('div', { cls: 'pr-lmath' }, Lb.sales ? [
-        h('p', { text: money(Lb.wages) + ' wages ÷ ' + money(Lb.sales.net) + ' net sales' }),
-        h('small', { text: 'Wages include salary, overtime, kitchen, sick and holiday pay; not tips' + (Lb.comm ? ' or commission (with ' + money(Lb.comm) + ' commission: ' + pct(Lb.pctC) + ')' : '') + '. Net sales from the ' + Lb.sales.src + (Lb.sales.tax ? ', before ' + money(Lb.sales.tax) + ' sales tax' : '') + '.' })
+        h('p', { text: money(Lb.cost) + ' payroll ÷ ' + money(Lb.sales.net) + ' net sales' }),
+        h('small', { text: 'Payroll is wages (salary, overtime, kitchen, sick and holiday pay)' + (Lb.comm ? ' plus ' + money(Lb.comm) + ' commission' : '') + '; tips aren’t included. Net sales from the ' + Lb.sales.src + (Lb.sales.tax ? ', before ' + money(Lb.sales.tax) + ' sales tax' : '') + '.' })
       ] : [h('p', { text: 'Drop the Transactions CSV to see the week’s labor percentage.' })]));
     }
     var R = P.refs.tips; if (R) {
@@ -1112,10 +1296,11 @@
     put(['Tip shares', ''].concat(dayHead, ['Total', 'Credit card', 'Cash']));
     wait.filter(function (L) { return L.info.tip_eligible; }).forEach(function (L) { put([sheetName(L), ''].concat(L.tipDays, [L.tips, L.tipsCard, L.tipsCash]), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]); });
     aoa.push([]);
-    var Lw = labor(c), sales = Lw.sales ? Lw.sales.net : 0, wages = Lw.wages;
-    put(['Total Wages', '', wages], [2]);
+    var Lw = labor(c), sales = Lw.sales ? Lw.sales.net : 0, wages = Lw.cost;
+    put(['Total Wages', '', Lw.wages], [2]);
     put(['Total Tips', '', staffLines(c).reduce(function (a, L) { return r2(a + L.tips); }, 0)], [2]);
     put(['Total Commission', '', c.T.comm], [2]);
+    put(['Payroll Cost', '', wages, 'wages + commission'], [2]);
     put(['Net Sales', '', sales || '', Lw.sales ? 'from the ' + Lw.sales.src : ''], [2]);
     if (Lw.sales && Lw.sales.tax) put(['Sales Tax', '', Lw.sales.tax], [2]);
     var pct = put(['Labor Percentage', '', sales ? wages / sales : '']);
@@ -1214,9 +1399,10 @@
     show: function (ctx) {
       P.ctx = ctx;
       if (P.el !== ctx.el || !ctx.el.firstChild) { P.el = ctx.el; shell(); }
-      var sub = ctx.sub === 'rates' ? 'rates' : 'week';
+      var sub = ctx.sub === 'rates' ? 'rates' : ctx.sub === 'overview' ? 'overview' : 'week';
       var first = !P.week;
       if (first) P.week = addDays(sunday(new Date()), -7);   // payroll is usually done for the week that just ended
+      if (sub === 'overview') { P.sub = sub; flush().then(loadOverview); return; }
       if (sub !== P.sub || first || !P.row) { P.sub = sub; flush().then(load); }
       else paint(false);
     },
