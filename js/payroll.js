@@ -144,7 +144,11 @@
     });
     return d;
   }
-  function tipsRow() { var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] }; t.cash = seven(t.cash); t.card = seven(t.card); return t; }
+  function tipsRow() {
+    var t = P.row.rows._tips; if (!t) t = P.row.rows._tips = { cash: seven(), card: seven(), src: [] };
+    ['cash', 'card'].forEach(function (k) { var a = t[k]; if (!Array.isArray(a)) t[k] = seven(a); else { for (var i = 0; i < 7; i++) a[i] = a[i] == null || a[i] === '' ? null : +a[i]; a.length = 7; } });
+    return t;
+  }
   // Days where the Square file's tips and the End of day report's tips aren't the same
   // The week's sales: from the Transactions CSV (or, without one, the End of day reports)
   function weekSales() {
@@ -222,17 +226,25 @@
   function rowFor(id) {
     var r = P.row.rows[id];
     if (!r) r = P.row.rows[id] = { hours: seven(), adj: null, adj_note: '' };
-    r.hours = seven(r.hours);
-    if (r.khours) r.khours = seven(r.khours);
-    if (r.nhours) r.nhours = seven(r.nhours);
+    // normalize in place (the timesheet's inputs write into these same arrays)
+    var norm = function (a) { if (!Array.isArray(a)) return seven(a); for (var i = 0; i < 7; i++) a[i] = a[i] == null || a[i] === '' ? null : +a[i]; a.length = 7; return a; };
+    r.hours = norm(r.hours);
+    if (r.khours) r.khours = norm(r.khours);
+    if (r.nhours) r.nhours = norm(r.nhours);
     return r;
   }
   function empInfo(id) {   // name, position and pay terms: frozen when the week was finalized
     var r = P.row.rows[id], e = empById(id), rate = P.rates[id] || {};
     if (final() && r && r.snap) return r.snap;
     return { name: e.name || 'Former employee', position: e.position || '', pay_type: rate.pay_type || 'hourly', rate: rate.rate == null ? null : +rate.rate,
-      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary, tip_eligible: r && r.pool != null ? !!r.pool : !!rate.tip_eligible,
+      weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary,
+      // Keenan (commission and tips): any hours on his timesheet put him in the tip pool
+      tip_eligible: autoPool(e, rate, r) ? true : r && r.pool != null ? !!r.pool : !!rate.tip_eligible,
       kitchen_rate: rate.kitchen_rate == null ? null : +rate.kitchen_rate, commission: !!rate.commission };
+  }
+  function autoPool(e, rate, r) {
+    var commissioned = !!(rate && rate.commission) || /^keenan\b/i.test(String(e && e.name || ''));
+    return commissioned && !!r && (r.hours || []).some(function (x) { return +x > 0; });
   }
   function empIds() { return Object.keys((P.row && P.row.rows) || {}).filter(function (k) { return k.charAt(0) !== '_'; }); }
   function shownEmps() {   // employees on staff, plus anyone with hours or pay this week
@@ -558,7 +570,11 @@
   }
   function dayInput(arr, i, label, ro, title) {
     var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'pr-h', value: arr[i] == null ? '' : String(arr[i]), placeholder: '–', disabled: ro, 'aria-label': label, title: title });
-    inp.addEventListener('input', function () { var v = numIn(inp.value); arr[i] = v == null ? null : Math.max(0, Math.min(24, v)); refresh(); saveSoon(); });
+    inp.addEventListener('input', function () {
+      var v = numIn(inp.value); arr[i] = v == null ? null : Math.max(0, Math.min(24, v)); refresh(); saveSoon();
+      var row = inp.closest('tr'), tick = row && row.querySelector('.pr-pooltick input');
+      if (tick && !tick.checked) { var id = Object.keys(P.refs).filter(function (k) { return P.refs[k] && P.refs[k].tipd && P.refs[k].tipd[0] && row.contains(P.refs[k].tipd[0]); })[0]; if (id && empInfo(id).tip_eligible) tick.checked = true; }
+    });
     inp.addEventListener('keydown', function (ev) { arrowKeys(ev, inp); });
     return h('td', { cls: 'pr-dayc' }, [inp]);
   }
