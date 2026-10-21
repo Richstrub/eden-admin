@@ -126,6 +126,7 @@
       P.eod = eodDays(res[4].error ? [] : res[4].data || []);
       if (res[2].data) { P.row = res[2].data; P.row.rows = P.row.rows || {}; P.fresh = false; }
       else { P.row = { week_start: wk, status: 'draft', tip_pool: 0, rows: {}, notes: '' }; P.fresh = true; fillFromSchedule(); }
+      if (!P.fresh && !P.row.rows._summary) setTimeout(function () { if (P.row && !P.row.rows._summary) saveWeek(); }, 0);   // weeks from before the Financials overview
       if (!final() && P.row.rows._tips) {   // tips come only from the Square file: drop any filled from End of day reports
         var t0 = tipsRow(); (t0.src || []).forEach(function (x, i) { if (x === 'eod') { t0.card[i] = null; t0.cash[i] = null; t0.src[i] = ''; } });
       }
