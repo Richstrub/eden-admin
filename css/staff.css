@@ -2798,3 +2798,8 @@ body.nt-open #app{visibility:hidden!important}
 .tp-setup input.tp-tin{width:5em}.tp-setup td small{color:var(--stone)}
 .tp-setup td:first-child input{width:12em}
 .tp-setup select,.tp-mrow select{font:inherit;padding:6px 8px;border:1px solid var(--line);background:#fff}
+/* End of day: tip amounts sit to the right, clear of the $ (typing and reading) */
+.eo-tipmoney .eo-in{text-align:right;padding-left:30px}
+.eo-ro .eo-money .eo-cur{left:0}
+.eo-ro .eo-money .eo-in{padding-left:16px}
+.eo-ro .eo-tipmoney .eo-in{text-align:right;padding-left:16px}

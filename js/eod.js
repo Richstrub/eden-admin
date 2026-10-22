@@ -300,7 +300,7 @@
       var inp = h('input', { cls: 'eo-in', type: 'text', inputmode: 'decimal', autocomplete: 'off', disabled: ro, value: r[k] == null ? '' : Number(r[k]).toFixed(2), 'aria-label': label });
       inp.addEventListener('input', function () { var v = inp.value.replace(/[$,\s]/g, ''), n = v === '' ? null : Math.round(parseFloat(v) * 100) / 100; inp.classList.toggle('bad', v !== '' && (isNaN(n) || n < 0)); if (inp.classList.contains('bad')) return; r[k] = n; changed(); paintTipRows(); });
       inp.addEventListener('blur', function () { if (r[k] != null && !inp.classList.contains('bad')) inp.value = Number(r[k]).toFixed(2); });
-      return h('label', { cls: 'eo-f eo-num' }, [h('span', { cls: 'eo-l', text: label }), h('span', { cls: 'eo-money' }, [h('span', { cls: 'eo-cur', text: '$' }), inp])]);
+      return h('label', { cls: 'eo-f eo-num' }, [h('span', { cls: 'eo-l', text: label }), h('span', { cls: 'eo-money eo-tipmoney' }, [h('span', { cls: 'eo-cur', text: '$' }), inp])]);
     }
     el.appendChild(h('div', { cls: 'eo-grid' }, [moneyIn('tips_cash', 'Cash tips'), moneyIn('tips_card', 'Credit card tips')]));
     var table = h('div', { cls: 'eo-tiptbl', role: 'table', 'aria-label': 'Tip pool' }); el.appendChild(table);
