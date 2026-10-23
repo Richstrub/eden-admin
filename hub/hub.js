@@ -197,6 +197,7 @@ if (!Element.prototype.replaceChildren) {
     if (!window.EdenTemps || !navigator.onLine) return;
     window.EdenTemps.counts({ sb: sb }).then(function (n) {
       var el = $('navTemps'); if (!el) return;
+      if (n == null) { el.textContent = ''; el.classList.remove('full', 'alert'); return; }   // no units set up yet
       el.textContent = n ? n + ' out of range' : 'All in range'; el.classList.toggle('full', !n); el.classList.toggle('alert', !!n);
     }, function () {});
   }

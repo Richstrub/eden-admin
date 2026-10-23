@@ -614,6 +614,7 @@
         if (r.error || !r.data || r.data.error) return 0;
         return ctx.sb.from('temp_units').select('*').eq('active', true).then(function (q) {
           if (q.error) return 0;
+          if (!(q.data || []).length) return null;   // no units set up yet: nothing to report
           var save = T.week; T.week = r.data;
           var n = (q.data || []).filter(function (u) { return unitState(u).cls === 'bad'; }).length;
           T.week = save; return n;
