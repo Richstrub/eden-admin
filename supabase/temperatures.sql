@@ -144,3 +144,6 @@ begin
 end $$;
 revoke all on function public.temp_serials_server(text) from public, authenticated;
 grant execute on function public.temp_serials_server(text) to anon;
+
+-- units the ROP HACCP plan tracks (the freezer and the protein cooler): ticked under Temperatures > Set up
+alter table public.temp_units add column if not exists rop boolean not null default false;

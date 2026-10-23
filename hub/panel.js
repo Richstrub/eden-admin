@@ -18,6 +18,18 @@
     if (p === 'timeoff') { window.EdenHubTimeOff.show({ sb: sb, el: el }); return; }
     if (p === 'calendar') { el.classList.add('hp-cal'); window.EdenCal.show({ sb: sb, el: el, name: 'Hub', canEdit: false, status: function () {} }); return; }
     if (p === 'preshift') { el.classList.add('hp-pre'); window.EdenPreshift.show({ sb: sb, el: el, role: 'hub', name: 'Hub', hub: true, noNotes: true, api: '../' }); return; }
+    if (p === 'temps') {
+      // the same initials box as the prep list: readings and notes typed here carry the initials
+      var tw = document.createElement('label'); tw.className = 'ck-who hp-who';
+      var ts = document.createElement('span'); ts.textContent = 'Your initials';
+      var ti = document.createElement('input'); ti.type = 'text'; ti.maxLength = 20; ti.autocomplete = 'off'; ti.placeholder = 'e.g. MS'; ti.value = hubName();
+      ti.addEventListener('input', function () { setHubName(ti.value.trim()); });
+      tw.appendChild(ts); tw.appendChild(ti);
+      var tb = document.createElement('div');
+      el.innerHTML = ''; el.appendChild(tw); el.appendChild(tb); el.classList.add('hp-temps');
+      window.EdenTemps.show({ sb: sb, el: tb, role: 'hub', hub: true, name: function () { return ti.value.trim() || hubName(); } });
+      return;
+    }
     if (p === 'prep') {
       // initials: on this shared screen, whoever is working types theirs in once (remembered for 10 minutes)
       var who = document.createElement('label'); who.className = 'ck-who hp-who';

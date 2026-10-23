@@ -32,7 +32,16 @@
   }
   function svgEl(tag, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.keys(a || {}).forEach(function (k) { e.setAttribute(k, a[k]); }); return e; }
   function sb() { return T.ctx.sb; }
-  function status(m, k) { if (T.ctx && T.ctx.status) T.ctx.status(m, k); }
+  function status(m, k) {
+    if (T.ctx && T.ctx.status) { T.ctx.status(m, k); return; }
+    var bar = T.el && T.el.querySelector('.tp-status'); if (!bar) return;   // the Hub: messages show in a line at the top
+    bar.textContent = m || ''; bar.className = 'tp-status' + (k ? ' ' + k : ''); bar.hidden = !m;
+    clearTimeout(T.stT); if (m && k !== 'err') T.stT = setTimeout(function () { bar.hidden = true; }, 6000);
+  }
+  function hub() { return !!(T.ctx && T.ctx.hub); }
+  // who is making the entry: the staff site's signed-in name, or on the Hub the initials typed at the top
+  function who() { var n = T.ctx && T.ctx.name; return String(typeof n === 'function' ? n() || '' : n || '').trim(); }
+  function needWho() { if (who()) return false; status('Type your initials at the top first.', 'err'); return true; }
   function isMgr() { var r = T.ctx && T.ctx.role; return r === 'owner' || r === 'manager' || r === 'scheduler'; }
   function isMissing(e) { return e && (e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01' || e.code === '42883' || /could not find the (table|function)|does not exist|schema cache/i.test(e.message || '')); }
   function num(v) { var s = String(v == null ? '' : v).replace(/[°fFcC\s]/g, '').replace(',', '.'); if (s === '' || s === '-') return null; var n = parseFloat(s); return isFinite(n) ? n : null; }
@@ -57,7 +66,8 @@
     return 'No limits set';
   }
   function outOf(u, lo, hi) { return (u.max_f != null && hi > +u.max_f) || (u.min_f != null && lo < +u.min_f); }
-  function activeUnits() { return T.units.filter(function (u) { return u.active !== false; }); }
+  // ROP plan units (the freezer and protein cooler) first, then the rest in their set-up order
+  function activeUnits() { return T.units.filter(function (u) { return u.active !== false; }).sort(function (a, b) { return (b.rop ? 1 : 0) - (a.rop ? 1 : 0); }); }
   function unitById(id) { return T.units.filter(function (u) { return u.id === id; })[0] || null; }
 
   /* ---------- data ---------- */
@@ -133,12 +143,16 @@
   function shell() {
     T.el.innerHTML = '';
     T.el.appendChild(h('div', { cls: 'ed-head tp-head' }, [h('h1', { cls: 'an-h1', text: 'Temperatures' }), h('div', { cls: 'tp-tabs', role: 'tablist' }, [])]));
+    T.el.appendChild(h('p', { cls: 'tp-status', hidden: true, role: 'status' }));
     T.body = h('div', { cls: 'tp-body' }); T.el.appendChild(T.body);
   }
   function tabs() {
     var bar = T.el.querySelector('.tp-tabs'); bar.innerHTML = '';
     var t = [['', 'Coolers & freezers'], ['log', 'Monthly log']].concat(isMgr() ? [['setup', 'Set up']] : []);
-    t.forEach(function (x) { bar.appendChild(h('a', { href: '#temps' + (x[0] ? '/' + x[0] : ''), cls: 'tp-tab', 'aria-current': T.sub === x[0] ? 'page' : null, text: x[1] })); });
+    t.forEach(function (x) {
+      if (hub()) bar.appendChild(h('button', { type: 'button', cls: 'tp-tab', 'aria-current': T.sub === x[0] ? 'page' : null, text: x[1], on: { click: function () { T.sub = x[0]; paint(false); } } }));
+      else bar.appendChild(h('a', { href: '#temps' + (x[0] ? '/' + x[0] : ''), cls: 'tp-tab', 'aria-current': T.sub === x[0] ? 'page' : null, text: x[1] }));
+    });
   }
   function paint(loading) {
     if (!T.el) return;
@@ -162,18 +176,22 @@
       el.appendChild(h('div', { cls: 'pr-setup' }, [h('h2', { cls: 'an-h2', text: 'No coolers or freezers yet' }),
         h('p', { text: isMgr() ? 'Add each cooler and freezer with its safe range and the serial number on its Elitech logger.' : 'A manager needs to add the coolers and freezers first.' }),
         isMgr() ? h('a', { cls: 'ed-btn small', href: '#temps/setup', text: 'Set up coolers and freezers' }) : null]));
-      el.appendChild(dropZone());
+      if (!hub()) el.appendChild(dropZone());
       return;
     }
     // alerts first
     var bad = us.map(function (u) { return { u: u, s: unitState(u) }; }).filter(function (x) { return x.s.cls === 'bad'; });
     if (bad.length) el.appendChild(h('div', { cls: 'tp-alert', role: 'alert' }, [h('b', { text: 'Out of range now: ' }), bad.map(function (x) { return x.u.name + ' ' + deg(+x.s.L.temp_f) + 'F (' + x.s.label.toLowerCase() + ')'; }).join(' · '), '. Check the unit, move product if needed, and write what you did below.']));
-    var grid = h('div', { cls: 'tp-grid' });
-    us.forEach(function (u) { grid.appendChild(card(u)); });
-    el.appendChild(grid);
+    // the units the ROP HACCP plan tracks get their own row, so the inspector (and the cooks) see them first
+    var rop = us.filter(function (u) { return u.rop; }), rest = us.filter(function (u) { return !u.rop; });
+    var grid = function (list) { var g = h('div', { cls: 'tp-grid' + (list.length <= 3 ? ' n' + list.length : '') }); list.forEach(function (u) { g.appendChild(card(u)); }); return g; };
+    if (rop.length && rest.length) {
+      el.appendChild(h('h2', { cls: 'tp-gh' }, ['ROP plan', h('small', { text: ' · the units the ROP HACCP plan tracks' })])); el.appendChild(grid(rop));
+      el.appendChild(h('h2', { cls: 'tp-gh', text: 'Other coolers and freezers' })); el.appendChild(grid(rest));
+    } else el.appendChild(grid(us));
     el.appendChild(feedLine());
     var u = unitById(T.sel); if (u) el.appendChild(detail(u));
-    el.appendChild(h('div', { cls: 'tp-two' }, [manualForm(), dropZone()]));
+    el.appendChild(hub() ? manualForm() : h('div', { cls: 'tp-two' }, [manualForm(), dropZone()]));
   }
   function card(u) {
     var s = unitState(u), sel = u.id === T.sel;
@@ -200,7 +218,7 @@
   }
   function feedLine() {
     var f = T.feed, txt;
-    if (!f || !f.at) txt = 'Live feed from Elitech: not connected yet. Until it is, drop an export file from Elitech iCold below, or log readings by hand.';
+    if (!f || !f.at) txt = 'Live feed from Elitech: not connected yet. Until it is, ' + (hub() ? 'a manager adds Elitech’s export each week on the staff site, and you can log readings by hand below.' : 'drop an export file from Elitech iCold below, or log readings by hand.');
     else if (f.error) txt = 'Live feed from Elitech: last check ' + ago(new Date(f.at)) + ' had a problem (' + f.error + ').';
     else txt = 'Live feed from Elitech: checked ' + ago(new Date(f.at)) + '. Readings come in every 5 minutes.';
     var extra = f && f.devices && f.devices.length && isMgr() ? h('a', { href: '#temps/setup', text: ' ' + f.devices.length + (f.devices.length === 1 ? ' logger isn’t' : ' loggers aren’t') + ' set up as a unit yet →' }) : null;
@@ -300,9 +318,9 @@
     var wrap = h('details', { cls: 'tp-nform' }), ta = h('textarea', { rows: 2, placeholder: 'What happened and what you did: checked the door seal, moved product to the walk-in, called for repair…', 'aria-label': 'Note' });
     var save = h('button', { type: 'button', cls: 'ed-btn small', text: 'Save note' });
     save.addEventListener('click', function () {
-      var v = ta.value.trim(); if (!v) { ta.focus(); return; }
+      var v = ta.value.trim(); if (!v) { ta.focus(); return; } if (needWho()) return;
       save.disabled = true;
-      sb().from('temp_notes').insert({ unit_id: u.id, at: new Date(at || Date.now()).toISOString(), note: v, by_name: T.ctx.name || '' }).then(function (r) {
+      sb().from('temp_notes').insert({ unit_id: u.id, at: new Date(at || Date.now()).toISOString(), note: v, by_name: who() }).then(function (r) {
         save.disabled = false;
         if (r.error) { status('Couldn’t save the note. ' + (r.error.message || ''), 'err'); return; }
         status('Note saved.', 'ok'); load();
@@ -322,12 +340,13 @@
     var save = h('button', { type: 'button', cls: 'ed-btn small', text: 'Log it' });
     function go() {
       var v = num(t.value); if (v == null || v < -60 || v > 120) { status('Type the temperature in °F, e.g. 38.', 'err'); t.focus(); return; }
+      if (needWho()) return;
       var u = unitById(sel.value), at = new Date(); at.setSeconds(0, 0);
       save.disabled = true;
-      sb().from('temp_readings').upsert({ unit_id: u.id, at: at.toISOString(), temp_f: v, source: 'manual', by_name: T.ctx.name || '' }, { onConflict: 'unit_id,at,source' }).then(function (r) {
+      sb().from('temp_readings').upsert({ unit_id: u.id, at: at.toISOString(), temp_f: v, source: 'manual', by_name: who() }, { onConflict: 'unit_id,at,source' }).then(function (r) {
         if (r.error) { save.disabled = false; status('Couldn’t save the reading. ' + (r.error.message || ''), 'err'); return; }
         var nv = note.value.trim(), bad = outOf(u, v, v);
-        (nv ? sb().from('temp_notes').insert({ unit_id: u.id, at: at.toISOString(), note: nv + ' (' + deg(v) + 'F by hand)', by_name: T.ctx.name || '' }) : Promise.resolve({})).then(function () {
+        (nv ? sb().from('temp_notes').insert({ unit_id: u.id, at: at.toISOString(), note: nv + ' (' + deg(v) + 'F by hand)', by_name: who() }) : Promise.resolve({})).then(function () {
           save.disabled = false; t.value = ''; note.value = '';
           status(bad ? u.name + ' at ' + deg(v) + 'F is out of its safe range (' + limitTxt(u) + '). Write what you did under Out of range.' : 'Logged ' + u.name + ' at ' + deg(v) + 'F.', bad ? 'err' : 'ok');
           T.sel = u.id; load();
@@ -445,7 +464,7 @@
         var c = x.unitSel.value === 'C', seen = {};
         x.p.rows.forEach(function (r) {
           var at = new Date(r.at); at.setSeconds(0, 0); var k = at.getTime(); if (seen[k]) return; seen[k] = 1;
-          rows.push({ unit_id: x.sel.value, at: at.toISOString(), temp_f: Math.round((c ? r.v * 9 / 5 + 32 : r.v) * 100) / 100, humidity: r.hum, source: 'file', by_name: T.ctx.name || '' });
+          rows.push({ unit_id: x.sel.value, at: at.toISOString(), temp_f: Math.round((c ? r.v * 9 / 5 + 32 : r.v) * 100) / 100, humidity: r.hum, source: 'file', by_name: who() });
         });
       });
       var i = 0, done = 0;
@@ -471,9 +490,13 @@
       h('button', { type: 'button', cls: 'ed-btn small', text: '←', 'aria-label': 'Previous month', on: { click: function () { T.month = new Date(m0.getFullYear(), m0.getMonth() - 1, 1); T.logData = null; paint(false); } } }),
       h('b', { text: label }),
       h('button', { type: 'button', cls: 'ed-btn small', text: '→', 'aria-label': 'Next month', disabled: m1 > new Date(), on: { click: function () { T.month = m1; T.logData = null; paint(false); } } }),
-      h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Print', on: { click: printLog } })
+      hub() ? null : h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Print', on: { click: printLog } })
     ]);
-    el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Each day’s lowest and highest temperature for every cooler and freezer, readings taken by hand, and corrective actions. Out-of-range days are marked.' }), nav]));
+    var anyRop = T.units.some(function (u) { return u.rop; });
+    var which = anyRop ? h('div', { cls: 'fn-range tp-which', role: 'group', 'aria-label': 'Units shown' }, [['all', 'All units'], ['rop', 'ROP plan units']].map(function (x) {
+      return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': (T.logRop ? 'rop' : 'all') === x[0] ? 'true' : 'false', text: x[1], on: { click: function () { T.logRop = x[0] === 'rop'; paint(false); } } });
+    })) : null;
+    el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Each day’s lowest and highest temperature for every cooler and freezer, readings taken by hand, and corrective actions. Out-of-range days are marked. For the health inspector, choose ROP plan units.' }), h('div', { cls: 'tp-mnav' }, [which, nav])]));
     var box = h('div', { cls: 'tp-log' }); el.appendChild(box);
     var key = ymd(m0);
     if (!T.logData || T.logData.key !== key) {
@@ -489,7 +512,8 @@
     box.appendChild(logTable(m0, m1, T.logData));
   }
   function logTable(m0, m1, D) {
-    var us = T.units.filter(function (u) { return u.active !== false || (D.s.units && D.s.units[u.id]); });
+    var us = T.units.filter(function (u) { return (u.active !== false || (D.s.units && D.s.units[u.id])) && (!T.logRop || u.rop); });
+    var ids = {}; us.forEach(function (u) { ids[u.id] = 1; });
     // hourly readings rolled up to each local day: [ , lowest, highest]
     var byDay = {}, badDay = {};
     us.forEach(function (u) {
@@ -508,8 +532,8 @@
         var bad = badDay[k + u.id];
         cells.push(h('td', { cls: bad ? 'tp-lbad' : null, title: bad ? 'Out of range for ' + durTxt(bad) : null, text: deg(+p[1]) + ' / ' + deg(+p[2]) + (bad ? ' !' : '') }));
       });
-      var bits = D.man.filter(function (r) { return ymd(new Date(r.at)) === k; }).map(function (r) { var u = unitById(r.unit_id); return (u ? u.name : '') + ' ' + deg(+r.temp_f) + 'F ' + timeTxt(new Date(r.at)) + (r.by_name ? ' (' + r.by_name.split(' ')[0] + ')' : ''); })
-        .concat(D.notes.filter(function (n) { return ymd(new Date(n.at)) === k; }).map(function (n) { var u = unitById(n.unit_id); return (u ? u.name + ': ' : '') + n.note + (n.by_name ? ' — ' + n.by_name : ''); }));
+      var bits = D.man.filter(function (r) { return ymd(new Date(r.at)) === k && ids[r.unit_id]; }).map(function (r) { var u = unitById(r.unit_id); return (u ? u.name : '') + ' ' + deg(+r.temp_f) + 'F ' + timeTxt(new Date(r.at)) + (r.by_name ? ' (' + r.by_name.split(' ')[0] + ')' : ''); })
+        .concat(D.notes.filter(function (n) { return ymd(new Date(n.at)) === k && (!n.unit_id || ids[n.unit_id]); }).map(function (n) { var u = unitById(n.unit_id); return (u ? u.name + ': ' : '') + n.note + (n.by_name ? ' — ' + n.by_name : ''); }));
       cells.push(h('td', { cls: 'tp-lnote', text: bits.join(' · ') }));
       rows.push(h('tr', null, cells));
     }
@@ -520,10 +544,10 @@
     if (!T.logData) return;
     var old = document.getElementById('prPrint'); if (old) old.remove();
     var m0 = T.month, m1 = new Date(m0.getFullYear(), m0.getMonth() + 1, 1);
-    var box = h('div', { id: 'prPrint', cls: 'tp-print' }, [h('h1', { text: 'Eden · Cooler & freezer temperature log' }),
+    var box = h('div', { id: 'prPrint', cls: 'tp-print' }, [h('h1', { text: T.logRop ? 'Eden · ROP plan temperature log' : 'Eden · Cooler & freezer temperature log' }),
       h('p', { text: m0.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' · 118 E. Genesee St., Syracuse · Elitech data loggers (readings every 5 minutes) plus readings taken by hand' }),
       logTable(m0, m1, T.logData),
-      h('p', { cls: 'pp-fine', text: 'Printed ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + (T.ctx.name ? ' by ' + T.ctx.name : '') + '.   Reviewed by: ____________________   Date: ________' })]);
+      h('p', { cls: 'pp-fine', text: 'Printed ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + (who() ? ' by ' + who() : '') + '.   Reviewed by: ____________________   Date: ________' })]);
     document.body.appendChild(box); document.body.classList.add('pr-printing');
     box.style.cssText = 'display:block;position:absolute;left:-10000px;top:0;width:10in';
     var pageH = 7.5 * 96, hgt = box.scrollHeight; box.style.cssText = '';
@@ -536,10 +560,10 @@
   /* ---------- set up (managers) ---------- */
   function paintSetup(el) {
     if (!isMgr()) { el.appendChild(h('p', { cls: 'an-sub', text: 'Only managers can change the set-up.' })); return; }
-    el.appendChild(h('p', { cls: 'an-sub', text: 'Each cooler and freezer with its safe range. The serial number is on the logger’s label and in Elitech iCold (Devices); with it, the live feed and export files go to the right unit. “Flag after” ignores short spikes from door openings and defrost cycles.' }));
+    el.appendChild(h('p', { cls: 'an-sub', text: 'Tick ROP plan for the units the ROP HACCP plan tracks (the freezer and the protein cooler); they come first on the page and get their own monthly log for the inspector. Each cooler and freezer with its safe range. The serial number is on the logger’s label and in Elitech iCold (Devices); with it, the live feed and export files go to the right unit. “Flag after” ignores short spikes from door openings and defrost cycles.' }));
     var tb = h('tbody');
     T.units.forEach(function (u) { tb.appendChild(unitRow(u)); });
-    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table tp-setup' }, [h('thead', null, [h('tr', null, ['Name', 'Type', 'Lowest °F', 'Highest °F', 'Flag after', 'Logger serial', 'In use', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))]), tb])]));
+    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table tp-setup' }, [h('thead', null, [h('tr', null, ['Name', 'Type', 'Lowest °F', 'Highest °F', 'Flag after', 'Logger serial', 'ROP plan', 'In use', ''].map(function (t) { return h('th', { scope: 'col', text: t }); }))]), tb])]));
     var add = function (name, kind, serial) {
       var d = DEFAULTS[kind || 'cooler'];
       return sb().from('temp_units').insert({ name: name, kind: kind || 'cooler', min_f: d.min, max_f: d.max, serial: serial || '', sort: T.units.length }).then(function (r) {
@@ -566,6 +590,7 @@
     var numIn = function (k, ph) { var i = h('input', { type: 'text', inputmode: 'decimal', cls: 'tp-tin', value: u[k] == null ? '' : String(+u[k]), placeholder: ph || 'none', 'aria-label': k }); i.addEventListener('change', function () { var v = num(i.value), o = {}; o[k] = v; save(o); }); return i; };
     var kd = h('select', { 'aria-label': 'Type' }, ['cooler', 'freezer', 'other'].map(function (k) { return h('option', { value: k, text: k[0].toUpperCase() + k.slice(1) }); })); kd.value = u.kind || 'cooler';
     kd.addEventListener('change', function () { save({ kind: kd.value }); });
+    var rop = h('input', { type: 'checkbox', 'aria-label': u.name + ' is tracked for the ROP plan' }); rop.checked = !!u.rop; rop.addEventListener('change', function () { save({ rop: rop.checked }); });
     var on = h('input', { type: 'checkbox' }); on.checked = u.active !== false; on.addEventListener('change', function () { save({ active: on.checked }); });
     var del = h('button', { type: 'button', cls: 'ed-btn small', text: 'Delete', on: { click: function () {
       if (!confirm('Delete ' + u.name + ' and all of its readings? To keep its history, untick In use instead.')) return;
@@ -573,7 +598,7 @@
     } } });
     var gr = numIn('grace_min', '30');
     return h('tr', { cls: u.active === false ? 'inactive' : null }, [h('td', null, [txt('name')]), h('td', null, [kd]), h('td', null, [numIn('min_f')]), h('td', null, [numIn('max_f')]),
-      h('td', null, [gr, h('small', { text: ' min' })]), h('td', null, [txt('serial', 'from the label', 'tp-sn')]), h('td', { cls: 'pr-c' }, [on]), h('td', null, [del])]);
+      h('td', null, [gr, h('small', { text: ' min' })]), h('td', null, [txt('serial', 'from the label', 'tp-sn')]), h('td', { cls: 'pr-c' }, [rop]), h('td', { cls: 'pr-c' }, [on]), h('td', null, [del])]);
   }
 
   window.EdenTemps = {

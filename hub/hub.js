@@ -98,6 +98,7 @@ if (!Element.prototype.replaceChildren) {
     setInterval(poll, POLL_MS); setInterval(loadMenu, MENU_MS);
     setInterval(repaint, 60 * 1000);   // keep the 'now' line and 'minutes ago' current between changes
     weather(); setInterval(weather, WX_MS);
+    temps(); setInterval(temps, 5 * 60 * 1000);
     watchForUpdates();
     touched();
   }
@@ -191,6 +192,14 @@ if (!Element.prototype.replaceChildren) {
   $('preCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('preshift', 'Pre-shift'); } });
   $('prepCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('prep', 'Kitchen prep list'); } });
   $('pop').addEventListener('pointerdown', popTouched, { passive: true });
+  // Temps on the menu: how many coolers and freezers are out of range now (red), or All in range
+  function temps() {
+    if (!window.EdenTemps || !navigator.onLine) return;
+    window.EdenTemps.counts({ sb: sb }).then(function (n) {
+      var el = $('navTemps'); if (!el) return;
+      el.textContent = n ? n + ' out of range' : 'All in range'; el.classList.toggle('full', !n); el.classList.toggle('alert', !!n);
+    }, function () {});
+  }
   function paintNav(d) {
     $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';
     (d.checklists || []).forEach(function (l) {

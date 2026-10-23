@@ -252,3 +252,4 @@ button{font:inherit;color:inherit}
   .hb-card{max-height:none}
 }
 @media (prefers-reduced-motion:reduce){.hb-progress-fill,.hb-logo.holding::after{transition:none}}
+.hb-nb small.alert{color:#ff9d8a;font-weight:500}

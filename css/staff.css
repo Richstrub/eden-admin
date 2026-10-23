@@ -2803,3 +2803,14 @@ body.nt-open #app{visibility:hidden!important}
 .eo-ro .eo-money .eo-cur{left:0}
 .eo-ro .eo-money .eo-in{padding-left:16px}
 .eo-ro .eo-tipmoney .eo-in{text-align:right;padding-left:16px}
+.tp-rop{align-self:flex-start;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#7a4a22;background:#fbf3ea;border:1px solid rgba(176,112,63,.45);padding:2px 7px}
+.tp-status{margin:0 0 12px;padding:10px 14px;font-size:.9rem;background:#f1f7f0;color:#2f6b3a;border:1px solid rgba(47,107,58,.3)}
+.tp-status.err{background:#fbeceb;color:#7a2418;border-color:rgba(138,42,30,.35)}
+.tp-status.dirty{background:#fbf3ea;color:#7a4a22;border-color:rgba(176,112,63,.4)}
+.tp-mnav{flex-wrap:wrap}
+.tp-tabs button.tp-tab{font:inherit;font-size:.8rem;cursor:pointer}
+.tp-gh{font-family:var(--serif,inherit);font-weight:400;font-size:1.15rem;margin:4px 0 10px}
+.tp-gh small{font-family:var(--sans,inherit);font-size:.75rem;color:var(--stone)}
+.tp-grid.n2{grid-template-columns:repeat(2,minmax(0,1fr))}.tp-grid.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tp-grid+.tp-gh{margin-top:18px}
+@media (max-width:820px){.tp-grid.n2,.tp-grid.n3{grid-template-columns:1fr}}

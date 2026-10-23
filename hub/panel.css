@@ -32,3 +32,13 @@ body{-webkit-tap-highlight-color:transparent;touch-action:manipulation;overscrol
 .to-pending{color:#8a5a12;border-color:#e6c98f;background:#fbf3e2}
 .to-approved{color:#2f7a45;border-color:#a9d3b5;background:#eef7f0}
 .to-denied{color:#a3392b;border-color:#e4b1a9;background:#fbeeec}
+/* temperatures, for the touch screen: the pop-up already says "Temperatures"; bigger tabs, buttons and boxes */
+.hp-temps .tp-head h1{display:none}
+.hp-temps .tp-head{justify-content:flex-start;margin-bottom:12px}
+.hp-temps .tp-tab{padding:14px 20px;font-size:1rem}
+.hp-temps .fn-rbtn{padding:14px 18px;font-size:.95rem}
+.hp-temps .tp-mrow select,.hp-temps .tp-mrow input,.hp-temps .tp-tin{font-size:1.15rem;padding:14px}
+.hp-temps .tp-mrow .ed-btn{padding:16px 22px;font-size:.8rem}
+.hp-temps .tp-card{padding:18px 18px 12px}
+.hp-temps .tp-nform summary{font-size:1rem;padding:8px 0}
+.hp-temps .tp-nform textarea{font-size:1.1rem}
