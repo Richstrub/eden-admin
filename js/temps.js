@@ -391,7 +391,7 @@
       return Promise.all(files.map(function (f) {
         return f.arrayBuffer().then(function (buf) {
           var csv = /\.(csv|txt)$/i.test(f.name), wb = csv ? XLSX.read(new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, ''), { type: 'string', raw: true }) : XLSX.read(buf, { type: 'array', cellDates: true }), out = [];
-          wb.SheetNames.forEach(function (n) { var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }), dl = parseDeviceList(rows, f.name); if (dl) { out = out.concat(dl); return; } var p = parseExport(rows, f.name); if (p && p.rows.length) out.push(p); });
+          wb.SheetNames.forEach(function (n) { var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }), dl = parseDeviceList(rows, f.name); if (dl) { out = out.concat(dl); return; } var p = parseExport(rows, f.name); if (p && p.rows.length) { if (!p.name && !/^sheet\d*$/i.test(n)) p.name = sheetName(n); out.push(p); } });
           return out.length ? out : [{ file: f.name, rows: [], error: 'No temperature readings found in this file.' }];
         });
       }));
@@ -415,6 +415,8 @@
     }
     return null;
   }
+  // iCold's batch export names each logger's sheet like "AppCooler_643608": make it "App Cooler"
+  function sheetName(n) { return String(n || '').replace(/_\d+$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim(); }
   // finds the header row (a time column and a temperature column) and the logger's name and serial above it
   function parseExport(rows, fname) {
     var meta = { name: '', serial: '' }, hi = -1, tc = -1, vc = -1, hc = -1, unit = '';
@@ -460,7 +462,8 @@
     var same = function (a, b) { a = a.toLowerCase(); return a === b || (a.length >= 12 && b.length >= 12 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)); };
     return us.filter(function (u) { return u.serial && s && same(u.serial, s); })[0]
       || us.filter(function (u) { return u.serial && (f.indexOf(u.serial.toLowerCase()) >= 0 || (n && n.indexOf(u.serial.toLowerCase()) >= 0)); })[0]
-      || us.filter(function (u) { var k = u.name.toLowerCase(); return (n && (n === k || n.indexOf(k) >= 0 || k.indexOf(n) >= 0)) || f.indexOf(k) >= 0; })[0] || null;
+      || us.filter(function (u) { var k = u.name.toLowerCase(); return (n && (n === k || n.indexOf(k) >= 0 || k.indexOf(n) >= 0)) || f.indexOf(k) >= 0; })[0]
+      || us.filter(function (u) { var k = u.name.toLowerCase().replace(/[^a-z0-9]/g, ''), n2 = n.replace(/[^a-z0-9]/g, ''); return n2 && k && (n2 === k || n2.indexOf(k) >= 0 || k.indexOf(n2) >= 0); })[0] || null;
   }
   function importDialog(parts) {
     var dlg = h('dialog', { cls: 'pr-dlg tp-dialog' }), items = [];
@@ -646,6 +649,6 @@
         });
       }, function () { return 0; });
     },
-    _test: { parseExport: parseExport, parseDeviceList: parseDeviceList, toDate: toDate, T: T }
+    _test: { parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }
   };
 })();
