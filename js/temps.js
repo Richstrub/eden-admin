@@ -391,11 +391,29 @@
       return Promise.all(files.map(function (f) {
         return f.arrayBuffer().then(function (buf) {
           var csv = /\.(csv|txt)$/i.test(f.name), wb = csv ? XLSX.read(new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, ''), { type: 'string', raw: true }) : XLSX.read(buf, { type: 'array', cellDates: true }), out = [];
-          wb.SheetNames.forEach(function (n) { var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }); var p = parseExport(rows, f.name); if (p && p.rows.length) out.push(p); });
+          wb.SheetNames.forEach(function (n) { var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }), dl = parseDeviceList(rows, f.name); if (dl) { out = out.concat(dl); return; } var p = parseExport(rows, f.name); if (p && p.rows.length) out.push(p); });
           return out.length ? out : [{ file: f.name, rows: [], error: 'No temperature readings found in this file.' }];
         });
       }));
     }).then(function (all) { status(''); importDialog([].concat.apply([], all)); }, function (e) { status(e.message || 'Couldn’t read the file.', 'err'); });
+  }
+  // iCold's Device List export: one row per logger with its latest reading ("Probe 1:-9.4℉") and last check-in time
+  function parseDeviceList(rows, fname) {
+    for (var i = 0; i < Math.min(rows.length, 10); i++) {
+      var r = rows[i].map(function (c) { return String(c == null ? '' : c).trim().toLowerCase(); });
+      var nc = r.indexOf('device name'), ic = r.indexOf('device id'), dc = r.indexOf('data'), tc = -1;
+      r.forEach(function (c, j) { if (tc < 0 && /session time|last.*time|update time/.test(c)) tc = j; });
+      if (nc < 0 || ic < 0 || dc < 0 || tc < 0) continue;
+      var out = [];
+      for (var n = i + 1; n < rows.length; n++) {
+        var row = rows[n], m = /probe\s*1?\s*[:：]\s*(-?\d+(?:\.\d+)?)\s*(℉|℃|°\s*f|°\s*c)?/i.exec(String(row[dc] || '')), at = toDate(row[tc]);
+        if (!m || !at) continue;
+        out.push({ file: fname, name: String(row[nc] || '').trim(), serial: String(row[ic] || '').replace(/\s/g, ''), unit: m[2] && /c|℃/i.test(m[2]) ? 'C' : 'F', guessed: false,
+          rows: [{ at: at, v: parseFloat(m[1]), hum: null }] });
+      }
+      return out.length ? out : null;
+    }
+    return null;
   }
   // finds the header row (a time column and a temperature column) and the logger's name and serial above it
   function parseExport(rows, fname) {
@@ -439,7 +457,8 @@
   }
   function matchUnit(p) {
     var us = T.units, s = (p.serial || '').toLowerCase(), n = (p.name || '').toLowerCase(), f = (p.file || '').toLowerCase();
-    return us.filter(function (u) { return u.serial && s && u.serial.toLowerCase() === s; })[0]
+    var same = function (a, b) { a = a.toLowerCase(); return a === b || (a.length >= 12 && b.length >= 12 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)); };
+    return us.filter(function (u) { return u.serial && s && same(u.serial, s); })[0]
       || us.filter(function (u) { return u.serial && (f.indexOf(u.serial.toLowerCase()) >= 0 || (n && n.indexOf(u.serial.toLowerCase()) >= 0)); })[0]
       || us.filter(function (u) { var k = u.name.toLowerCase(); return (n && (n === k || n.indexOf(k) >= 0 || k.indexOf(n) >= 0)) || f.indexOf(k) >= 0; })[0] || null;
   }
@@ -627,6 +646,6 @@
         });
       }, function () { return 0; });
     },
-    _test: { parseExport: parseExport, toDate: toDate, T: T }
+    _test: { parseExport: parseExport, parseDeviceList: parseDeviceList, toDate: toDate, T: T }
   };
 })();
