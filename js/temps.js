@@ -14,6 +14,7 @@
   'use strict';
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   var STALE_MIN = 30;   // no reading for this long = "No recent reading"
+  var STEP = 5;   // minutes per point when deciding how long a unit was out of range: the loggers read every 5 minutes
   var RANGES = { day: { label: '24 hours', ms: 864e5, bucket: 15 }, week: { label: '7 days', ms: 7 * 864e5, bucket: 60 }, month: { label: '30 days', ms: 30 * 864e5, bucket: 240 } };
   var DEFAULTS = { cooler: { min: 33, max: 41 }, freezer: { min: null, max: 0 }, other: { min: null, max: null } };
   var T = { ctx: null, el: null, sub: '', units: [], notes: [], feed: null, day: null, long: null, sel: null, range: 'day', missing: false, err: '', seq: 0, month: null };
@@ -84,7 +85,7 @@
       sb().from('temp_units').select('*').order('sort').order('name'),
       sb().from('temp_notes').select('*').gte('at', new Date(now.getTime() - 35 * 864e5).toISOString()).order('at', { ascending: false }).limit(300),
       sb().from('temp_feed').select('*').eq('id', 1).maybeSingle(),
-      series(wk, new Date(now.getTime() + 6e4), 15),
+      series(wk, new Date(now.getTime() + 6e4), STEP),
       T.range === 'day' || T.range === 'week' ? Promise.resolve(null) : series(new Date(now.getTime() - R.ms), new Date(now.getTime() + 6e4), R.bucket)
     ]).then(function (res) {
       if (my !== T.seq) return;
@@ -110,15 +111,17 @@
     }
     return out;
   }
-  // stretches of time out of range in the last 7 days (15-minute buckets), longest-lasting first within each day
+  // stretches of time out of range in the last 7 days, read reading by reading (5-minute points): a stretch only
+  // needs a corrective action once it has stayed out of range longer than the unit's allowance (30 minutes unless set
+  // otherwise). Any in-range reading ends the stretch, so a door opening or a single warm reading never adds up.
   function excursions(u) { return runsFor(u, (T.week && T.week.units && T.week.units[u.id]) || []); }
   function runsFor(u, list) {
     var raw = list.map(function (x) { return { t: x[0] * 1000, lo: +x[1], hi: +x[2], av: +x[3] }; });
-    var runs = [], cur = null;
+    var runs = [], cur = null, step = STEP * 6e4;
     raw.forEach(function (x) {
-      var bad = outOf(u, x.lo, x.hi);
-      if (bad && cur && x.t - cur.end <= 15 * 6e4 + 1) { cur.end = x.t + 15 * 6e4; cur.peak = (u.max_f != null && x.hi > +u.max_f) ? Math.max(cur.peak, x.hi) : cur.peak; cur.low = Math.min(cur.low, x.lo); }
-      else if (bad) { cur = { start: x.t, end: x.t + 15 * 6e4, peak: x.hi, low: x.lo }; runs.push(cur); }
+      var bad = outOf(u, x.av, x.av);
+      if (bad && cur && x.t - cur.end <= step + 1) { cur.end = x.t + step; cur.peak = Math.max(cur.peak, x.av); cur.low = Math.min(cur.low, x.av); }
+      else if (bad) { cur = { start: x.t, end: x.t + step, peak: x.av, low: x.av }; runs.push(cur); }
       else cur = null;
     });
     var grace = u.grace_min == null ? 30 : +u.grace_min;
@@ -536,7 +539,7 @@
     if (!T.logData || T.logData.key !== key) {
       box.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' }));
       Promise.all([
-        series(m0, m1, 15),
+        series(m0, m1, STEP),
         sb().from('temp_readings').select('unit_id,at,temp_f,by_name').eq('source', 'manual').gte('at', m0.toISOString()).lt('at', m1.toISOString()).order('at').limit(2000),
         sb().from('temp_notes').select('*').gte('at', m0.toISOString()).lt('at', m1.toISOString()).order('at').limit(1000)
       ]).then(function (res) { T.logData = { key: key, s: res[0], man: res[1].data || [], notes: res[2].data || [] }; if (T.sub === 'log') paint(false); },
@@ -554,7 +557,7 @@
       var list = (D.s.units || {})[u.id] || [];
       list.forEach(function (p) { var d = ymd(new Date(p[0] * 1000)), b = (byDay[d] = byDay[d] || {}), c = b[u.id]; if (!c) b[u.id] = [p[0], +p[1], +p[2]]; else { c[1] = Math.min(c[1], +p[1]); c[2] = Math.max(c[2], +p[2]); } });
       // a day is marked only when the unit stayed out of range longer than its "flag after" time (not a door opening or defrost)
-      runsFor(u, list).forEach(function (r) { for (var t = r.start; t < r.end; t += 15 * 6e4) badDay[ymd(new Date(t)) + u.id] = Math.max(badDay[ymd(new Date(t)) + u.id] || 0, r.min); });
+      runsFor(u, list).forEach(function (r) { for (var t = r.start; t < r.end; t += STEP * 6e4) badDay[ymd(new Date(t)) + u.id] = Math.max(badDay[ymd(new Date(t)) + u.id] || 0, r.min); });
     });
     var head = h('tr', null, [h('th', { scope: 'col', text: 'Day' })].concat(us.map(function (u) { return h('th', { scope: 'col', text: u.name, title: limitTxt(u) }); })).concat([h('th', { scope: 'col', text: 'By hand / notes' })]));
     var rows = [], today = new Date();
@@ -644,7 +647,7 @@
     },
     // for Today and the menu badge: how many units are out of range now
     counts: function (ctx) {
-      return ctx.sb.rpc('temp_series', { p_from: new Date(Date.now() - 864e5).toISOString(), p_to: new Date(Date.now() + 6e4).toISOString(), p_bucket_min: 15 }).then(function (r) {
+      return ctx.sb.rpc('temp_series', { p_from: new Date(Date.now() - 864e5).toISOString(), p_to: new Date(Date.now() + 6e4).toISOString(), p_bucket_min: STEP }).then(function (r) {
         if (r.error || !r.data || r.data.error) return 0;
         return ctx.sb.from('temp_units').select('*').eq('active', true).then(function (q) {
           if (q.error) return 0;
@@ -655,6 +658,6 @@
         });
       }, function () { return 0; });
     },
-    _test: { importDialog: importDialog, parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }
+    _test: { runsFor: runsFor, importDialog: importDialog, parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }
   };
 })();
