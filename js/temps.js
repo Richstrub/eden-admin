@@ -364,7 +364,7 @@
     var inp = h('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', multiple: true, hidden: true });
     var zone = h('div', { cls: 'pr-zone tp-zone', tabindex: '0', role: 'button', 'aria-label': 'Add an Elitech export file' }, [
       h('p', { cls: 'pr-zoneh', text: 'Drop an Elitech export here' }),
-      h('p', { cls: 'an-sub', text: 'In Elitech iCold: Devices → pick the logger → History data → choose the dates → Export (Excel). Or from ElitechLog on a computer: Export → Excel. Several files at once is fine; readings already saved are skipped.' })
+      h('p', { cls: 'an-sub', text: 'Or click to choose files. Several files at once is fine; readings already saved are skipped.' })
     ]);
     zone.addEventListener('click', function () { inp.click(); });
     zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
@@ -372,7 +372,13 @@
     zone.addEventListener('dragleave', function () { zone.classList.remove('over'); });
     zone.addEventListener('drop', function (e) { e.preventDefault(); zone.classList.remove('over'); readFiles(e.dataTransfer.files); });
     inp.addEventListener('change', function () { readFiles(inp.files); inp.value = ''; });
-    return h('section', { cls: 'tp-box' }, [h('h2', { cls: 'fn-h', text: 'Add readings from a file' }), zone, inp]);
+    // where the export comes from: Elitech's iCold website and Eden's login name (the password is never shown here)
+    var where = h('div', { cls: 'tp-where' }, [
+      h('p', null, [h('b', { text: 'Get the file from Elitech iCold: ' }), h('a', { href: 'https://new.i-elitech.com', target: '_blank', rel: 'noopener', text: 'new.i-elitech.com' })]),
+      h('p', null, ['Username: ', h('b', { cls: 'tp-user', text: 'Richstrub' }), h('small', { text: ' (password: the iCold one, not shown here)' })]),
+      h('ol', null, [h('li', { text: 'Sign in, open the logger, and go to its history data.' }), h('li', { text: 'Pick the dates since the last file you added.' }), h('li', { text: 'Export as Excel, then drop the file in the box below. Do each logger.' })])
+    ]);
+    return h('section', { cls: 'tp-box' }, [h('h2', { cls: 'fn-h', text: 'Add readings from a file' }), where, zone, inp]);
   }
   function sheetjs() {
     if (window.XLSX) return Promise.resolve();
