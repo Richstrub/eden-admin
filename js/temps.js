@@ -364,7 +364,7 @@
     var inp = h('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', multiple: true, hidden: true });
     var zone = h('div', { cls: 'pr-zone tp-zone', tabindex: '0', role: 'button', 'aria-label': 'Add an Elitech export file' }, [
       h('p', { cls: 'pr-zoneh', text: 'Drop an Elitech export here' }),
-      h('p', { cls: 'an-sub', text: 'Or click to choose files. Several files at once is fine; readings already saved are skipped.' })
+      h('p', { cls: 'an-sub', text: 'Or click to choose files. Several files at once is fine; a reading already saved is updated, never doubled.' })
     ]);
     zone.addEventListener('click', function () { inp.click(); });
     zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
@@ -473,12 +473,18 @@
       var m = matchUnit(p);
       var sel = h('select', { 'aria-label': 'Which cooler or freezer' }, [h('option', { value: '', text: 'Choose a cooler or freezer…' })].concat(activeUnits().map(function (u) { return h('option', { value: u.id, text: u.name }); })));
       if (m) sel.value = m.id;
-      var unitSel = h('select', { 'aria-label': 'Units' }, [h('option', { value: 'F', text: '°F' }), h('option', { value: 'C', text: '°C' })]); unitSel.value = p.unit;
-      var first = p.rows[0].at, last = p.rows[p.rows.length - 1].at;
-      items.push({ p: p, sel: sel, unitSel: unitSel });
+      // everything is shown and saved in °F; a file in °C (iCold exports °C) is converted. Only a guess gets a switch.
+      var isC = p.unit === 'C', first = p.rows[0].at, lastR = p.rows[p.rows.length - 1], last = lastR.at;
+      var toF = function (v) { return Math.round((isC ? v * 9 / 5 + 32 : v) * 10) / 10; };
+      var latest = h('small', { cls: 'tp-ilast' }), fix = null;
+      var paint = function () { latest.textContent = 'Latest reading: ' + toF(lastR.v) + '°F' + (isC ? ' (converted from ' + lastR.v + '°C)' : ''); };
+      if (p.guessed) fix = h('label', { cls: 'tp-ifix' }, [h('input', { type: 'checkbox', checked: isC ? 'checked' : null, on: { change: function (e) { isC = e.target.checked; paint(); } } }), ' This file is in °C (guessed from the readings; check the latest reading looks right)']);
+      paint();
+      var it = { p: p, sel: sel, isC: function () { return isC; } };
+      items.push(it);
       dlg.appendChild(h('div', { cls: 'tp-irow' }, [
         h('p', null, [h('b', { text: p.name || p.file }), h('small', { text: (p.serial ? ' · ' + p.serial : '') + ' · ' + p.rows.length + ' readings, ' + whenTxt(first) + ' to ' + whenTxt(last) })]),
-        h('div', { cls: 'tp-mrow' }, [sel, unitSel, p.guessed ? h('small', { text: 'Units guessed from the readings; check them' }) : null])
+        h('div', { cls: 'tp-mrow' }, [sel, latest]), fix
       ]));
     });
     var go = h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Add readings' }), cancel = h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { dlg.close(); dlg.remove(); } } });
@@ -489,7 +495,7 @@
       go.disabled = true; msg.textContent = 'Saving…';
       var rows = [];
       jobs.forEach(function (x) {
-        var c = x.unitSel.value === 'C', seen = {};
+        var c = x.isC(), seen = {};
         x.p.rows.forEach(function (r) {
           var at = new Date(r.at); at.setSeconds(0, 0); var k = at.getTime(); if (seen[k]) return; seen[k] = 1;
           rows.push({ unit_id: x.sel.value, at: at.toISOString(), temp_f: Math.round((c ? r.v * 9 / 5 + 32 : r.v) * 100) / 100, humidity: r.hum, source: 'file', by_name: who() });
@@ -499,7 +505,7 @@
       (function next() {
         if (i >= rows.length) { dlg.close(); dlg.remove(); status('Added ' + done + ' readings.', 'ok'); load(); return; }
         var chunk = rows.slice(i, i + 500); i += 500;
-        sb().from('temp_readings').upsert(chunk, { onConflict: 'unit_id,at,source', ignoreDuplicates: true }).then(function (r) {
+        sb().from('temp_readings').upsert(chunk, { onConflict: 'unit_id,at,source' }).then(function (r) {
           if (r.error) { go.disabled = false; msg.textContent = 'Couldn’t save: ' + (r.error.message || ''); return; }
           done += chunk.length; msg.textContent = 'Saving… ' + done + ' of ' + rows.length; next();
         });
@@ -649,6 +655,6 @@
         });
       }, function () { return 0; });
     },
-    _test: { parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }
+    _test: { importDialog: importDialog, parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }
   };
 })();

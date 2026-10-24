@@ -2817,3 +2817,5 @@ body.nt-open #app{visibility:hidden!important}
 .tp-where{font-size:.88rem;margin:0 0 12px}.tp-where p{margin:0 0 4px}.tp-where a{color:var(--ember)}
 .tp-where small{color:var(--stone)}.tp-where ol{margin:6px 0 0 18px;padding:0;color:var(--stone)}.tp-where li{margin:2px 0}
 .tp-user{font-family:ui-monospace,Menlo,monospace;letter-spacing:.02em}
+.tp-ilast { color: var(--muted, #6b6b6b); margin-left: .6rem; }
+.tp-ifix { display: block; margin-top: .4rem; font-size: .9em; }
