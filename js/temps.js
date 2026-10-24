@@ -367,7 +367,7 @@
     var inp = h('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', multiple: true, hidden: true });
     var zone = h('div', { cls: 'pr-zone tp-zone', tabindex: '0', role: 'button', 'aria-label': 'Add an Elitech export file' }, [
       h('p', { cls: 'pr-zoneh', text: 'Drop an Elitech export here' }),
-      h('p', { cls: 'an-sub', text: 'Or click to choose files. Several files at once is fine; a reading already saved is updated, never doubled.' })
+      h('p', { cls: 'an-sub', text: 'Or click to choose files. Several files at once is fine; readings already saved are skipped, never doubled.' })
     ]);
     zone.addEventListener('click', function () { inp.click(); });
     zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
@@ -496,21 +496,26 @@
       var jobs = items.filter(function (x) { return x.sel.value; });
       if (!jobs.length) { msg.textContent = 'Choose which cooler or freezer each file is for.'; return; }
       go.disabled = true; msg.textContent = 'Saving…';
-      var rows = [];
+      var rows = [], seen = {}, dupes = 0;   // the same unit and minute twice (two files, overlapping dates) goes in once
       jobs.forEach(function (x) {
-        var c = x.isC(), seen = {};
+        var c = x.isC();
         x.p.rows.forEach(function (r) {
-          var at = new Date(r.at); at.setSeconds(0, 0); var k = at.getTime(); if (seen[k]) return; seen[k] = 1;
+          var at = new Date(r.at); at.setSeconds(0, 0); var k = x.sel.value + '|' + at.getTime(); if (seen[k]) { dupes++; return; } seen[k] = 1;
           rows.push({ unit_id: x.sel.value, at: at.toISOString(), temp_f: Math.round((c ? r.v * 9 / 5 + 32 : r.v) * 100) / 100, humidity: r.hum, source: 'file', by_name: who() });
         });
       });
-      var i = 0, done = 0;
+      var i = 0, done = 0, added = 0, known = true;
       (function next() {
-        if (i >= rows.length) { dlg.close(); dlg.remove(); status('Added ' + done + ' readings.', 'ok'); load(); return; }
+        if (i >= rows.length) {
+          var skip = rows.length + dupes - added;
+          dlg.close(); dlg.remove(); status(!known ? 'Saved. Readings already in the database were skipped.' : added ? 'Added ' + added + ' new reading' + (added === 1 ? '' : 's') + (skip ? '; ' + skip + ' already saved, skipped.' : '.') : 'Nothing new: all ' + (rows.length + dupes) + ' readings were already saved.', 'ok'); load(); return;
+        }
         var chunk = rows.slice(i, i + 500); i += 500;
-        sb().from('temp_readings').upsert(chunk, { onConflict: 'unit_id,at,source' }).then(function (r) {
+        // already-saved readings are skipped, never overwritten or doubled (the database also drops any logger reading
+        // within 2 minutes of one it has, from the live feed or an earlier file)
+        sb().from('temp_readings').upsert(chunk, { onConflict: 'unit_id,at,source', ignoreDuplicates: true, count: 'exact' }).then(function (r) {
           if (r.error) { go.disabled = false; msg.textContent = 'Couldn’t save: ' + (r.error.message || ''); return; }
-          done += chunk.length; msg.textContent = 'Saving… ' + done + ' of ' + rows.length; next();
+          done += chunk.length; if (r.count == null) known = false; else added += r.count; msg.textContent = 'Saving… ' + done + ' of ' + rows.length; next();
         });
       })();
     });

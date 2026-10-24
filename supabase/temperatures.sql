@@ -147,3 +147,28 @@ grant execute on function public.temp_serials_server(text) to anon;
 
 -- units the ROP HACCP plan tracks (the freezer and the protein cooler): ticked under Temperatures > Set up
 alter table public.temp_units add column if not exists rop boolean not null default false;
+
+-- No duplicate readings. A logger reading (from Elitech's cloud or an export file) is skipped, not saved, when the same
+-- unit already has a logger reading within 2 minutes of it, from either source. Re-adding a file, overlapping export
+-- dates, or a file covering hours the live feed already saved adds nothing. Readings typed in by hand are always kept.
+create or replace function public.temp_readings_skip_dupes() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.source = 'manual' then return new; end if;
+  if exists (select 1 from public.temp_readings r
+             where r.unit_id = new.unit_id and r.source <> 'manual'
+               and r.at > new.at - interval '2 minutes' and r.at < new.at + interval '2 minutes') then
+    return null;   -- already have it: skip quietly
+  end if;
+  return new;
+end $$;
+drop trigger if exists temp_readings_skip_dupes on public.temp_readings;
+create trigger temp_readings_skip_dupes before insert on public.temp_readings
+  for each row execute function public.temp_readings_skip_dupes();
+
+-- one-time clean-up of any duplicates already saved: keeps the earliest logger reading in each 2-minute window
+delete from public.temp_readings b
+ using public.temp_readings a
+ where a.unit_id = b.unit_id and a.source <> 'manual' and b.source <> 'manual'
+   and a.at > b.at - interval '2 minutes' and a.at <= b.at
+   and (a.at < b.at or a.source < b.source);
