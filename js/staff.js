@@ -301,7 +301,11 @@
   // Temperatures: how many coolers or freezers are out of range now (menu badge)
   function tempCount() {
     if (!window.EdenTemps || !role || !canPrep()) return;
-    window.EdenTemps.counts({ sb: sb }).then(function (n) { document.querySelectorAll('[data-badge="temps"]').forEach(function (el) { el.textContent = n ? n + ' out' : ''; el.hidden = !n; el.classList.toggle('on', !!n); }); }, function () {});
+    // n units out of range, and/or the ROP plan thermometer's weekly calibration due
+    Promise.all([window.EdenTemps.counts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
+      var n = res[0], c = res[1], due = c && (c.cls === 'due' || c.cls === 'off'), t = n ? n + ' out' + (due ? ' · calibrate' : '') : due ? 'Calibrate' : '';
+      document.querySelectorAll('[data-badge="temps"]').forEach(function (el) { el.textContent = t; el.hidden = !t; el.classList.toggle('on', !!t); if (due) el.title = c.label; });
+    }, function () {});
   }
   setInterval(function () { if (!$('app').hidden) tempCount(); }, 300000);
   function refreshToday() { if (window.EdenToday && role) window.EdenToday.counts(todayCtx()); }

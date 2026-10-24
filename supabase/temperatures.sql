@@ -172,3 +172,26 @@ delete from public.temp_readings b
  where a.unit_id = b.unit_id and a.source <> 'manual' and b.source <> 'manual'
    and a.at > b.at - interval '2 minutes' and a.at <= b.at
    and (a.at < b.at or a.source < b.source);
+
+-- Thermometer calibration (ROP HACCP plan: the Taylor 9306N probe thermometer, ID 202403504, is checked in an ice
+-- slurry every week and whenever it's dropped; it must read 32°F ±2°F). This is the Thermometer Validation Log.
+-- The Hub and the staff site remind the kitchen when a week has passed since the last good check.
+create table if not exists public.temp_calibrations (
+  id           uuid primary key default gen_random_uuid(),
+  at           timestamptz not null default now(),
+  thermometer  text not null default 'Taylor 9306N probe (ID 202403504)',
+  reading_f    numeric(5,1) not null,          -- what it read in the ice slurry
+  ok           boolean not null,               -- within 30–34°F
+  action       text not null default '',       -- when it was off: recalibrated / replaced, products rechecked
+  by_name      text not null default '',
+  created_at   timestamptz not null default now()
+);
+create index if not exists temp_calibrations_at on public.temp_calibrations (at);
+alter table public.temp_calibrations enable row level security;
+revoke all on public.temp_calibrations from anon;
+grant select, insert on public.temp_calibrations to authenticated;
+drop policy if exists "read" on public.temp_calibrations;
+create policy "read" on public.temp_calibrations for select to authenticated using (public.can_temps());
+drop policy if exists "add" on public.temp_calibrations;
+create policy "add" on public.temp_calibrations for insert to authenticated with check (public.can_temps());
+notify pgrst, 'reload schema';

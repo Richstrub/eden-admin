@@ -175,7 +175,7 @@ if (!Element.prototype.replaceChildren) {
   function closePop() {
     popPage = '';
     $('pop').hidden = true; $('popFrame').src = 'about:blank';
-    markNav(''); STAMP = null; poll();   // show anything just changed right away
+    markNav(''); STAMP = null; poll(); temps();   // show anything just changed right away
   }
   function markNav(page) { [].forEach.call(document.querySelectorAll('.hb-nb'), function (b) { b.setAttribute('aria-current', b.getAttribute('data-p') === page ? 'true' : 'false'); }); }
   [].forEach.call(document.querySelectorAll('.hb-nb'), function (b) {
@@ -192,15 +192,21 @@ if (!Element.prototype.replaceChildren) {
   $('preCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('preshift', 'Pre-shift'); } });
   $('prepCard').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPop('prep', 'Kitchen prep list'); } });
   $('pop').addEventListener('pointerdown', popTouched, { passive: true });
-  // Temps on the menu: how many coolers and freezers are out of range now (red), or All in range
+  // Temps on the menu: how many coolers and freezers are out of range now (red), or All in range; and the ROP plan's
+  // weekly thermometer calibration: a red bar across the top of the board when it's due, until someone logs the check
   function temps() {
     if (!window.EdenTemps || !navigator.onLine) return;
-    window.EdenTemps.counts({ sb: sb }).then(function (n) {
-      var el = $('navTemps'); if (!el) return;
-      if (n == null) { el.textContent = ''; el.classList.remove('full', 'alert'); return; }   // no units set up yet
-      el.textContent = n ? n + ' out of range' : 'All in range'; el.classList.toggle('full', !n); el.classList.toggle('alert', !!n);
+    Promise.all([window.EdenTemps.counts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
+      var n = res[0], cal = res[1], el = $('navTemps'), bar = $('calBar');
+      var due = cal && (cal.cls === 'due' || cal.cls === 'off'), soon = cal && cal.cls === 'soon';
+      if (bar) { bar.hidden = !due && !soon; bar.classList.toggle('soon', !!soon); $('calBarTxt').textContent = cal ? cal.label : ''; }
+      if (!el) return;
+      if (n == null && !due) { el.textContent = ''; el.classList.remove('full', 'alert'); return; }   // no units set up yet
+      el.textContent = n ? n + ' out of range' + (due ? ' · calibrate' : '') : due ? 'Calibrate thermometer' : soon ? 'Calibrate tomorrow' : 'All in range';
+      el.classList.toggle('full', !n && !due && !soon); el.classList.toggle('alert', !!n || !!due);
     }, function () {});
   }
+  $('calBar').addEventListener('click', function () { if (popPage !== 'temps') openPop('temps', 'Temperatures'); });
   function paintNav(d) {
     $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';
     (d.checklists || []).forEach(function (l) {

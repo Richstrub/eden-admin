@@ -2819,3 +2819,13 @@ body.nt-open #app{visibility:hidden!important}
 .tp-user{font-family:ui-monospace,Menlo,monospace;letter-spacing:.02em}
 .tp-ilast { color: var(--muted, #6b6b6b); margin-left: .6rem; }
 .tp-ifix { display: block; margin-top: .4rem; font-size: .9em; }
+/* thermometer calibration (ROP plan) */
+.tp-cal.due, .tp-cal.off { border-color: #c4553f; box-shadow: inset 4px 0 0 #c4553f; }
+.tp-cal.soon { box-shadow: inset 4px 0 0 #c99a3a; }
+.tp-calst { margin: .2rem 0 .3rem; font-weight: 500; }
+.tp-calst.ok { color: #3f7d4c; } .tp-calst.due, .tp-calst.off { color: #b0412c; } .tp-calst.soon { color: #8a6417; }
+.tp-calact { flex: 1 1 18rem; }
+.tp-calmsg { margin: .4rem 0 0; min-height: 0; } .tp-calmsg.err { color: #b0412c; }
+.tp-calhow { margin-top: .5rem; } .tp-calhow summary { cursor: pointer; }
+.tp-callog { margin-top: 1.5rem; }
+td.tp-bad { color: #b0412c; font-weight: 600; }

@@ -253,3 +253,13 @@ button{font:inherit;color:inherit}
 }
 @media (prefers-reduced-motion:reduce){.hb-progress-fill,.hb-logo.holding::after{transition:none}}
 .hb-nb small.alert{color:#ff9d8a;font-weight:500}
+
+/* the ROP plan's weekly thermometer calibration, across the top of the board when it's due */
+.hb-calbar{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;cursor:pointer;
+  padding:calc(var(--u)*1) calc(var(--u)*1.6);border-radius:calc(var(--u)*1);border:1px solid rgba(212,96,79,.6);background:rgba(212,96,79,.16);
+  font-size:calc(var(--u)*1.55);font-weight:400;color:#ffd2c9}
+.hb-calbar::before{content:'!';display:inline-grid;place-items:center;width:1.5em;height:1.5em;margin-right:.7em;border-radius:50%;background:var(--bad);color:#1a0f06;font-weight:600;flex:none}
+.hb-calbar #calBarTxt{flex:1}
+.hb-calbar.soon{border-color:rgba(217,178,95,.55);background:rgba(217,178,95,.12);color:#f3e2bd}
+.hb-calbar.soon::before{background:var(--gold)}
+.hb-calbar:active{transform:scale(.99)}
