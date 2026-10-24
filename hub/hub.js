@@ -95,7 +95,7 @@ if (!Element.prototype.replaceChildren) {
     net(); window.addEventListener('online', function () { net(); board(); weather(); }); window.addEventListener('offline', net);
     wake();
     loadMenu().then(poll);   // the first check downloads the board
-    setInterval(poll, POLL_MS); setInterval(loadMenu, MENU_MS);
+    setInterval(poll, POLL_MS); setInterval(loadMenu, MENU_MS); menuCheck(); setInterval(menuCheck, 60 * 1000);
     setInterval(repaint, 60 * 1000);   // keep the 'now' line and 'minutes ago' current between changes
     weather(); setInterval(weather, WX_MS);
     temps(); setInterval(temps, 5 * 60 * 1000);
@@ -207,6 +207,12 @@ if (!Element.prototype.replaceChildren) {
       var el = document.querySelector('[data-ck="' + l.id + '"]'); if (!el) return;
       el.textContent = l.done + ' / ' + l.total; el.classList.toggle('full', l.total > 0 && l.done === l.total);
     });
+  }
+  // the board's prep card: check every minute whether the menu was saved since, and rebuild the list if so
+  var MENU_STAMP = null;
+  function menuCheck() {
+    if (!window.EdenPrep || !window.EdenPrep.menuStamp || !navigator.onLine) return;
+    window.EdenPrep.menuStamp(sb).then(function (s) { if (!s) return; var changed = MENU_STAMP && s !== MENU_STAMP; MENU_STAMP = s; if (changed) loadMenu(); });
   }
   function loadMenu() {
     if (!window.EdenPrep || !window.EdenPrep.fetchMenu) return Promise.resolve();

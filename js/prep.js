@@ -154,6 +154,26 @@
     }, function () { P.menu = { tabs: [] }; });
   }
   function getMenu() { return P.ctx.getMenu ? P.ctx.getMenu() : P.menu; }
+  /* Menu changes reach the list within a minute on the staff page and the Hub (the staff site gets them live already):
+     a tiny check of when the menu was last saved, and the menu is fetched again only when that changed. */
+  var MENU_STAMP = null, menuWatch = null;
+  function menuStamp(sb) {
+    return sb.from('site_docs').select('updated_at').like('path', 'site/menu%').order('updated_at', { ascending: false }).limit(1)
+      .then(function (r) { return r.error || !r.data || !r.data.length ? null : r.data[0].updated_at; }, function () { return null; });
+  }
+  function checkMenu() {
+    if (!P.ctx || P.ctx.getMenu || !P.ctx.sb || document.hidden) return Promise.resolve();
+    return menuStamp(P.ctx.sb).then(function (s) {
+      if (!s) return;
+      var changed = MENU_STAMP && s !== MENU_STAMP; MENU_STAMP = s;
+      if (changed) { P.menu = null; return loadMenu().then(function () { window.EdenPrep.refresh(); }); }
+    });
+  }
+  function watchMenu() {
+    if (menuWatch || P.ctx.getMenu) return;
+    menuWatch = setInterval(checkMenu, 60 * 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) checkMenu(); });
+  }
 
   /* ---------- build the list from the menu ---------- */
   function splitParts(desc) {
@@ -651,10 +671,11 @@
 
   window.EdenPrep = {
     fetchMenu: fetchMenu,
+    menuStamp: menuStamp,
     kitchenLines: kitchenLines,
     show: function (ctx) {
       P.ctx = ctx; P.el = ctx.el; render();
-      Promise.all([loadMenu(), loadState()]).then(render);
+      Promise.all([loadMenu(), loadState()]).then(render).then(checkMenu).then(watchMenu);   // and pick up a menu saved since the page was opened
     },
     refresh: function () {
       if (!P.el || P.el.hidden) return;
