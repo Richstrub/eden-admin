@@ -562,8 +562,18 @@ async function elitechPull(env) {
     if (!Array.isArray(guids)) guids = [];
     String(env.ELITECH_DEVICES || '').split(/[\s,;]+/).filter(Boolean).forEach(g => { if (guids.indexOf(g) < 0) guids.push(g); });
     if (!guids.length) throw new Error('no loggers set up yet: add each unit with its logger serial or GUID on the Temperatures page');
-    const res = await post('/api/data-api/elitechAccess/v2/getRealTimeData', Object.assign({ deviceGuids: guids }, auth), token);
-    const list = Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
+    // all loggers in one request; if Elitech refuses it (one logger not activated for the API, or a wrong serial on
+    // Set up), ask for each logger on its own so the others still come through, and name the ones refused
+    const rt = g => post('/api/data-api/elitechAccess/v2/getRealTimeData', Object.assign({ deviceGuids: g }, auth), token);
+    const asList = res => Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
+    let list = [];
+    try { list = asList(await rt(guids)); }
+    catch (e) {
+      if (guids.length < 2) throw new Error(e.message + ' [' + guids.join(', ') + ']');
+      const bad = [];
+      for (const g of guids) { try { list = list.concat(asList(await rt([g]))); } catch (e2) { bad.push(g + ' (' + String(e2.message).replace(/^getRealTimeData:\s*/, '') + ')'); } }
+      if (bad.length) err = 'Elitech refused ' + bad.length + ' of ' + guids.length + ' loggers: ' + bad.join('; ').slice(0, 300);
+    }
     const F = String(env.ELITECH_UNIT || 'C').toUpperCase() === 'F';
     const pick = (o, ks) => { for (const k of ks) if (o[k] != null && o[k] !== '') return o[k]; return null; };
     // v2 answers each logger as { deviceGuid, deviceName, lastSessionTime (seconds), data: [{ paramCode, value, unitCode }] };
@@ -587,8 +597,8 @@ async function elitechPull(env) {
       when.setSeconds(0, 0);
       rows.push({ serial, name: String(pick(d, ['deviceName', 'name', 'alias']) || ''), at: when.toISOString(), temp_f: Math.round(tf * 100) / 100, humidity: hum == null || isNaN(parseFloat(hum)) ? null : parseFloat(hum) });
     });
-    if (!rows.length) err = 'Elitech answered, but with no readings';
-  } catch (e) { err = String(e && e.message || e).slice(0, 200); }
+    if (!rows.length && !err) err = 'Elitech answered, but with no readings';
+  } catch (e) { err = String(e && e.message || e).slice(0, 400); }
   await rpc(env, 'temp_ingest_server', { p_key: key, p_rows: rows, p_error: err });
 }
 
