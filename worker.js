@@ -543,7 +543,7 @@ async function elitechPull(env) {
   const key = inqKey(env); if (!key || !env.SUPABASE_URL) return;
   const rows = []; let err = '';
   try {
-    const base = String(env.ELITECH_URL || 'https://www.i-elitech.com').replace(/\/+$/, '');
+    const base = String(env.ELITECH_URL || 'https://i-elitech.com').replace(/\/+$/, '');
     const post = async (path, body, token) => {
       const headers = { 'content-type': 'application/json' }; if (token) headers.Authorization = token;
       const r = await fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
