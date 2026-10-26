@@ -2832,3 +2832,13 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .tp-calplan { margin: .3rem 0 .6rem; font-size: .95em; }
 .tp-calhist { margin-top: 1rem; } .tp-calhist ul { list-style: none; padding: 0; margin: .3rem 0 0; }
 .tp-calhist li { padding: .35rem 0; border-top: 1px solid rgba(0,0,0,.08); } .tp-calhist li.tp-bad { color: #b0412c; }
+/* out-of-range notification across the top of every staff page */
+.tn-box{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:900;width:min(720px,calc(100% - 24px));display:grid;gap:6px}
+.tn{display:flex;align-items:flex-start;gap:10px;padding:11px 12px 11px 14px;border:1px solid;box-shadow:0 6px 20px rgba(0,0,0,.18);font-size:.92rem;line-height:1.35}
+.tn.bad{background:#fbeceb;border-color:rgba(138,42,30,.45);color:#7a2418}
+.tn.warn{background:#fdf5e4;border-color:rgba(160,110,20,.45);color:#6b4a0c}
+.tn-msg{flex:1;color:inherit;text-decoration:none}
+.tn-msg:hover{text-decoration:underline}
+.tn-x{background:none;border:0;font-size:1.3rem;line-height:1;cursor:pointer;color:inherit;padding:0 2px}
+.tn-ask{justify-self:end;font:inherit;font-size:.8rem;background:#fff;border:1px solid rgba(0,0,0,.2);padding:5px 10px;cursor:pointer}
+.tp-alert-warn{background:#fdf5e4;border-color:rgba(160,110,20,.45);color:#6b4a0c}

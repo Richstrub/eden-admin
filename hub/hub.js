@@ -98,7 +98,7 @@ if (!Element.prototype.replaceChildren) {
     setInterval(poll, POLL_MS); setInterval(loadMenu, MENU_MS); menuCheck(); setInterval(menuCheck, 60 * 1000);
     setInterval(repaint, 60 * 1000);   // keep the 'now' line and 'minutes ago' current between changes
     weather(); setInterval(weather, WX_MS);
-    temps(); setInterval(temps, 5 * 60 * 1000);
+    temps(); setInterval(temps, 2 * 60 * 1000);
     watchForUpdates();
     touched();
   }
@@ -196,8 +196,15 @@ if (!Element.prototype.replaceChildren) {
   // weekly thermometer calibration: a red bar across the top of the board when it's due, until someone logs the check
   function temps() {
     if (!window.EdenTemps || !navigator.onLine) return;
-    Promise.all([window.EdenTemps.counts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
-      var n = res[0], cal = res[1], el = $('navTemps'), bar = $('calBar');
+    Promise.all([window.EdenTemps.alerts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
+      var al = res[0], cal = res[1], el = $('navTemps'), bar = $('calBar'), tb = $('tempBar');
+      var n = al == null ? null : al.filter(function (x) { return x.cls === 'bad'; }).length;
+      // a cooler or freezer out of its limits: a bar across the top of the board (red past its allowance, amber just out)
+      if (tb) {
+        var list = al || [], worst = list.some(function (x) { return x.cls === 'bad'; });
+        tb.hidden = !list.length; tb.classList.toggle('warn', !worst);
+        $('tempBarTxt').textContent = list.map(function (x) { return x.label; }).join(' · ') + (worst ? '. Check it and write the corrective action.' : '. Check the door and the unit.');
+      }
       var due = cal && (cal.cls === 'due' || cal.cls === 'off'), soon = cal && cal.cls === 'soon';
       if (bar) { bar.hidden = !due && !soon; bar.classList.toggle('soon', !!soon); $('calBarTxt').textContent = cal ? 'ROP plan · ' + cal.label : ''; }
       if (!el) return;
@@ -206,6 +213,7 @@ if (!Element.prototype.replaceChildren) {
       el.classList.toggle('full', !n && !due && !soon); el.classList.toggle('alert', !!n || !!due);
     }, function () {});
   }
+  $('tempBar').addEventListener('click', function () { if (popPage !== 'temps') openPop('temps', 'Temperatures'); });
   $('calBar').addEventListener('click', function () { if (popPage !== 'calibrate') openPop('calibrate', 'Calibrate the thermometer · ROP plan'); });
   function paintNav(d) {
     $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';

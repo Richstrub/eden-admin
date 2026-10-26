@@ -259,6 +259,8 @@
     // alerts first
     var bad = us.map(function (u) { return { u: u, s: unitState(u) }; }).filter(function (x) { return x.s.cls === 'bad'; });
     if (bad.length) el.appendChild(h('div', { cls: 'tp-alert', role: 'alert' }, [h('b', { text: 'Out of range now: ' }), bad.map(function (x) { return x.u.name + ' ' + deg(+x.s.L.temp_f) + 'F (' + x.s.label.toLowerCase() + ')'; }).join(' · '), '. Check the unit, move product if needed, and write what you did below.']));
+    var soon = us.map(function (u) { return { u: u, s: unitState(u) }; }).filter(function (x) { return x.s.cls === 'warn' && x.s.L && outOf(x.u, +x.s.L.temp_f, +x.s.L.temp_f); });
+    if (soon.length) el.appendChild(h('div', { cls: 'tp-alert tp-alert-warn', role: 'status' }, [h('b', { text: 'Out of its limits just now: ' }), soon.map(function (x) { return x.u.name + ' ' + deg(+x.s.L.temp_f) + 'F (safe ' + limitTxt(x.u) + ')'; }).join(' · '), '. Check the door and the unit. If it stays out longer than ' + durTxt(soon[0].u.grace_min == null ? 30 : +soon[0].u.grace_min) + ', it needs a corrective action.']));
     var calNow = T.calMissing ? 'ok' : calState(T.cal).cls;
     if (calNow !== 'ok') el.appendChild(calBox());
     // the units the ROP HACCP plan tracks get their own row, so the inspector (and the cooks) see them first
@@ -742,17 +744,27 @@
       if (!T.units.length || ctx.reload !== false) load(); else paint(false);
     },
     // for Today and the menu badge: how many units are out of range now
-    counts: function (ctx) {
+    // every cooler or freezer out of its limits right now, for the notifications on the staff site and the Hub:
+    // resolves null (no units set up) or [{ id, name, temp, cls: 'bad' (past its allowance) | 'warn' (just went out), label, rop }]
+    alerts: function (ctx) {
       return ctx.sb.rpc('temp_series', { p_from: new Date(Date.now() - 864e5).toISOString(), p_to: new Date(Date.now() + 6e4).toISOString(), p_bucket_min: STEP }).then(function (r) {
-        if (r.error || !r.data || r.data.error) return 0;
+        if (r.error || !r.data || r.data.error) return [];
         return ctx.sb.from('temp_units').select('*').eq('active', true).then(function (q) {
-          if (q.error) return 0;
-          if (!(q.data || []).length) return null;   // no units set up yet: nothing to report
+          if (q.error) return [];
+          if (!(q.data || []).length) return null;
           var save = T.week; T.week = r.data;
-          var n = (q.data || []).filter(function (u) { return unitState(u).cls === 'bad'; }).length;
-          T.week = save; return n;
+          var out = (q.data || []).map(function (u) {
+            var st = unitState(u), t = st.L ? +st.L.temp_f : null;
+            if (t == null || st.cls === 'ok' || st.cls === 'none' || !outOf(u, t, t)) return null;
+            return { id: u.id, name: u.name, temp: t, cls: st.cls, rop: !!u.rop, safe: limitTxt(u),
+              label: u.name + ' is ' + deg(t) + 'F' + (st.cls === 'bad' ? ', ' + st.label.toLowerCase() : ', out of its limits (safe ' + limitTxt(u) + ')') };
+          }).filter(Boolean);
+          T.week = save; return out;
         });
-      }, function () { return 0; });
+      }, function () { return []; });
+    },
+    counts: function (ctx) {
+      return window.EdenTemps.alerts(ctx).then(function (a) { return a == null ? null : a.filter(function (x) { return x.cls === 'bad'; }).length; });
     },
     // for the Hub and the menu badge: is the ROP plan thermometer due for its weekly calibration?
     // resolves { cls: 'due' | 'off' | 'soon' | 'ok', label } or null when calibration isn't switched on

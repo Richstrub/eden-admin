@@ -263,3 +263,5 @@ button{font:inherit;color:inherit}
 .hb-calbar.soon{border-color:rgba(217,178,95,.55);background:rgba(217,178,95,.12);color:#f3e2bd}
 .hb-calbar.soon::before{background:var(--gold)}
 .hb-calbar:active{transform:scale(.99)}
+.hb-tempbar.warn{border-color:rgba(217,178,95,.55);background:rgba(217,178,95,.12);color:#f3e2bd}
+.hb-tempbar.warn::before{background:var(--gold)}

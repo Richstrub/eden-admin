@@ -301,13 +301,48 @@
   // Temperatures: how many coolers or freezers are out of range now (menu badge)
   function tempCount() {
     if (!window.EdenTemps || !role || !canPrep()) return;
-    // n units out of range, and/or the ROP plan thermometer's weekly calibration due
-    Promise.all([window.EdenTemps.counts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
-      var n = res[0], c = res[1], due = c && (c.cls === 'due' || c.cls === 'off'), t = n ? n + ' out' + (due ? ' · calibrate' : '') : due ? 'Calibrate' : '';
+    // units out of their limits (the notification at the top of every page, and the menu badge), and the ROP plan
+    // thermometer's weekly calibration
+    Promise.all([window.EdenTemps.alerts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
+      var a = res[0] || [], c = res[1], n = a.filter(function (x) { return x.cls === 'bad'; }).length, due = c && (c.cls === 'due' || c.cls === 'off');
+      var t = n ? n + ' out' + (due ? ' · calibrate' : '') : a.length ? a.length + ' warm' : due ? 'Calibrate' : '';
       document.querySelectorAll('[data-badge="temps"]').forEach(function (el) { el.textContent = t; el.hidden = !t; el.classList.toggle('on', !!t); if (due) el.title = c.label; });
+      tempNotice(a);
     }, function () {});
   }
-  setInterval(function () { if (!$('app').hidden) tempCount(); }, 300000);
+  // a notification across the top of every page while a cooler or freezer is out of its limits: amber as soon as a
+  // reading is out, red once it has stayed out past its allowance (corrective action needed). Closing one hides it
+  // until that unit's state changes. With desktop alerts allowed, the computer shows one too, even in another tab.
+  var TN_SEEN = {};
+  function tnKey(x) { return x.id + ':' + x.cls; }
+  function tnHidden() { try { return JSON.parse(sessionStorage.getItem('eden-tn-hide') || '{}'); } catch (e) { return {}; } }
+  function tempNotice(list) {
+    var box = document.getElementById('tpNotice');
+    if (!box) { box = document.createElement('div'); box.id = 'tpNotice'; box.className = 'tn-box'; box.setAttribute('role', 'alert'); document.body.appendChild(box); }
+    var hide = tnHidden(), show = list.filter(function (x) { return !hide[tnKey(x)]; });
+    box.innerHTML = ''; box.hidden = !show.length;
+    show.forEach(function (x) {
+      var row = document.createElement('div'); row.className = 'tn ' + x.cls;
+      var msg = document.createElement('a'); msg.href = '#temps'; msg.className = 'tn-msg';
+      var b = document.createElement('b'); b.textContent = x.cls === 'bad' ? 'Out of range: ' : 'Temperature warning: ';
+      msg.appendChild(b); msg.appendChild(document.createTextNode(x.label + (x.cls === 'bad' ? '. Check it and write the corrective action.' : '. Check the door and the unit.')));
+      var close = document.createElement('button'); close.type = 'button'; close.className = 'tn-x'; close.setAttribute('aria-label', 'Hide this notice'); close.textContent = '×';
+      close.addEventListener('click', function () { var hd = tnHidden(); hd[tnKey(x)] = 1; try { sessionStorage.setItem('eden-tn-hide', JSON.stringify(hd)); } catch (e) {} row.remove(); if (!box.querySelector('.tn')) box.hidden = true; });
+      row.appendChild(msg); row.appendChild(close); box.appendChild(row);
+    });
+    if (show.length && window.Notification && Notification.permission === 'default' && !box.querySelector('.tn-ask')) {
+      var ask = document.createElement('button'); ask.type = 'button'; ask.className = 'tn-ask'; ask.textContent = 'Also alert me on this computer';
+      ask.addEventListener('click', function () { Notification.requestPermission().then(function () { ask.remove(); tempNotice(list); }); });
+      box.appendChild(ask);
+    }
+    // desktop notification once per unit and state
+    if (window.Notification && Notification.permission === 'granted') list.forEach(function (x) {
+      var k = tnKey(x); if (TN_SEEN[k]) return; TN_SEEN[k] = 1;
+      try { var nt = new Notification(x.cls === 'bad' ? 'Eden: ' + x.name + ' out of range' : 'Eden: ' + x.name + ' warm', { body: x.label, tag: 'eden-temp-' + x.id }); nt.onclick = function () { window.focus(); location.hash = '#temps'; nt.close(); }; } catch (e) {}
+    });
+    Object.keys(TN_SEEN).forEach(function (k) { if (!list.some(function (x) { return tnKey(x) === k; })) delete TN_SEEN[k]; });   // back in range: alert again next time
+  }
+  setInterval(function () { if (!$('app').hidden) tempCount(); }, 120000);
   function refreshToday() { if (window.EdenToday && role) window.EdenToday.counts(todayCtx()); }
   setInterval(function () { if (!$('app').hidden && view !== 'home') refreshToday(); }, 120000);
   /* ---------------- pages that are coming next ---------------- */
