@@ -562,13 +562,14 @@ async function elitechPull(env) {
     if (!Array.isArray(guids)) guids = [];
     String(env.ELITECH_DEVICES || '').split(/[\s,;]+/).filter(Boolean).forEach(g => { if (guids.indexOf(g) < 0) guids.push(g); });
     if (!guids.length) throw new Error('no loggers set up yet: add each unit with its logger serial or GUID on the Temperatures page');
-    // one request per logger: Elitech allows each logger one call a minute, and asking for them together means one
-    // wrong serial on Set up (or a logger not activated for the API) blocks them all. Refused loggers are named.
-    const rt = g => post('/api/data-api/elitechAccess/v2/getRealTimeData', Object.assign({ deviceGuids: [g] }, auth), token);
-    const asList = res => Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
-    let list = []; const bad = [];
-    for (const g of guids) { try { list = list.concat(asList(await rt(g))); } catch (e2) { bad.push(g + ' (' + String(e2.message).replace(/^getRealTimeData:\s*/, '') + ')'); } }
-    if (bad.length) err = 'Elitech refused ' + bad.length + ' of ' + guids.length + ' logger' + (guids.length === 1 ? '' : 's') + ': ' + bad.join('; ').slice(0, 300);
+    // all loggers in ONE request: Elitech allows one getRealTimeData call a minute per key (asking for loggers one by
+    // one is refused after the first). If it's refused, the error names the serials sent so a wrong one on Set up shows.
+    const res = await post('/api/data-api/elitechAccess/v2/getRealTimeData', Object.assign({ deviceGuids: guids }, auth), token)
+      .catch(e => { throw new Error(e.message + ' [asked for ' + guids.join(', ') + ']'); });
+    const list = Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
+    const got = {}; list.forEach(d => { got[String(d.deviceGuid || '')] = 1; });
+    const missing = guids.filter(g => !got[g]);
+    if (missing.length && list.length) err = 'Elitech sent no reading for ' + missing.join(', ') + ' (check that serial on Set up matches iCold, and that the logger is activated for the API)';
     const F = String(env.ELITECH_UNIT || 'C').toUpperCase() === 'F';
     const pick = (o, ks) => { for (const k of ks) if (o[k] != null && o[k] !== '') return o[k]; return null; };
     // v2 answers each logger as { deviceGuid, deviceName, lastSessionTime (seconds), data: [{ paramCode, value, unitCode }] };
