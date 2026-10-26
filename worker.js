@@ -554,25 +554,37 @@ async function elitechPull(env) {
     };
     const auth = { keyId: env.ELITECH_KEY_ID, keySecret: env.ELITECH_KEY_SECRET };
     const tok = await post('/api/data-api/elitechAccess/getToken', Object.assign({ userName: env.ELITECH_USER || '', password: env.ELITECH_PASSWORD || '' }, auth));
-    const token = typeof tok.data === 'string' ? tok.data : (tok.data && (tok.data.token || tok.data.accessToken)) || tok.token || '';
+    // Elitech answers { code: "0", data: "bearer eyJ…" }: the data is the whole Authorization header
+    let token = typeof tok.data === 'string' ? tok.data : (tok.data && (tok.data.token || tok.data.accessToken)) || tok.token || '';
+    if (!token) throw new Error('getToken: no token came back (check the iCold username and password)');
+    if (!/^bearer\s/i.test(token)) token = 'Bearer ' + token;
     let guids = await rpc(env, 'temp_serials_server', { p_key: key }).catch(() => []);
     if (!Array.isArray(guids)) guids = [];
     String(env.ELITECH_DEVICES || '').split(/[\s,;]+/).filter(Boolean).forEach(g => { if (guids.indexOf(g) < 0) guids.push(g); });
     if (!guids.length) throw new Error('no loggers set up yet: add each unit with its logger serial or GUID on the Temperatures page');
-    const res = await post('/api/data-api/elitechAccess/getRealTimeData', Object.assign({ deviceGuids: guids }, auth), token);
+    const res = await post('/api/data-api/elitechAccess/v2/getRealTimeData', Object.assign({ deviceGuids: guids }, auth), token);
     const list = Array.isArray(res.data) ? res.data : (res.data && (res.data.list || res.data.records)) || [];
     const F = String(env.ELITECH_UNIT || 'C').toUpperCase() === 'F';
     const pick = (o, ks) => { for (const k of ks) if (o[k] != null && o[k] !== '') return o[k]; return null; };
+    // v2 answers each logger as { deviceGuid, deviceName, lastSessionTime (seconds), data: [{ paramCode, value, unitCode }] };
+    // the temperature is the reading in °C or °F (probe 1 is paramCode 0100), humidity the one in %
+    const unitF = u => /℉|°\s*f|fahrenheit/i.test(String(u || '')), unitC = u => /℃|°\s*c|celsius/i.test(String(u || ''));
     list.forEach(d => {
       const serial = String(pick(d, ['deviceGuid', 'guid', 'deviceSn', 'sn', 'serialNumber', 'deviceId']) || '');
-      let t = pick(d, ['tmp1', 'temperature', 'temp', 'tmp', 'temperature1']);
-      if (!serial || t == null || isNaN(parseFloat(t))) return;
-      t = parseFloat(t); const tf = F ? t : t * 9 / 5 + 32;
+      let t = null, isF = F, hum = null;
+      const ps = Array.isArray(d.data) ? d.data : [];
+      const temps = ps.filter(x => x && x.value != null && x.value !== '' && !isNaN(parseFloat(x.value)) && (unitC(x.unitCode) || unitF(x.unitCode)));
+      const tp = temps.filter(x => String(x.paramCode) === '0100')[0] || temps[0];
+      if (tp) { t = parseFloat(tp.value); isF = unitF(tp.unitCode); }
+      else { t = pick(d, ['tmp1', 'temperature', 'temp', 'tmp', 'temperature1']); t = t == null ? null : parseFloat(t); }   // older format
+      const hp = ps.filter(x => x && /%|rh/i.test(String(x.unitCode || '')) && !isNaN(parseFloat(x.value)))[0];
+      hum = hp ? parseFloat(hp.value) : pick(d, ['hum1', 'humidity', 'hum']);
+      if (!serial || t == null || isNaN(t)) return;
+      const tf = isF ? t : t * 9 / 5 + 32;
       let at = pick(d, ['lastSessionTime', 'monitorTime', 'dataTime', 'time', 'createTime', 'updateTime']);
       let when = at == null ? null : typeof at === 'number' || /^\d{10,13}$/.test(String(at)) ? new Date(+at < 1e12 ? +at * 1000 : +at) : new Date(String(at).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(at)) ? '' : 'Z'));
       if (!when || isNaN(when) || Math.abs(Date.now() - when.getTime()) > 864e5) when = new Date();   // can't tell when: now
       when.setSeconds(0, 0);
-      const hum = pick(d, ['hum1', 'humidity', 'hum']);
       rows.push({ serial, name: String(pick(d, ['deviceName', 'name', 'alias']) || ''), at: when.toISOString(), temp_f: Math.round(tf * 100) / 100, humidity: hum == null || isNaN(parseFloat(hum)) ? null : parseFloat(hum) });
     });
     if (!rows.length) err = 'Elitech answered, but with no readings';
