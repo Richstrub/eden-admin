@@ -18,6 +18,18 @@
     if (p === 'timeoff') { window.EdenHubTimeOff.show({ sb: sb, el: el }); return; }
     if (p === 'calendar') { el.classList.add('hp-cal'); window.EdenCal.show({ sb: sb, el: el, name: 'Hub', canEdit: false, status: function () {} }); return; }
     if (p === 'preshift') { el.classList.add('hp-pre'); window.EdenPreshift.show({ sb: sb, el: el, role: 'hub', name: 'Hub', hub: true, noNotes: true, api: '../' }); return; }
+    if (p === 'calibrate') {
+      // the calibration window (from the reminder on the board): initials, then the ice-slurry check
+      var cw = document.createElement('label'); cw.className = 'ck-who hp-who';
+      var cs = document.createElement('span'); cs.textContent = 'Your initials';
+      var ci = document.createElement('input'); ci.type = 'text'; ci.maxLength = 20; ci.autocomplete = 'off'; ci.placeholder = 'e.g. MS'; ci.value = hubName();
+      ci.addEventListener('input', function () { setHubName(ci.value.trim()); });
+      cw.appendChild(cs); cw.appendChild(ci);
+      var cb = document.createElement('div');
+      el.innerHTML = ''; el.appendChild(cw); el.appendChild(cb); el.classList.add('hp-temps', 'hp-cal-check');
+      window.EdenTemps.calibrate({ sb: sb, el: cb, role: 'hub', hub: true, name: function () { return ci.value.trim() || hubName(); } });
+      return;
+    }
     if (p === 'temps') {
       // the same initials box as the prep list: readings and notes typed here carry the initials
       var tw = document.createElement('label'); tw.className = 'ck-who hp-who';

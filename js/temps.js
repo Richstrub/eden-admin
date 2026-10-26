@@ -189,7 +189,7 @@
     if (left <= 1) return { cls: 'soon', label: 'Thermometer calibration due ' + (ymd(next) === ymd(new Date()) ? 'today' : 'tomorrow'), last: last, lastOk: lastOk, next: next };
     return { cls: 'ok', label: 'Thermometer checked ' + dayTxt(new Date(lastOk.at)) + '; next by ' + dayTxt(next), last: last, lastOk: lastOk, next: next };
   }
-  function calBox() {
+  function calBox(full) {
     if (T.calMissing) return h('section', { cls: 'tp-box tp-cal' }, [h('h2', { cls: 'fn-h', text: 'Thermometer calibration' }),
       h('p', { cls: 'an-sub', text: 'To switch on calibration reminders, run the newest supabase/temperatures.sql in Supabase (SQL Editor), then reload.' })]);
     var st = calState(T.cal), t = h('input', { type: 'text', inputmode: 'decimal', placeholder: '°F', cls: 'tp-tin', 'aria-label': 'Reading in the ice slurry, °F' });
@@ -209,12 +209,12 @@
       sb().from('temp_calibrations').insert({ at: new Date().toISOString(), thermometer: CAL.label, reading_f: v, ok: ok, action: ok ? '' : act.value.trim(), by_name: who() }).then(function (r) {
         save.disabled = false;
         if (r.error) { status('Couldn’t save the check. ' + (r.error.message || ''), 'err'); return; }
-        status(ok ? 'Calibration logged: ' + deg(v) + 'F, within 32°F ±2°. Next check by ' + dayTxt(new Date(Date.now() + CAL.days * 864e5)) + '.' : 'Saved. Check it again in the ice slurry now that it’s recalibrated or replaced.', ok ? 'ok' : 'err');
-        load();
+        var m = ok ? 'Calibration logged: ' + deg(v) + 'F, within 32°F ±2°. Next check by ' + dayTxt(new Date(Date.now() + CAL.days * 864e5)) + '.' + (T.calOnly ? ' You can close this window.' : '') : 'Saved. Check it again in the ice slurry now that it’s recalibrated or replaced.';
+        if (T.calOnly) calWindow().then(function () { status(m, ok ? 'ok' : 'err'); }); else { status(m, ok ? 'ok' : 'err'); load(); }
       });
     }
     save.addEventListener('click', go); t.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
-    var how = h('details', { cls: 'tp-calhow' }, [h('summary', { text: 'How to check it (ice slurry)' }), h('ol', null, [
+    var how = h('details', { cls: 'tp-calhow', open: full ? 'open' : null }, [h('summary', { text: 'How to check it (ice slurry)' }), h('ol', null, [
       h('li', { text: 'Fill a cup with crushed ice, add cold water to the top, stir, and let it sit 1 minute.' }),
       h('li', { text: 'Put the probe in the middle, at least 2 inches deep, not touching the cup. Wait for the reading to settle.' }),
       h('li', { text: 'It should read 32°F, within 2° either way (30–34°F). Type what it reads and log it.' }),
@@ -224,7 +224,27 @@
       h('h2', { cls: 'fn-h' }, ['Thermometer calibration', h('small', { text: ' · ROP plan, every ' + CAL.days + ' days and whenever it’s dropped' })]),
       h('p', { cls: 'tp-calst ' + st.cls }, [st.cls === 'ok' ? '✓ ' : '! ', st.label]),
       h('p', { cls: 'an-sub', text: CAL.name + ' (ID ' + CAL.id + '). ' + lastTxt }),
-      h('div', { cls: 'tp-mrow' }, [t, act, save]), hint, how]);
+      full ? h('p', { cls: 'tp-calplan', text: 'Required by our ROP HACCP plan (vacuum packaging, Onondaga County Health Department): the probe thermometer used for ROP is checked in an ice slurry every ' + CAL.days + ' days and whenever it’s dropped, and every check is recorded on the Thermometer Validation Log.' }) : null,
+      full ? how : null,
+      h('div', { cls: 'tp-mrow' }, [t, act, save]), hint, full ? null : how,
+      full ? calHistory() : null]);
+  }
+  function calHistory() {
+    var list = (T.cal || []).slice(0, 6);
+    if (!list.length) return null;
+    return h('div', { cls: 'tp-calhist' }, [h('h3', { cls: 'fn-h', text: 'Recent checks' }), h('ul', null, list.map(function (c) {
+      return h('li', { cls: c.ok ? '' : 'tp-bad' }, [h('b', { text: whenTxt(new Date(c.at)) }), ' · ' + deg(+c.reading_f) + 'F · ' + (c.ok ? 'OK' : 'Off' + (c.action ? ': ' + c.action : '')) + (c.by_name ? ' · ' + c.by_name : '')]);
+    }))]);
+  }
+  // the Hub's calibration window (tapping the reminder): just the calibration check, nothing else
+  function calWindow() {
+    var el = T.el; T.calOnly = true;
+    return sb().from('temp_calibrations').select('*').order('at', { ascending: false }).limit(20).then(function (r) {
+      T.cal = r.error ? null : r.data || []; T.calMissing = !!r.error;
+      el.innerHTML = '';
+      el.appendChild(h('p', { cls: 'tp-status', hidden: true, role: 'status' }));
+      el.appendChild(calBox(true));
+    }, function () { el.innerHTML = ''; el.appendChild(h('p', { cls: 'pr-err', text: 'Couldn’t load. Check the internet connection.' })); });
   }
 
   function paintMain(el) {
@@ -736,9 +756,10 @@
     },
     // for the Hub and the menu badge: is the ROP plan thermometer due for its weekly calibration?
     // resolves { cls: 'due' | 'off' | 'soon' | 'ok', label } or null when calibration isn't switched on
+    calibrate: function (ctx) { T.ctx = ctx; T.el = ctx.el; return calWindow(); },
     calDue: function (ctx) {
       return ctx.sb.from('temp_calibrations').select('at,ok,reading_f').order('at', { ascending: false }).limit(20).then(function (r) {
-        if (r.error) return null; var st = calState(r.data || []); return { cls: st.cls, label: st.label };
+        var st = calState(r.error ? [] : r.data || []); return { cls: st.cls, label: st.label };
       }, function () { return null; });
     },
     _test: { calState: calState, runsFor: runsFor, importDialog: importDialog, parseExport: parseExport, parseDeviceList: parseDeviceList, sheetName: sheetName, matchUnit: matchUnit, toDate: toDate, T: T }

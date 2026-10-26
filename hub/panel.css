@@ -42,3 +42,9 @@ body{-webkit-tap-highlight-color:transparent;touch-action:manipulation;overscrol
 .hp-temps .tp-card{padding:18px 18px 12px}
 .hp-temps .tp-nform summary{font-size:1rem;padding:8px 0}
 .hp-temps .tp-nform textarea{font-size:1.1rem}
+/* the calibration window opened from the reminder on the board */
+.hp-cal-check .tp-cal{font-size:1.15rem;max-width:900px}
+.hp-cal-check .tp-calst{font-size:1.35rem}
+.hp-cal-check .tp-calhow li{margin:.35rem 0}
+.hp-cal-check .tp-tin{width:9rem;font-size:1.6rem!important}
+.hp-cal-check .tp-calact{font-size:1.1rem}

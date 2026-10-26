@@ -2829,3 +2829,6 @@ body.nt-open #app{visibility:hidden!important}
 .tp-calhow { margin-top: .5rem; } .tp-calhow summary { cursor: pointer; }
 .tp-callog { margin-top: 1.5rem; }
 td.tp-bad { color: #b0412c; font-weight: 600; }
+.tp-calplan { margin: .3rem 0 .6rem; font-size: .95em; }
+.tp-calhist { margin-top: 1rem; } .tp-calhist ul { list-style: none; padding: 0; margin: .3rem 0 0; }
+.tp-calhist li { padding: .35rem 0; border-top: 1px solid rgba(0,0,0,.08); } .tp-calhist li.tp-bad { color: #b0412c; }

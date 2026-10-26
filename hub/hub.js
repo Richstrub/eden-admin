@@ -199,14 +199,14 @@ if (!Element.prototype.replaceChildren) {
     Promise.all([window.EdenTemps.counts({ sb: sb }), window.EdenTemps.calDue ? window.EdenTemps.calDue({ sb: sb }) : null]).then(function (res) {
       var n = res[0], cal = res[1], el = $('navTemps'), bar = $('calBar');
       var due = cal && (cal.cls === 'due' || cal.cls === 'off'), soon = cal && cal.cls === 'soon';
-      if (bar) { bar.hidden = !due && !soon; bar.classList.toggle('soon', !!soon); $('calBarTxt').textContent = cal ? cal.label : ''; }
+      if (bar) { bar.hidden = !due && !soon; bar.classList.toggle('soon', !!soon); $('calBarTxt').textContent = cal ? 'ROP plan · ' + cal.label : ''; }
       if (!el) return;
       if (n == null && !due) { el.textContent = ''; el.classList.remove('full', 'alert'); return; }   // no units set up yet
       el.textContent = n ? n + ' out of range' + (due ? ' · calibrate' : '') : due ? 'Calibrate thermometer' : soon ? 'Calibrate tomorrow' : 'All in range';
       el.classList.toggle('full', !n && !due && !soon); el.classList.toggle('alert', !!n || !!due);
     }, function () {});
   }
-  $('calBar').addEventListener('click', function () { if (popPage !== 'temps') openPop('temps', 'Temperatures'); });
+  $('calBar').addEventListener('click', function () { if (popPage !== 'calibrate') openPop('calibrate', 'Calibrate the thermometer · ROP plan'); });
   function paintNav(d) {
     $('navOrders').textContent = d.orders_open == null ? '' : d.orders_open ? d.orders_open + ' to order' : 'All in';
     (d.checklists || []).forEach(function (l) {
