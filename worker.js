@@ -575,8 +575,8 @@ async function elitechPull(env) {
     // v2 answers each logger as { deviceGuid, deviceName, lastSessionTime (seconds), data: [{ paramCode, value, unitCode }] };
     // the temperature is the reading in °C or °F (probe 1 is paramCode 0100), humidity the one in %
     const unitF = u => /℉|°\s*f|fahrenheit/i.test(String(u || '')), unitC = u => /℃|°\s*c|celsius/i.test(String(u || ''));
-    list.forEach(d => {
-      const serial = String(pick(d, ['deviceGuid', 'guid', 'deviceSn', 'sn', 'serialNumber', 'deviceId']) || '');
+    const addRow = (d, hist, fallbackSerial) => {
+      const serial = String(pick(d, ['deviceGuid', 'guid', 'deviceSn', 'sn', 'serialNumber', 'deviceId']) || fallbackSerial || '');
       let t = null, isF = F, hum = null;
       const ps = Array.isArray(d.data) ? d.data : [];
       const temps = ps.filter(x => x && x.value != null && x.value !== '' && !isNaN(parseFloat(x.value)) && (unitC(x.unitCode) || unitF(x.unitCode)));
@@ -587,12 +587,23 @@ async function elitechPull(env) {
       hum = hp ? parseFloat(hp.value) : pick(d, ['hum1', 'humidity', 'hum']);
       if (!serial || t == null || isNaN(t)) return;
       const tf = isF ? t : t * 9 / 5 + 32;
-      let at = pick(d, ['lastSessionTime', 'monitorTime', 'dataTime', 'time', 'createTime', 'updateTime']);
+      let at = pick(d, hist ? ['monitorTimeStamp', 'monitorTime', 'monitorTimeStr'] : ['lastSessionTime', 'monitorTime', 'dataTime', 'time', 'createTime', 'updateTime']);
       let when = at == null ? null : typeof at === 'number' || /^\d{10,13}$/.test(String(at)) ? new Date(+at < 1e12 ? +at * 1000 : +at) : new Date(String(at).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(at)) ? '' : 'Z'));
-      if (!when || isNaN(when) || Math.abs(Date.now() - when.getTime()) > 864e5) when = new Date();   // can't tell when: now
+      if (hist) { if (!when || isNaN(when) || when.getTime() > Date.now() + 6e5) return; }
+      else if (!when || isNaN(when) || Math.abs(Date.now() - when.getTime()) > 864e5) when = new Date();   // can't tell when: now
       when.setSeconds(0, 0);
       rows.push({ serial, name: String(pick(d, ['deviceName', 'name', 'alias']) || ''), at: when.toISOString(), temp_f: Math.round(tf * 100) / 100, humidity: hum == null || isNaN(parseFloat(hum)) ? null : parseFloat(hum) });
-    });
+    };
+    list.forEach(d => addRow(d, false));
+    // The latest reading alone leaves gaps when a logger uploads late or its Wi-Fi drops, so each run also pulls one
+    // logger's every-5-minute history for the last 3 days, taking turns (5 loggers: each one every 25 minutes).
+    // Readings already saved are skipped by the database, so nothing doubles.
+    try {
+      const g = guids[Math.floor(Date.now() / 3e5) % guids.length], end = Math.floor(Date.now() / 1000);
+      const h = await post('/api/data-api/elitechAccess/v2/getHistoryData', Object.assign({ deviceGuid: g, startTime: end - 3 * 86400, endTime: end }, auth), token);
+      const hl = Array.isArray(h.data) ? h.data : (h.data && (h.data.list || h.data.records)) || [];
+      hl.forEach(d => addRow(d, true, g));
+    } catch (e) { if (!err) err = 'history: ' + String(e && e.message || e).slice(0, 160); }
     if (!rows.length && !err) err = 'Elitech answered, but with no readings';
   } catch (e) { err = String(e && e.message || e).slice(0, 400); }
   await rpc(env, 'temp_ingest_server', { p_key: key, p_rows: rows, p_error: err });
