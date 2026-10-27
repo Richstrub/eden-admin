@@ -79,7 +79,7 @@
       if (r.error) throw r.error; if (r.data && r.data.error) throw new Error(r.data.error); return r.data || { units: {}, latest: {} };
     });
   }
-  function load() {
+  function load(tries) {
     var my = ++T.seq, now = new Date(), R = RANGES[T.range];
     T.err = ''; paint(true);
     var wk = new Date(now.getTime() - 7 * 864e5);
@@ -100,8 +100,15 @@
       T.cal = res[4].error ? null : res[4].data || []; T.calMissing = !!res[4].error;
       T.week = res[3]; T.long = res[5];
       if (!T.sel || !unitById(T.sel)) T.sel = (activeUnits()[0] || {}).id || null;
+      T.loadedAt = Date.now();
       paint(false);
-    }, function (e) { if (my !== T.seq) return; T.missing = isMissing(e); T.err = T.missing ? '' : 'Couldn’t load the temperatures. ' + (e && e.message || ''); paint(false); });
+    }, function (e) {
+      if (my !== T.seq) return;
+      // a dropped connection (a phone waking up, the Wi-Fi blinking: "Load failed", "Failed to fetch") tries again quietly
+      var net = /load failed|failed to fetch|network/i.test(String(e && e.message || ''));
+      if (net && (tries || 0) < 3) { setTimeout(function () { if (my === T.seq) load((tries || 0) + 1); }, 2500 * ((tries || 0) + 1)); return; }
+      T.missing = isMissing(e); T.err = T.missing ? '' : net ? 'Couldn’t reach the server. Check the internet connection; this page tries again on its own.' : 'Couldn’t load the temperatures. ' + (e && e.message || ''); paint(false);
+    });
   }
   // the points for one unit over the chosen range: [{ t (ms), lo, hi, av }]
   function pts(id, range) {
@@ -736,6 +743,11 @@
       h('td', null, [gr, h('small', { text: ' min' })]), h('td', null, [txt('serial', 'from the label', 'tp-sn')]), h('td', { cls: 'pr-c' }, [rop]), h('td', { cls: 'pr-c' }, [on]), h('td', null, [del])]);
   }
 
+  // keep the page current while it's open: every 5 minutes (the loggers report every 5), and when a phone or tab comes
+  // back into view after a while
+  function onScreen() { return T.el && document.body.contains(T.el) && T.el.offsetParent !== null && !document.hidden && T.sub !== 'setup'; }
+  setInterval(function () { if (onScreen() && T.loadedAt && Date.now() - T.loadedAt > 4.5 * 6e4 && !document.querySelector('dialog[open]')) load(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && onScreen() && (!T.loadedAt || Date.now() - T.loadedAt > 2 * 6e4)) load(); });
   window.EdenTemps = {
     show: function (ctx) {
       T.ctx = ctx;
