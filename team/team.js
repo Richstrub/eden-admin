@@ -197,6 +197,7 @@
       if (!started) { started = true; startBoard(); }
       loadMyOff().then(loadView);
       loadTodos();
+      loadReviews();
       // the Prep List tab: cooks, managers and the kitchen (supabase/prep-list.sql)
       sb.rpc('can_prep').then(function (x) {
         canPrep = !!(x && !x.error && x.data); $('tabPrep').hidden = !canPrep;
@@ -526,6 +527,80 @@
   toForm.from.value = iso(addDays(new Date(), 14)); toForm.to.value = toForm.from.value;
   toForm.from.addEventListener('change', function () { if (!toForm.to.value || toForm.to.value < toForm.from.value) toForm.to.value = toForm.from.value; });
   toForm.allday.addEventListener('change', function () { $('toTimes').hidden = toForm.allday.checked; });
+  /* ---------- your reviews (every 3 months, shared by a manager) ---------- */
+  var RV_SCALE = ['', 'Needs improvement', 'Developing', 'Meets expectations', 'Exceeds expectations'];
+  var RV_CATS = [['knowledge', 'Job knowledge & skills'], ['quality', 'Quality & standards'], ['guest', 'Hospitality & the guest experience'], ['team', 'Teamwork & communication'],
+    ['reliability', 'Reliability'], ['initiative', 'Initiative & ownership'], ['safety', 'Food safety & sanitation'], ['professional', 'Professionalism & attitude']];
+  var myRevs = [];
+  function loadReviews() {
+    if (!me || !me.employee) { $('reviewSec').hidden = true; return Promise.resolve(); }
+    return sb.rpc('my_reviews').then(function (r) {
+      if (r.error || !Array.isArray(r.data)) { $('reviewSec').hidden = true; return; }   // not set up yet
+      myRevs = r.data; paintReviews();
+    }, function () { $('reviewSec').hidden = true; });
+  }
+  function paintReviews() {
+    var ul = $('myReviews'); ul.innerHTML = '';
+    $('reviewSec').hidden = !myRevs.length;
+    myRevs.forEach(function (rv) {
+      var isNew = rv.status !== 'signed';
+      ul.appendChild(h('li', { cls: 'tm-req' + (isNew ? ' tm-rev-new' : '') }, [
+        h('div', null, [h('b', { text: 'Review · ' + dayLabel(rv.review_date) }), h('small', { text: (rv.reviewer ? 'With ' + rv.reviewer + ' · ' : '') + (isNew ? 'New: please read it and add your feedback' : 'Signed ' + dayLabel(String(rv.emp_signed_at || '').slice(0, 10))) })]),
+        h('button', { type: 'button', cls: 'tm-btn' + (isNew ? ' primary' : ''), text: isNew ? 'Read' : 'Open', on: { click: function () { openMyReview(rv); } } })]));
+    });
+  }
+  function openMyReview(rv) {
+    var dlg = h('dialog', { cls: 'tm-revdlg', 'aria-label': 'Your review' }), signed = rv.status === 'signed', A = rv.answers || {}, R = rv.ratings || {};
+    var close = function () { dlg.close(); dlg.remove(); };
+    var para = function (label, text) { return text ? h('section', { cls: 'tm-rvs' }, [h('h3', { text: label }), h('p', { text: text })]) : null; };
+    var rows = RV_CATS.filter(function (k) { return R[k[0]] || A['c_' + k[0]]; }).map(function (k) {
+      return h('li', null, [h('div', { cls: 'tm-rvr' }, [h('b', { text: k[1] }), R[k[0]] ? h('span', { cls: 'tm-rvscore s' + R[k[0]], text: R[k[0]] + ' · ' + RV_SCALE[R[k[0]]] }) : null]), A['c_' + k[0]] ? h('p', { text: A['c_' + k[0]] }) : null]);
+    });
+    var prev = A.prev ? Object.keys(A.prev).map(function (i) { var g = A.prev[i]; return g && g.goal ? h('li', null, [h('b', { text: g.goal }), h('span', { text: ' · ' + ({ met: 'Met', partly: 'Partly met', not: 'Not yet' }[g.result] || '') + (g.note ? ' · ' + g.note : '') })]) : null; }).filter(Boolean) : [];
+    var goals = (rv.goals || []).filter(function (g) { return g && g.goal; }).map(function (g) { return h('li', null, [h('b', { text: g.goal }), g.measure ? h('small', { text: 'How we’ll know: ' + g.measure }) : null, g.support ? h('small', { text: 'Eden’s support: ' + g.support }) : null]); });
+    var ta = function (name, label, hint, val) { var t = h('textarea', { name: name, rows: 3, maxlength: 4000, disabled: signed }); t.value = val || ''; return h('label', null, [h('span', null, [label, h('span', { cls: 'tm-hint', text: hint ? ' (' + hint + ')' : '' })]), t]); };
+    var form = h('form', { cls: 'tm-revform', novalidate: true }, [
+      h('h3', { text: 'Your feedback' }),
+      h('p', { cls: 'tm-small2', text: signed ? 'You signed this review on ' + dayLabel(String(rv.emp_signed_at || '').slice(0, 10)) + '.' : 'Your manager will read this. Be honest: it’s your side of the review.' }),
+      ta('c', 'Your thoughts on this review', 'what you agree with, anything you see differently', rv.emp_comment),
+      ta('s', 'What support would help you?', 'training, schedule, tools', rv.emp_support),
+      ta('g', 'Your own goals for the next 3 months', 'optional', rv.emp_goals),
+      signed ? null : h('label', { cls: 'tm-check' }, [h('input', { type: 'checkbox', name: 'sign' }), ' I’ve read this review. (Signing means you’ve read it, not that you agree with every point.)']),
+      h('p', { cls: 'tm-msg', role: 'status' }),
+      signed ? null : h('div', { cls: 'tm-revacts' }, [h('button', { type: 'submit', cls: 'tm-btn primary', text: 'Save feedback' })])
+    ]);
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var f = form.elements, sign = f.sign && f.sign.checked, msg = form.querySelector('.tm-msg');
+      if (sign && !confirm('Sign this review as read? You won’t be able to change your feedback after that.')) return;
+      msg.textContent = 'Saving…';
+      sb.rpc('review_respond', { p_id: rv.id, p_comment: f.c.value.trim(), p_support: f.s.value.trim(), p_goals: f.g.value.trim(), p_sign: !!sign }).then(function (r) {
+        if (r.error || (r.data && r.data.error)) { msg.textContent = 'Couldn’t save. Try again.'; return; }
+        msg.textContent = sign ? 'Signed. Thank you.' : 'Saved. You can come back and sign it later.';
+        loadReviews().then(function () { if (sign) setTimeout(close, 900); });
+      }, function () { msg.textContent = 'Couldn’t save. Check your connection.'; });
+    });
+    dlg.appendChild(h('div', { cls: 'tm-revin' }, [
+      h('div', { cls: 'tm-revtop' }, [h('p', { cls: 'tm-eyebrow', text: 'Your review' }), h('button', { type: 'button', cls: 'tm-btn', text: 'Close', on: { click: close } })]),
+      h('h2', { text: dayLabel(rv.review_date) }),
+      h('p', { cls: 'tm-small2', text: [rv.position, rv.reviewer ? 'Reviewed by ' + rv.reviewer : '', rv.period_from ? 'Period ' + dayLabel(rv.period_from) + ' – ' + dayLabel(rv.period_to || rv.review_date) : ''].filter(Boolean).join(' · ') }),
+      rv.overall ? h('p', { cls: 'tm-rvoverall' }, ['Overall: ', h('b', { text: RV_SCALE[rv.overall] })]) : null,
+      para('Summary', A.summary),
+      rows.length ? h('section', { cls: 'tm-rvs' }, [h('h3', { text: 'Ratings' }), h('p', { cls: 'tm-small2', text: '1 Needs improvement · 2 Developing · 3 Meets expectations · 4 Exceeds expectations' }), h('ul', { cls: 'tm-rvlist' }, rows)]) : null,
+      A.attend && (A.attend.shifts || A.attend.extra) ? h('section', { cls: 'tm-rvs' }, [h('h3', { text: 'Attendance & punctuality' }),
+        h('p', { text: [A.attend.pct != null ? A.attend.pct + '% of shifts on time (clocked in within 5 minutes of the scheduled start)' : '', A.attend.worked + ' of ' + A.attend.shifts + ' scheduled shifts worked',
+          A.attend.late ? A.attend.late + ' late, ' + A.attend.avgLate + ' minutes on average' : 'never late', A.attend.missed ? A.attend.missed + ' scheduled with no clock-in' : ''].filter(Boolean).join('\n') }),
+        h('p', { cls: 'tm-small2', text: 'From the schedule and your Square clock-ins, ' + dayLabel(A.attend.from) + ' – ' + dayLabel(A.attend.to) + '.' })]) : null,
+      para('Strengths', A.strengths), para('Areas to grow', A.growth),
+      prev.length ? h('section', { cls: 'tm-rvs' }, [h('h3', { text: 'Goals from your last review' }), h('ul', { cls: 'tm-rvlist' }, prev)]) : null,
+      goals.length ? h('section', { cls: 'tm-rvs' }, [h('h3', { text: 'Goals for the next 3 months' }), h('ul', { cls: 'tm-rvlist' }, goals)]) : null,
+      para('Training & support', A.training),
+      form]));
+    document.body.appendChild(dlg);
+    dlg.addEventListener('cancel', function () { dlg.remove(); });
+    try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
+  }
+
   function loadMyOff() {
     if (!me || !me.employee) { myOff = []; return Promise.resolve(); }
     return sb.from('time_off').select('*').eq('emp', me.employee.id).order('start_date', { ascending: false }).limit(60).then(function (r) {
@@ -637,7 +712,7 @@
       else if (ch.eventType === 'DELETE' && ch.old && ch.old.id) { posts = posts.filter(function (p) { return p.id !== ch.old.id; }); renderPosts(); }
     }).subscribe();
     setInterval(function () { renderPosts(); }, 60000); // keep "5 min ago" fresh
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !$('app').hidden) { loadPosts(); loadMyOff().then(loadView); } });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !$('app').hidden) { loadPosts(); loadMyOff().then(loadView); loadReviews(); } });
   }
   body.addEventListener('input', function () { var n = body.value.length; $('postCount').textContent = n > 1800 ? (2000 - n) + ' characters left' : ''; });
   $('postForm').addEventListener('submit', function (e) {

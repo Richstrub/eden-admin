@@ -133,11 +133,11 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees', partners: 'viewPartners', temps: 'viewTemps' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees', partners: 'viewPartners', temps: 'viewTemps', reviews: 'viewReviews' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], checklists: ['Service', 'Checklists'], orders: ['Kitchen & bar', 'Ordering'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'], temps: ['Kitchen & bar', 'Temperatures'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], analytics: ['Owner', 'Analytics'], partners: ['Owner', 'Partner stories'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], reviews: ['Team', 'Reviews'], analytics: ['Owner', 'Analytics'], partners: ['Owner', 'Partner stories'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   // Team > Employees > Permissions: sections switched off for this login (Kitchen and Front-of-house logins)
@@ -173,7 +173,7 @@
     if (v.indexOf('calendar/e/') === 0) { var cm = /^calendar\/e\/(\d{4}-\d{2}-\d{2})\/(.*)$/.exec(v); if (cm) calFocus = { date: cm[1], id: decodeURIComponent(cm[2]) }; v = 'calendar'; }
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (v === 'reviews' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
     var want = v === 'payroll' ? (sub === 'overview' ? '#financials' : sub === 'rates' ? '#payroll/rates' : sub === 'past' ? '#payroll/past' : '#payroll') : '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
@@ -221,6 +221,8 @@
     } else if (v === 'todo') {
       status('');
       if (window.EdenNotes) window.EdenNotes.showTodo({ sb: sb, el: $('viewTodo'), status: status, name: staffName });
+    } else if (v === 'reviews') {
+      if (window.EdenReviews) window.EdenReviews.show({ sb: sb, el: $('viewReviews'), status: status, role: role, name: staffName });
     } else if (v === 'temps') {
       status('');
       if (window.EdenTemps) window.EdenTemps.show({ sb: sb, el: $('viewTemps'), status: status, role: role, name: staffName, sub: sub });
@@ -296,6 +298,7 @@
     set('inventory', c.inventory ? c.inventory + ' low' : '');
     set('schedule', c.schedule ? String(c.schedule) : '');
     set('payroll', c.payroll || '');
+    set('reviews', c.reviews ? c.reviews + ' due' : '');
     paintBack();
   }
   // Temperatures: how many coolers or freezers are out of range now (menu badge)

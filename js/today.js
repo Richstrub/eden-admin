@@ -45,7 +45,8 @@
     P.off = mgr ? q(sb.from('time_off').select('id,status,emp,start_date')) : null;
     P.next = mgr ? q(sb.from('schedule_weeks').select('week_start,status').eq('week_start', iso(nextWk)).maybeSingle()) : null;
     P.thisWeek = q(sb.from('schedule_weeks').select('week_start,status,published').eq('week_start', iso(thisWk)).maybeSingle());
-    P.emps = mgr ? q(sb.from('employees').select('id,name,position')) : null;
+    P.emps = mgr ? q(sb.from('employees').select('id,name,position,active')) : null;
+    P.rplan = mgr ? q(sb.from('review_plan').select('emp,next_due,skip')) : null;
     P.items = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,par,active')) : null;
     P.counts = ctx.canPrep ? q(sb.from('inventory_counts').select('category,count_date,counts')) : null;
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
@@ -62,7 +63,7 @@
     });
   }
   function build(ctx, d, w) {
-    var items = [], counts = { catering: 0, inventory: 0, schedule: 0, payroll: '' };
+    var items = [], counts = { catering: 0, inventory: 0, schedule: 0, payroll: '', reviews: 0 };
     // catering
     if (d.inq) {
       var nw = d.inq.filter(function (r) { return r.status === 'new'; }), back = d.inq.filter(function (r) { return r.status === 'received'; });
@@ -79,6 +80,19 @@
     if (ctx.isMgr && w.now.getDay() >= 3 && !(d.next && d.next.status === 'published')) {
       items.push({ area: 'Schedule', title: 'Next week isn’t published', sub: 'Week of ' + weekRange(w.nextWk) + ' — staff see it once it’s published', href: '#schedule', cta: 'Build it' });
       counts.schedule += 1;
+    }
+    // employee reviews (every 3 months): overdue, or due within a week
+    if (d.rplan && d.emps) {
+      var en = {}; d.emps.forEach(function (e) { if (e.active !== false) en[e.id] = e.name; });
+      var wkOut = iso(addDays(w.now, 7));
+      var rdue = d.rplan.filter(function (p) { return en[p.emp] && !p.skip && p.next_due && p.next_due <= wkOut; }).sort(function (a, b) { return a.next_due < b.next_due ? -1 : 1; });
+      if (rdue.length) {
+        var rlate = rdue.filter(function (p) { return p.next_due < w.today; }).length;
+        items.push({ area: 'Reviews', title: plural(rdue.length, 'employee review') + (rlate ? ' (' + rlate + ' overdue)' : ' due this week'), hot: !!rlate,
+          sub: rdue.slice(0, 4).map(function (p) { return en[p.emp].split(' ')[0] + ' ' + parseDay(p.next_due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }).join(' · ') + (rdue.length > 4 ? ' and ' + (rdue.length - 4) + ' more' : ''),
+          href: '#reviews', cta: 'Open' });
+        counts.reviews = rdue.length;
+      }
     }
     // stock below par (latest count of each kind)
     if (d.items && d.counts) {

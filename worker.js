@@ -609,6 +609,24 @@ async function elitechPull(env) {
   await rpc(env, 'temp_ingest_server', { p_key: key, p_rows: rows, p_error: err });
 }
 
+// Employee reviews (every 3 months): one email a day at 9 am New York time to the managers when a review is a week out,
+// due today, or (on Mondays) overdue. The database decides what's due and makes sure it only goes once a day.
+async function reviewReminders(env) {
+  const key = inqKey(env); if (!key || !env.SUPABASE_URL || !mailOn(env)) return;
+  const r = await rpc(env, 'review_reminders_server', { p_key: key });
+  const due = (r && r.due) || []; if (!due.length) return;
+  const to = [...new Set(staffTo(env).map(x => x.toLowerCase()).concat((r.to || []).map(x => String(x).toLowerCase())))].filter(x => EMAIL_RE.test(x));
+  if (!to.length) return;
+  const when = d => d.days < 0 ? 'overdue by ' + (-d.days) + (d.days === -1 ? ' day' : ' days') : d.days === 0 ? 'due today' : 'due in ' + d.days + ' days (' + longDate(d.due) + ')';
+  const lines = due.map(d => '• ' + d.name + (d.position ? ' (' + d.position + ')' : '') + ': ' + when(d));
+  const link = String(env.STAFF_URL || 'https://edencny-staff.com/').replace(/\/?$/, '/') + '#reviews';
+  const late = due.filter(d => d.days < 0).length;
+  const subject = late ? late + ' employee review' + (late === 1 ? ' is' : 's are') + ' overdue' : due.length === 1 ? 'Employee review: ' + due[0].name + ' ' + when(due[0]).replace(/ \(.*\)$/, '') : due.length + ' employee reviews coming up';
+  const text = 'Employee reviews (every 3 months):\n\n' + lines.join('\n') + '\n\nStart them on the staff site: ' + link + '\n\nEden staff site';
+  const html = '<p>Employee reviews (every 3 months):</p><ul>' + due.map(d => '<li><b>' + esc(d.name) + '</b>' + (d.position ? ' (' + esc(d.position) + ')' : '') + ': ' + esc(when(d)) + '</li>').join('') + '</ul><p><a href="' + esc(link) + '">Open Reviews on the staff site</a></p>';
+  await sendMail(env, { to, subject, text, html });
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -631,6 +649,8 @@ export default {
     ctx.waitUntil(promoRun(env, inqKey(env)).catch(() => null));
     // every 5 minutes: cooler and freezer temperatures from Elitech's cloud (only once its API keys are saved)
     ctx.waitUntil(elitechPull(env).catch(() => null));
+    // once a day at 9 am: employee reviews coming due (the database makes sure it only sends once)
+    ctx.waitUntil(reviewReminders(env).catch(() => null));
     // every 20 minutes (on the hour, :20 and :40): Pre-shift and the Prep List
     const min = new Date(evt && evt.scheduledTime ? evt.scheduledTime : Date.now()).getUTCMinutes();
     if (min % 20 >= 5) return;

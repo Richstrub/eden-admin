@@ -1260,7 +1260,8 @@
         }
       }
       if (hrsv == null || hrsv <= 0) return;
-      out.push({ name: name, date: d, hours: r2(hrsv), job: C.job >= 0 ? String(r[C.job] || '').trim() : '',
+      var tin = C.inT >= 0 ? parseTime(r[C.inT]) : null, tout = C.outT >= 0 ? parseTime(r[C.outT]) : null;
+      out.push({ name: name, date: d, hours: r2(hrsv), tin: tin, tout: tout, job: C.job >= 0 ? String(r[C.job] || '').trim() : '',
         wage: C.wage >= 0 ? numIn(r[C.wage]) : null, tips: C.tips >= 0 ? numIn(r[C.tips]) || 0 : 0, cash: C.ctips >= 0 ? numIn(r[C.ctips]) || 0 : 0 });
     });
     if (!out.length) throw new Error('Couldn’t find any shifts with hours in that file.');
@@ -1363,6 +1364,19 @@
     if (j < 0 || i > 6) return fname + ' is for ' + md(a) + '–' + md(b) + ', outside this week.';
     return fname + ': export one day at a time, or the whole Sunday–Saturday week.';
   }
+  // Clock-in and clock-out times from the Square file, kept for the punctuality numbers on employee reviews
+  // (scheduled start vs clock-in). Stored apart from pay so managers can see them; replaces the week each import.
+  function savePunches(list) {
+    var hhmm = function (m) { return m == null ? null : String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+    var isoD = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    var rows = [];
+    list.forEach(function (p) { if (!p.emp) return; (p.punches || []).forEach(function (x) { rows.push({ emp: p.emp, work_date: isoD(x.date), clock_in: hhmm(x.tin), clock_out: hhmm(x.tout), hours: x.hours, job: x.job, source: 'square' }); }); });
+    var a = isoD(P.week), b = isoD(new Date(P.week.getFullYear(), P.week.getMonth(), P.week.getDate() + 6));
+    sb().from('shift_punches').delete().gte('work_date', a).lte('work_date', b).eq('source', 'square').then(function (r) {
+      if (r.error) return;   // reviews.sql not run yet: nothing to keep
+      if (rows.length) sb().from('shift_punches').insert(rows).then(function () {});
+    });
+  }
   function importDialog(shifts, fname) {
     var wk = P.week, people = {}, outside = 0, dates = [], sqTips = [0, 0, 0, 0, 0, 0, 0], sqCash = [0, 0, 0, 0, 0, 0, 0];
     shifts.forEach(function (s) {
@@ -1374,6 +1388,7 @@
       var kitchen = KITCHEN_JOB.test(s.job);
       (kitchen ? p.kdays : p.days)[i] = r2((kitchen ? p.kdays : p.days)[i] + s.hours);
       if (s.job) p.jobs[s.job.trim()] = 1;
+      (p.punches = p.punches || []).push({ date: s.date, tin: s.tin, tout: s.tout, hours: s.hours, job: s.job || '' });
       if (s.wage != null) p.wages[s.wage.toFixed(2)] = 1;
       sqTips[i] = r2(sqTips[i] + s.tips); sqCash[i] = r2(sqCash[i] + s.cash);
       p.tips = r2((p.tips || 0) + s.tips + s.cash);
@@ -1444,6 +1459,7 @@
         } else if (clear.checked) { r.hours = seven(); if (r.khours) r.khours = seven(); if (r.nhours) r.nhours = seven(); }
       });
       Object.keys(got).forEach(function (id) { if (!P.row.rows[id]) { var r = rowFor(id); r.hours = got[id].days.map(function (x) { return x || null; }); } });
+      savePunches(names.map(function (n) { return people[n]; }));
       P.row.source = 'square'; P.row.square_file = fname; P.row.square_at = new Date().toISOString();
       // Square's card tips by day, to check against the End of day reports (and to fill days without one)
       // the day's tips come from the Square file: card tips ("by transaction tips") and declared cash tips
