@@ -329,6 +329,15 @@
       tip_eligible: autoPool(e, rate, r) ? true : r && r.pool != null ? !!r.pool : !!rate.tip_eligible,
       kitchen_rate: rate.kitchen_rate == null ? null : +rate.kitchen_rate, commission: !!rate.commission };
   }
+  // people whose pay rate in Pay rates has changed since this week was finalized (the week keeps the rates it was finalized with)
+  function rateChanged() {
+    if (!final()) return [];
+    return empIds().filter(function (id) {
+      var r = P.row.rows[id], snap = r && r.snap, cur = P.rates[id]; if (!snap || !cur) return false;
+      var n = function (v) { return v == null || v === '' ? null : Math.round(+v * 100) / 100; };
+      return n(snap.rate) !== n(cur.rate) || n(snap.kitchen_rate) !== n(cur.kitchen_rate) || n(snap.weekly_salary) !== n(cur.weekly_salary);
+    }).map(function (id) { return (P.row.rows[id].snap || {}).name || empById(id).name; });
+  }
   function autoPool(e, rate, r) {
     var commissioned = !!(rate && rate.commission) || /^keenan\b/i.test(String(e && e.name || ''));
     return commissioned && !!r && (r.hours || []).some(function (x) { return +x > 0; });
@@ -537,6 +546,8 @@
     }
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
+    var chg = ro ? rateChanged() : [];
+    if (chg.length) el.appendChild(h('p', { cls: 'pr-err', text: 'Pay rates changed after this week was finalized: ' + chg.join(', ') + '. This week still uses the old rates. To pay the new rate this week, click Reopen week, then Finalize again, and download or email the Hours sheet again.' }));
 
     // the payroll company's invoice for this week
     P.refs.inv = h('div', { cls: 'pr-inv' }); el.appendChild(P.refs.inv);
@@ -1518,6 +1529,7 @@
       X.utils.book_append_sheet(wb, ws, range.replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31));
       done(wb, 'Eden Hospitality Hours ' + range.replace(/\s*–\s*/g, '-') + '.xlsx');   // plain hyphen: some browsers drop names with a dash
       if (warn.length) status('Add a payroll company ID in Pay rates for: ' + warn.join(', ') + '.', 'err');
+      else { var ch = rateChanged(); if (ch.length) status('This week was finalized with older pay rates for ' + ch.join(', ') + '. To use the current rates, Reopen the week, Finalize it again, then download or email it again.', 'err'); }
     }, function () { status('Couldn’t load the spreadsheet tool. Check your connection and try again.', 'err'); });
   }
   // For Eden's records: the Tip Weighted Payroll layout
