@@ -566,12 +566,13 @@
   var CUTS = [['tenderloin', 'Tenderloin'], ['chateaubriand', 'Chateaubriand'], ['ribeye-da', 'Dry-Aged Ribeye'], ['strip-da', 'Dry-Aged Strip Loin'],
     ['picanha', 'Picanha'], ['tri-tip', 'Tri-Tip'], ['skirt', 'Skirt Steak'], ['flank', 'Flank Steak']];
   var BEEF = [['cab', 'Certified Angus Beef', 'Certified Angus Beef'], ['hillside', 'Hillside Farm (Grass fed)', 'Hillside Farm · Truxton, NY · Grass fed']];
-  function isCutsGroup(g) { return /steak|cuts?\b/i.test(g.title || ''); }
+  function isCutsAnchor(it) { return it && !it.cut && /specialty cuts|steak cuts|tonight.s cuts/i.test(it.name || ''); }
+  function isCutsGroup(g) { return /steak|cuts?\b/i.test(g.title || '') || (g.items || []).some(isCutsAnchor); }
   function cutsPanel(t, g) {
     var box = document.createElement('div'); box.className = 'ed-cuts';
     var hd = document.createElement('div'); hd.className = 'ed-cuts-h';
     var h = document.createElement('h4'); h.textContent = 'Tonight’s cuts'; hd.appendChild(h);
-    var p = document.createElement('p'); p.textContent = 'Tick each cut you’re serving tonight and where the beef is from. Each tick adds it to this section below, where you can set its price and an optional note (weight, days aged). Untick it to take it off; its price is kept for next time. Guests get an “About tonight’s cuts of beef” link on the website and iPad menu.'; hd.appendChild(p);
+    var p = document.createElement('p'); p.textContent = 'Tick each cut you’re serving tonight and where the beef is from. Each tick adds it to this section' + (g.items.some(isCutsAnchor) ? ', under Specialty Cuts,' : '') + ' below, where you can set its price and an optional note (weight, days aged). Untick it to take it off; its price is kept for next time. Guests get an “About tonight’s cuts of beef” link on the website and iPad menu.'; hd.appendChild(p);
     box.appendChild(hd);
     var tb = document.createElement('table'); tb.className = 'ed-cuts-t';
     var th = document.createElement('tr'); th.innerHTML = '<th scope="col">Cut</th>' + BEEF.map(function (b) { return '<th scope="col">' + b[1] + '</th>'; }).join('');
@@ -594,8 +595,11 @@
             else {
               // replace the empty starter line a new section comes with
               if (g.items.length === 1 && !g.items[0].name && !g.items[0].price && !g.items[0].cut) g.items = [];
-              var order = CUTS.map(function (x) { return x[0]; }), at = g.items.length;
-              for (var k = 0; k < g.items.length; k++) { var o = order.indexOf(g.items[k].cut); if (o > order.indexOf(c[0]) || (o === order.indexOf(c[0]) && b[0] === 'cab')) { at = k; break; } }
+              // keep cuts together in the grid's order, right after the "Specialty Cuts" line when the section has one
+              var order = CUTS.map(function (x) { return x[0]; }), me = order.indexOf(c[0]) * 2 + (b[0] === 'cab' ? 0 : 1);
+              var anchor = -1, at = -1, lastCut = -1;
+              g.items.forEach(function (x, k) { if (isCutsAnchor(x) && anchor < 0) anchor = k; if (x.cut) { lastCut = k; var o = order.indexOf(x.cut) * 2 + (x.beef === 'cab' ? 0 : 1); if (at < 0 && o > me) at = k; } });
+              if (at < 0) at = lastCut >= 0 ? lastCut + 1 : anchor >= 0 ? anchor + 1 : g.items.length;
               g.items.splice(at, 0, { name: c[1], src: b[2], desc: '', price: '', cut: c[0], beef: b[0] });
             }
           } else if (i >= 0) g.items[i].hidden = true;   // kept (hidden) so its price and note are there the next time it's on

@@ -596,3 +596,8 @@ body,.ed{color:#1f2226}
 .pp-basics .pp-sec-h{background:#8a5226}
 .pp-paper .pp-basics{border-left-width:4px}
 .pp-paper .pp-basics .pp-sec-h{background:#111}
+
+/* square-cornered parts sitting at a rounded box's corner now follow its curve */
+.ed-group>.ed-ghead,.ed-qa>.ed-qa-h,.sc-card>.sc-card-h{border-top-left-radius:inherit;border-top-right-radius:inherit}
+.sc-viewtog,.cl-tog,.tm-viewtog,.tm-step,.fn-range,.tm-switch{overflow:hidden}
+.ed-group,.ed-qa{overflow:visible}
