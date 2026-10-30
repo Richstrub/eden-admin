@@ -2929,3 +2929,16 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .td-eod-list span{font-size:.8rem;color:var(--stone)}
 .td-eod-miss{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#fdf5e4;border:1px solid rgba(160,110,20,.4);color:#6b4a0c;text-decoration:none;font-size:.88rem}
 .td-eod-miss span{white-space:nowrap;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;align-self:center}
+
+/* menu editor: tonight's steak cuts */
+.ed-cuts{margin:0 16px 14px;padding:16px 18px;background:#fbf6ef;border:1px solid rgba(176,112,63,.25);border-radius:14px}
+.ed-cuts-h h4{font-family:var(--serif);font-weight:400;font-size:1.3rem;margin:0 0 4px}
+.ed-cuts-h p{font-size:.86rem;color:#5c584f;margin:0 0 12px;max-width:760px}
+.ed-cuts-t{border-collapse:collapse;width:100%;max-width:760px;font-size:.92rem}
+.ed-cuts-t th,.ed-cuts-t td{padding:7px 10px;border-bottom:1px solid rgba(15,18,21,.08);text-align:left}
+.ed-cuts-t thead th{font-size:.78rem;font-weight:500;color:#6e6457}
+.ed-cuts-t tbody th{font-weight:500}
+.ed-cut-tick{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem;color:#6e6457}
+.ed-cut-tick input{width:20px;height:20px;accent-color:var(--ember)}
+.ed-cut-tick input:checked+span{color:#8a5226;font-weight:500}
+.ed-item.ed-cutrow{background:#fffaf3}

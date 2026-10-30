@@ -561,6 +561,54 @@
       ]
   };
   function isKitchen(t) { return t && (t.id === 'm-food' || /kitchen/i.test(t.label || '')); }
+  /* ---------- steak cuts: tick the cuts on tonight, from either beef source; each tick is a menu item (item.cut, item.beef)
+     that the website and iPad menu link to "About tonight's cuts of beef" (eden-website js/beef-cuts.js) ---------- */
+  var CUTS = [['tenderloin', 'Tenderloin'], ['chateaubriand', 'Chateaubriand'], ['ribeye-da', 'Dry-Aged Ribeye'], ['strip-da', 'Dry-Aged Strip Loin'],
+    ['picanha', 'Picanha'], ['tri-tip', 'Tri-Tip'], ['skirt', 'Skirt Steak'], ['flank', 'Flank Steak']];
+  var BEEF = [['cab', 'Certified Angus Beef', 'Certified Angus Beef'], ['hillside', 'Hillside Farm (Grass fed)', 'Hillside Farm · Truxton, NY · Grass fed']];
+  function isCutsGroup(g) { return /steak|cuts?\b/i.test(g.title || ''); }
+  function cutsPanel(t, g) {
+    var box = document.createElement('div'); box.className = 'ed-cuts';
+    var hd = document.createElement('div'); hd.className = 'ed-cuts-h';
+    var h = document.createElement('h4'); h.textContent = 'Tonight’s cuts'; hd.appendChild(h);
+    var p = document.createElement('p'); p.textContent = 'Tick each cut you’re serving tonight and where the beef is from. Each tick adds it to this section below, where you can set its price and an optional note (weight, days aged). Untick it to take it off; its price is kept for next time. Guests get an “About tonight’s cuts of beef” link on the website and iPad menu.'; hd.appendChild(p);
+    box.appendChild(hd);
+    var tb = document.createElement('table'); tb.className = 'ed-cuts-t';
+    var th = document.createElement('tr'); th.innerHTML = '<th scope="col">Cut</th>' + BEEF.map(function (b) { return '<th scope="col">' + b[1] + '</th>'; }).join('');
+    var thead = document.createElement('thead'); thead.appendChild(th); tb.appendChild(thead);
+    var body = document.createElement('tbody');
+    CUTS.forEach(function (c) {
+      var tr = document.createElement('tr');
+      var nm = document.createElement('th'); nm.scope = 'row'; nm.textContent = c[1]; tr.appendChild(nm);
+      BEEF.forEach(function (b) {
+        var td = document.createElement('td');
+        var lab = document.createElement('label'); lab.className = 'ed-cut-tick';
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.disabled = !ed.canWrite;
+        var idx = function () { for (var i = 0; i < g.items.length; i++) if (g.items[i].cut === c[0] && g.items[i].beef === b[0]) return i; return -1; };
+        cb.checked = idx() >= 0 && !g.items[idx()].hidden;
+        cb.setAttribute('aria-label', c[1] + ', ' + b[1]);
+        cb.onchange = function () {
+          var i = idx();
+          if (cb.checked) {
+            if (i >= 0) delete g.items[i].hidden;
+            else {
+              // replace the empty starter line a new section comes with
+              if (g.items.length === 1 && !g.items[0].name && !g.items[0].price && !g.items[0].cut) g.items = [];
+              var order = CUTS.map(function (x) { return x[0]; }), at = g.items.length;
+              for (var k = 0; k < g.items.length; k++) { var o = order.indexOf(g.items[k].cut); if (o > order.indexOf(c[0]) || (o === order.indexOf(c[0]) && b[0] === 'cab')) { at = k; break; } }
+              g.items.splice(at, 0, { name: c[1], src: b[2], desc: '', price: '', cut: c[0], beef: b[0] });
+            }
+          } else if (i >= 0) g.items[i].hidden = true;   // kept (hidden) so its price and note are there the next time it's on
+          markDirty(); edRender();
+        };
+        lab.appendChild(cb); var sp = document.createElement('span'); sp.textContent = 'On tonight'; lab.appendChild(sp);
+        td.appendChild(lab); tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tb.appendChild(body); box.appendChild(tb);
+    return box;
+  }
   function hasWine(t) { return (t.groups || []).some(function (g) { return (g.items || []).some(isWine); }); }
 
   function openEditor() {
@@ -694,6 +742,17 @@
         pb.appendChild(pgo); main.appendChild(pb);
       }
     }
+    if (isKitchen(t) && ed.canWrite && !t.groups.some(isCutsGroup)) {
+      var cbn = document.createElement('div'); cbn.className = 'ed-banner';
+      var cp = document.createElement('p'); cp.textContent = 'Add a Steak Cuts section to choose tonight’s cuts (tenderloin, chateaubriand, dry-aged ribeye and strip loin, picanha, tri-tip, skirt and flank) from Certified Angus Beef or Hillside Farm.'; cbn.appendChild(cp);
+      var cgo = document.createElement('button'); cgo.type = 'button'; cgo.className = 'ed-btn'; cgo.textContent = 'Add a Steak Cuts section';
+      cgo.onclick = function () {
+        var at = t.groups.length; t.groups.forEach(function (g, i) { if (/large/i.test(g.title || '')) at = i + 1; });
+        t.groups.splice(at, 0, { id: newGid(), title: 'Steak Cuts', note: 'Cooked over the wood fire.', noteAfter: '', items: [] });
+        markDirty(); edRender();
+      };
+      cbn.appendChild(cgo); main.appendChild(cbn);
+    }
     var tn = document.createElement('div'); tn.className = 'ed-tabname'; tn.appendChild(field('Tab name', t.label, function (v) { t.label = v; h.textContent = v || 'Untitled'; side.children[ed.tab].textContent = v || 'Untitled'; })); main.appendChild(tn);
     var kind = ed.canWrite ? invKind(t) : null;
     if (kind) loadInv();
@@ -713,6 +772,7 @@
       notes.appendChild(field('Note above items (optional)', g.note, function (v) { g.note = v; }));
       notes.appendChild(field('Note below items (optional)', g.noteAfter, function (v) { g.noteAfter = v; }));
       box.appendChild(notes);
+      if (isKitchen(t) && isCutsGroup(g)) box.appendChild(cutsPanel(t, g));
       var list = document.createElement('div');
       g.items.forEach(function (it, ii) {
         var row = document.createElement('div'); row.className = 'ed-item' + (it.hidden ? ' is-hidden' : ''); row.setAttribute('data-gi', gi); row.setAttribute('data-ii', ii);
@@ -727,7 +787,8 @@
           row.appendChild(field('Glass price', it.glass, function (v) { if (v) it.glass = v; else delete it.glass; if (!it.bottle) it.price = v ? v + ' glass' : ''; }));
           var wd = field('Tasting note', it.desc, function (v) { it.desc = v; }); wd.classList.add('desc'); row.appendChild(wd);
         } else {
-          var dn = field(kind ? 'Drink' : 'Dish / drink', it.name, function (v) { it.name = v; }); row.appendChild(dn);
+          var dn = field(kind ? 'Drink' : (it.cut ? 'Cut (name on the menu)' : 'Dish / drink'), it.name, function (v) { it.name = v; }); row.appendChild(dn);
+          if (it.cut) row.classList.add('ed-cutrow');
           if (kind) invCombo(dn, it, t, g, row, kind);
           var sf = field('Farm or producer', it.src, function (v) { it.src = v; }); row.appendChild(sf); srcCombo(sf, isKitchen(t));
           var dsc = field('Description', it.desc, function (v) { it.desc = v; }); dsc.classList.add('desc'); row.appendChild(dsc);
