@@ -17,6 +17,7 @@
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   var OT_AFTER = 40, OT_RATE = 1.5, CARD_FEE = 0.0275;
   var KITCHEN_JOB = /kitchen|cook|line|prep|dish|chef|pastry|culinary|bake/i;
+  var NOTIP_JOB = /manag|supervis|\bgm\b|admin|office|owner/i;   // Square job titles worked outside the tip pool, at the regular rate (e.g. Tyler clocked in as Manager)
   // The payroll company's sheet (Eden Hospitality Hours): their Employee IDs and spellings, in their order
   var PAYCO = [['E18629', 'Alden, Kyle'], ['K15347', 'Ball, Tyler'], ['S07721', 'Davis, Keenan B'], ['W26589', 'Colluci, Nerissa'],
     ['X25654', 'Elderbroom, Dakota'], ['C14811', 'Feltham, Ciara'], ['U13555', 'Kwiek, Michael'], ['P11703', 'Labenski, Paige'],
@@ -1384,9 +1385,10 @@
       dates.push(s.date);
       if (i < 0 || i > 6) { outside++; return; }
       var m = matchEmp(s.name);
-      var p = people[s.name] || (people[s.name] = { name: s.name, days: [0, 0, 0, 0, 0, 0, 0], kdays: [0, 0, 0, 0, 0, 0, 0], jobs: {}, wages: {}, emp: m.emp, as: m.as });
-      var kitchen = KITCHEN_JOB.test(s.job);
-      (kitchen ? p.kdays : p.days)[i] = r2((kitchen ? p.kdays : p.days)[i] + s.hours);
+      var p = people[s.name] || (people[s.name] = { name: s.name, days: [0, 0, 0, 0, 0, 0, 0], kdays: [0, 0, 0, 0, 0, 0, 0], ndays: [0, 0, 0, 0, 0, 0, 0], jobs: {}, wages: {}, emp: m.emp, as: m.as });
+      var kitchen = KITCHEN_JOB.test(s.job), notip = !kitchen && NOTIP_JOB.test(s.job);
+      var bucket = kitchen ? p.kdays : notip ? p.ndays : p.days;
+      bucket[i] = r2(bucket[i] + s.hours);
       if (s.job) p.jobs[s.job.trim()] = 1;
       (p.punches = p.punches || []).push({ date: s.date, tin: s.tin, tout: s.tout, hours: s.hours, job: s.job || '' });
       if (s.wage != null) p.wages[s.wage.toFixed(2)] = 1;
@@ -1415,17 +1417,17 @@
       pool.addEventListener('change', function () { p.pool = pool.checked; });
       sel.addEventListener('change', setPool);
       as.addEventListener('change', function () { p.as = as.value; p.picked = true; setPool(); });
-      var kit = sum(p.kdays), main = sum(p.days);
+      var kit = sum(p.kdays), mgr = sum(p.ndays), main = sum(p.days);
       showWage(); setPool();
       var tr = h('tr', { cls: p.emp ? null : 'pr-unm' }, [h('td', null, [h('b', { text: n }), wnote, p.tips ? h('small', { text: 'Tips in Square: ' + money(p.tips) }) : null]), h('td', null, [sel, as]),
         h('td', { cls: 'pr-c' }, [pool]),
-        h('td', { cls: 'pr-num', text: hrs(main + kit) + (kit && p.emp && empInfo(p.emp).kitchen_rate != null ? ' (' + hrs(kit) + ' kitchen)' : '') })]);
+        h('td', { cls: 'pr-num', text: hrs(main + kit + mgr) + ([kit && p.emp && empInfo(p.emp).kitchen_rate != null ? hrs(kit) + ' kitchen' : '', mgr ? hrs(mgr) + ' manager, no tips' : ''].filter(Boolean).map(function (x) { return ' (' + x + ')'; }).join('')) })]);
       tb.appendChild(tr);
     });
     if (names.length) {
       kids.push(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table' }, [h('thead', null, [h('tr', null, [h('th', { text: 'In Square' }), h('th', { text: 'Staff member' }), h('th', { cls: 'pr-c', text: 'Tip pool' }), h('th', { cls: 'pr-num', text: 'Hours' })])]), tb])]));
       if (names.some(function (n) { return !people[n].emp; })) kids.push(h('p', { cls: 'pr-warn', text: 'Pick the staff member for anyone highlighted, or leave them out.' }));
-      kids.push(h('p', { cls: 'pr-fine', text: 'Your picks are remembered for next time. “Not in the tip pool” is for a second Square profile used for hours outside the tip pool (paid at the regular rate). Pay comes from Pay rates, not the Square wage.' }));
+      kids.push(h('p', { cls: 'pr-fine', text: 'Your picks are remembered for next time. Shifts clocked in under a kitchen job (Cook, Line, Prep…) go on the Kitchen line at the kitchen rate; shifts under a Manager job go on the “Not in the tip pool” line at the regular rate. Pay comes from Pay rates, not the Square wage.' }));
       kids.push(h('p', { text: 'Tips from the file: ' + money(sum(sqTips)) + ' credit card and ' + money(sum(sqCash)) + ' declared cash. These become each day’s tips, pooled and split by hours among everyone ticked “Tip pool”.' }));
     }
     var clear = h('input', { type: 'checkbox', checked: true });
@@ -1442,6 +1444,8 @@
         for (var i = 0; i < 7; i++) {
           line[i] = r2(line[i] + p.days[i]);
           if (toKitchen) g.kdays[i] = r2(g.kdays[i] + p.kdays[i]); else line[i] = r2(line[i] + p.kdays[i]);
+          // manager (and similar) jobs: outside the tip pool at the regular rate, when the rest of their hours share tips
+          if (p.ndays[i]) { if (p.as === 'main' && (p.pool || (P.rates[p.emp] || {}).tip_eligible)) g.ndays[i] = r2(g.ndays[i] + p.ndays[i]); else line[i] = r2(line[i] + p.ndays[i]); }
         }
         if (p.picked && P.v2) saveSqName(p.emp, n, p.as || 'main');
         var rr = P.rates[p.emp] || (P.rates[p.emp] = { emp: p.emp, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' }), ch = false;
