@@ -22,7 +22,7 @@ body{font-weight:400}
 .home-links a{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500}
 .sc-eyebrow{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
 .sc-tabs button{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500}
-.sc-pill{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500;border-radius:980px}
+.sc-pill{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500;border-radius:var(--r-chip,980px)}
 .sc-scroll{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .sc-dn{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
 .sc-name-h,.sc-hrs-h{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
@@ -135,7 +135,7 @@ body{font-weight:400}
 .cq-chip{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:500}
 .cq-detail{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .cq-st{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
-.cq-st select{border-radius:980px}
+.cq-st select{border-radius:var(--r-chip,980px)}
 .cq-back{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500}
 .cq-del{text-transform:none;letter-spacing:-.005em;font-size:0.794rem;font-weight:500}
 .cq-sec h3{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
@@ -238,7 +238,7 @@ body{font-weight:400}
 .pr-invact{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
 .tp-alert{border-radius:var(--r-card,12px)}
 .tp-cname small{text-transform:none;letter-spacing:-.005em;font-size:0.843rem;font-weight:500}
-.tp-pill{border-radius:980px}
+.tp-pill{border-radius:var(--r-chip,980px)}
 .tp-detail{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .tp-h3{text-transform:none;letter-spacing:-.005em;font-size:0.86rem}
 .tp-nform textarea{border-radius:var(--r-input,8px)}
@@ -248,10 +248,10 @@ body{font-weight:400}
 .tp-setup input[type=text]{border-radius:var(--r-input,8px)}
 .tp-setup select,.tp-mrow select{border-radius:var(--r-input,8px)}
 .tp-rop{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500;border-radius:var(--r-card,12px)}
-.tp-status{border-radius:980px}
+.tp-status{border-radius:var(--r-chip,980px)}
 .tn{border-radius:var(--r-card,12px)}
 .tn-ask{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow)}
-.rv-pill{border-radius:980px}
+.rv-pill{border-radius:var(--r-chip,980px)}
 .rv-date{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .rv-skiprow{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .rv-form{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
@@ -274,7 +274,7 @@ body{font-weight:400}
 }
 .to-name{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .to-who span{text-transform:none;letter-spacing:-.005em;font-size:0.86rem;font-weight:500}
-.to-st{border-radius:980px}
+.to-st{border-radius:var(--r-chip,980px)}
 
 /* ---------- hand-tuned layer (wins over the automatic one above) ---------- */
 :root{
@@ -553,9 +553,8 @@ body,.ed{color:#1f2226}
 
 /* ---------- Ledger format: the back office (payroll & financials, inventory, temperatures,
    schedule, employees, reviews, ordering, website analytics) ---------- */
-#viewPayroll,#viewAnalytics,#viewInventory,#viewTemps,#viewSchedule,#viewEmployees,#viewReviews,#viewOrders{--r-card:6px;--r-btn:6px;--r-input:4px;--r-seg:6px;--card-shadow:none;--card-line:rgba(15,18,21,.1);font-variant-numeric:tabular-nums}
+#viewPayroll,#viewAnalytics,#viewInventory,#viewTemps,#viewSchedule,#viewEmployees,#viewReviews,#viewOrders{--r-card:4px;--r-btn:4px;--r-input:3px;--r-seg:5px;--r-chip:3px;--r-s:3px;--r-m:4px;--card-shadow:none;--card-line:rgba(15,18,21,.1);font-variant-numeric:tabular-nums}
 #viewPayroll .an-in,#viewAnalytics .an-in,#viewInventory .an-in,#viewTemps .an-in,#viewSchedule .an-in,#viewEmployees .an-in,#viewReviews .an-in,#viewOrders .an-in{padding-top:22px;padding-bottom:56px}
-#viewPayroll .an-head,#viewAnalytics .an-head,#viewInventory .an-head,#viewTemps .an-head,#viewSchedule .an-head,#viewEmployees .an-head,#viewReviews .an-head,#viewOrders .an-head,#viewPayroll .tp-head,#viewAnalytics .tp-head,#viewInventory .tp-head,#viewTemps .tp-head,#viewSchedule .tp-head,#viewEmployees .tp-head,#viewReviews .tp-head,#viewOrders .tp-head,#viewPayroll .sc-head,#viewAnalytics .sc-head,#viewInventory .sc-head,#viewTemps .sc-head,#viewSchedule .sc-head,#viewEmployees .sc-head,#viewReviews .sc-head,#viewOrders .sc-head{border-bottom:1px solid rgba(15,18,21,.1);padding-bottom:12px}
 #viewPayroll h1,#viewAnalytics h1,#viewInventory h1,#viewTemps h1,#viewSchedule h1,#viewEmployees h1,#viewReviews h1,#viewOrders h1,#viewPayroll .an-h1,#viewAnalytics .an-h1,#viewInventory .an-h1,#viewTemps .an-h1,#viewSchedule .an-h1,#viewEmployees .an-h1,#viewReviews .an-h1,#viewOrders .an-h1{font-size:2.35rem;line-height:1.1}
 #viewPayroll .td-card,#viewAnalytics .td-card,#viewInventory .td-card,#viewTemps .td-card,#viewSchedule .td-card,#viewEmployees .td-card,#viewReviews .td-card,#viewOrders .td-card,#viewPayroll .rc-card,#viewAnalytics .rc-card,#viewInventory .rc-card,#viewTemps .rc-card,#viewSchedule .rc-card,#viewEmployees .rc-card,#viewReviews .rc-card,#viewOrders .rc-card,#viewPayroll .an-card,#viewAnalytics .an-card,#viewInventory .an-card,#viewTemps .an-card,#viewSchedule .an-card,#viewEmployees .an-card,#viewReviews .an-card,#viewOrders .an-card,#viewPayroll .cke-card,#viewAnalytics .cke-card,#viewInventory .cke-card,#viewTemps .cke-card,#viewSchedule .cke-card,#viewEmployees .cke-card,#viewReviews .cke-card,#viewOrders .cke-card,#viewPayroll .tp-card,#viewAnalytics .tp-card,#viewInventory .tp-card,#viewTemps .tp-card,#viewSchedule .tp-card,#viewEmployees .tp-card,#viewReviews .tp-card,#viewOrders .tp-card,#viewPayroll .soon-card,#viewAnalytics .soon-card,#viewInventory .soon-card,#viewTemps .soon-card,#viewSchedule .soon-card,#viewEmployees .soon-card,#viewReviews .soon-card,#viewOrders .soon-card,#viewPayroll .pr-scroll,#viewAnalytics .pr-scroll,#viewInventory .pr-scroll,#viewTemps .pr-scroll,#viewSchedule .pr-scroll,#viewEmployees .pr-scroll,#viewReviews .pr-scroll,#viewOrders .pr-scroll,#viewPayroll .sc-scroll,#viewAnalytics .sc-scroll,#viewInventory .sc-scroll,#viewTemps .sc-scroll,#viewSchedule .sc-scroll,#viewEmployees .sc-scroll,#viewReviews .sc-scroll,#viewOrders .sc-scroll{border:1px solid rgba(15,18,21,.1);box-shadow:none}
 #viewPayroll .pr-table,#viewAnalytics .pr-table,#viewInventory .pr-table,#viewTemps .pr-table,#viewSchedule .pr-table,#viewEmployees .pr-table,#viewReviews .pr-table,#viewOrders .pr-table{font-size:.84rem}
@@ -567,3 +566,11 @@ body,.ed{color:#1f2226}
 #viewPayroll .an-tabs a,#viewAnalytics .an-tabs a,#viewInventory .an-tabs a,#viewTemps .an-tabs a,#viewSchedule .an-tabs a,#viewEmployees .an-tabs a,#viewReviews .an-tabs a,#viewOrders .an-tabs a,#viewPayroll .sc-tabs button,#viewAnalytics .sc-tabs button,#viewInventory .sc-tabs button,#viewTemps .sc-tabs button,#viewSchedule .sc-tabs button,#viewEmployees .sc-tabs button,#viewReviews .sc-tabs button,#viewOrders .sc-tabs button,#viewPayroll .tp-tab,#viewAnalytics .tp-tab,#viewInventory .tp-tab,#viewTemps .tp-tab,#viewSchedule .tp-tab,#viewEmployees .tp-tab,#viewReviews .tp-tab,#viewOrders .tp-tab,#viewPayroll .fn-rbtn,#viewAnalytics .fn-rbtn,#viewInventory .fn-rbtn,#viewTemps .fn-rbtn,#viewSchedule .fn-rbtn,#viewEmployees .fn-rbtn,#viewReviews .fn-rbtn,#viewOrders .fn-rbtn{padding:5px 12px;font-size:.82rem}
 @media (max-width:820px){#viewPayroll .an-in,#viewAnalytics .an-in,#viewInventory .an-in,#viewTemps .an-in,#viewSchedule .an-in,#viewEmployees .an-in,#viewReviews .an-in,#viewOrders .an-in{padding-top:16px}}
 #viewTemps,#viewReviews{padding-top:22px}
+
+/* Ledger: one flat system — every box, field, tag and control squared off; nested boxes lose their own frame */
+#viewPayroll .an-head,#viewAnalytics .an-head,#viewInventory .an-head,#viewTemps .an-head,#viewSchedule .an-head,#viewEmployees .an-head,#viewReviews .an-head,#viewOrders .an-head,#viewPayroll .tp-head,#viewAnalytics .tp-head,#viewInventory .tp-head,#viewTemps .tp-head,#viewSchedule .tp-head,#viewEmployees .tp-head,#viewReviews .tp-head,#viewOrders .tp-head,#viewPayroll .sc-head,#viewAnalytics .sc-head,#viewInventory .sc-head,#viewTemps .sc-head,#viewSchedule .sc-head,#viewEmployees .sc-head,#viewReviews .sc-head,#viewOrders .sc-head{border-bottom:0}
+#viewPayroll .td-card .pr-scroll,#viewAnalytics .td-card .pr-scroll,#viewInventory .td-card .pr-scroll,#viewTemps .td-card .pr-scroll,#viewSchedule .td-card .pr-scroll,#viewEmployees .td-card .pr-scroll,#viewReviews .td-card .pr-scroll,#viewOrders .td-card .pr-scroll,#viewPayroll .an-card .pr-scroll,#viewAnalytics .an-card .pr-scroll,#viewInventory .an-card .pr-scroll,#viewTemps .an-card .pr-scroll,#viewSchedule .an-card .pr-scroll,#viewEmployees .an-card .pr-scroll,#viewReviews .an-card .pr-scroll,#viewOrders .an-card .pr-scroll,#viewPayroll .tp-card .pr-scroll,#viewAnalytics .tp-card .pr-scroll,#viewInventory .tp-card .pr-scroll,#viewTemps .tp-card .pr-scroll,#viewSchedule .tp-card .pr-scroll,#viewEmployees .tp-card .pr-scroll,#viewReviews .tp-card .pr-scroll,#viewOrders .tp-card .pr-scroll,#viewPayroll .cke-card .pr-scroll,#viewAnalytics .cke-card .pr-scroll,#viewInventory .cke-card .pr-scroll,#viewTemps .cke-card .pr-scroll,#viewSchedule .cke-card .pr-scroll,#viewEmployees .cke-card .pr-scroll,#viewReviews .cke-card .pr-scroll,#viewOrders .cke-card .pr-scroll,#viewPayroll .rc-card .pr-scroll,#viewAnalytics .rc-card .pr-scroll,#viewInventory .rc-card .pr-scroll,#viewTemps .rc-card .pr-scroll,#viewSchedule .rc-card .pr-scroll,#viewEmployees .rc-card .pr-scroll,#viewReviews .rc-card .pr-scroll,#viewOrders .rc-card .pr-scroll{border:0;border-radius:0}
+#viewPayroll .an-card,#viewAnalytics .an-card,#viewInventory .an-card,#viewTemps .an-card,#viewSchedule .an-card,#viewEmployees .an-card,#viewReviews .an-card,#viewOrders .an-card,#viewPayroll .tp-card,#viewAnalytics .tp-card,#viewInventory .tp-card,#viewTemps .tp-card,#viewSchedule .tp-card,#viewEmployees .tp-card,#viewReviews .tp-card,#viewOrders .tp-card,#viewPayroll .td-card,#viewAnalytics .td-card,#viewInventory .td-card,#viewTemps .td-card,#viewSchedule .td-card,#viewEmployees .td-card,#viewReviews .td-card,#viewOrders .td-card,#viewPayroll .cke-card,#viewAnalytics .cke-card,#viewInventory .cke-card,#viewTemps .cke-card,#viewSchedule .cke-card,#viewEmployees .cke-card,#viewReviews .cke-card,#viewOrders .cke-card,#viewPayroll .rc-card,#viewAnalytics .rc-card,#viewInventory .rc-card,#viewTemps .rc-card,#viewSchedule .rc-card,#viewEmployees .rc-card,#viewReviews .rc-card,#viewOrders .rc-card,#viewPayroll .pr-scroll,#viewAnalytics .pr-scroll,#viewInventory .pr-scroll,#viewTemps .pr-scroll,#viewSchedule .pr-scroll,#viewEmployees .pr-scroll,#viewReviews .pr-scroll,#viewOrders .pr-scroll,#viewPayroll .sc-scroll,#viewAnalytics .sc-scroll,#viewInventory .sc-scroll,#viewTemps .sc-scroll,#viewSchedule .sc-scroll,#viewEmployees .sc-scroll,#viewReviews .sc-scroll,#viewOrders .sc-scroll{box-shadow:none;background:#fff}
+#viewPayroll .an-tabs a,#viewAnalytics .an-tabs a,#viewInventory .an-tabs a,#viewTemps .an-tabs a,#viewSchedule .an-tabs a,#viewEmployees .an-tabs a,#viewReviews .an-tabs a,#viewOrders .an-tabs a,#viewPayroll .sc-tabs button,#viewAnalytics .sc-tabs button,#viewInventory .sc-tabs button,#viewTemps .sc-tabs button,#viewSchedule .sc-tabs button,#viewEmployees .sc-tabs button,#viewReviews .sc-tabs button,#viewOrders .sc-tabs button,#viewPayroll .tp-tab,#viewAnalytics .tp-tab,#viewInventory .tp-tab,#viewTemps .tp-tab,#viewSchedule .tp-tab,#viewEmployees .tp-tab,#viewReviews .tp-tab,#viewOrders .tp-tab,#viewPayroll .fn-rbtn,#viewAnalytics .fn-rbtn,#viewInventory .fn-rbtn,#viewTemps .fn-rbtn,#viewSchedule .fn-rbtn,#viewEmployees .fn-rbtn,#viewReviews .fn-rbtn,#viewOrders .fn-rbtn{border-radius:3px}
+#viewPayroll input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewAnalytics input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewInventory input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewTemps input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewSchedule input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewEmployees input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewReviews input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewOrders input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewPayroll select,#viewAnalytics select,#viewInventory select,#viewTemps select,#viewSchedule select,#viewEmployees select,#viewReviews select,#viewOrders select,#viewPayroll textarea,#viewAnalytics textarea,#viewInventory textarea,#viewTemps textarea,#viewSchedule textarea,#viewEmployees textarea,#viewReviews textarea,#viewOrders textarea{border-radius:3px}
+#viewPayroll .ed-btn,#viewAnalytics .ed-btn,#viewInventory .ed-btn,#viewTemps .ed-btn,#viewSchedule .ed-btn,#viewEmployees .ed-btn,#viewReviews .ed-btn,#viewOrders .ed-btn,#viewPayroll .ed-btn.small,#viewAnalytics .ed-btn.small,#viewInventory .ed-btn.small,#viewTemps .ed-btn.small,#viewSchedule .ed-btn.small,#viewEmployees .ed-btn.small,#viewReviews .ed-btn.small,#viewOrders .ed-btn.small{border-radius:4px}

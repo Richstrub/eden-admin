@@ -18,7 +18,7 @@
 .tm-toform label{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
 .tm-toform input[type=date],.tm-toform input[type=time],.tm-toform input[type=text]{border-radius:var(--r-input,8px)}
 .tm-req{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
-.tm-pill{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:500;border-radius:980px}
+.tm-pill{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:500;border-radius:var(--r-chip,980px)}
 .tm-dgo{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
 .tm-tl-scroll{border-radius:var(--r-card,12px);box-shadow:var(--card-shadow);border-color:var(--card-line,transparent)}
 .tm-tl-ruler .tm-tl-who span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
