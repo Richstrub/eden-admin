@@ -444,7 +444,7 @@
       back.appendChild(h('div', { cls: 'sc-card' }, [
         h('div', { cls: 'sc-card-h' }, [h('h2', { text: 'Add ' + ok.length + ' guest' + (ok.length === 1 ? '' : 's') + '?' }), h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Close', text: '✕', on: { click: function () { back.remove(); } } })]),
         h('div', { cls: 'sc-card-b' }, [
-          h('p', { text: 'From ' + f.name + ': emails from the “' + res.emailCol + '” column' + (res.nameCol ? ', names from “' + res.nameCol + '”' : '') + '.' + (res.rows.length - ok.length ? ' ' + (res.rows.length - ok.length) + ' row' + (res.rows.length - ok.length === 1 ? '' : 's') + ' without a valid email will be skipped.' : '') }),
+          h('p', { text: 'From ' + f.name + ': emails from the “' + res.emailCol + '” column' + (res.nameCol ? ', names from “' + res.nameCol + '”' : '') + '.' + (res.statusCol ? ' Only guests marked subscribed in “' + res.statusCol + '” are included' + (res.notSubscribed ? '; ' + res.notSubscribed + ' who unsubscribed or never subscribed are left out' : '') + '.' : '') + (res.rows.length - ok.length ? ' ' + (res.rows.length - ok.length) + ' row' + (res.rows.length - ok.length === 1 ? '' : 's') + ' without a valid email will be skipped.' : '') }),
           h('ul', { cls: 'pm-sample' }, ok.slice(0, 5).map(function (r) { return h('li', { text: r.email + (r.name ? ' · ' + r.name : '') }); }).concat(ok.length > 5 ? [h('li', { text: '…and ' + (ok.length - 5) + ' more' })] : [])),
           h('label', { cls: 'sc-check' }, [agree, ' These guests agreed to receive emails from Eden.'])
         ]),
@@ -474,16 +474,20 @@
     var head = rows[0].map(function (x) { return String(x).trim(); }), hasHead = !head.some(isEmail);
     var data = hasHead ? rows.slice(1) : rows, width = Math.max.apply(null, rows.map(function (r) { return r.length; }));
     var ei = -1;
-    if (hasHead) head.forEach(function (x, i) { if (ei < 0 && /e-?mail/i.test(x)) ei = i; });
+    var mostly = function (c) { var n = data.filter(function (r) { return String(r[c] || '').trim(); }); return n.length && n.filter(function (r) { return isEmail(r[c]); }).length >= n.length / 2; };
+    if (hasHead) head.forEach(function (x, i) { if (ei < 0 && /e-?mail/i.test(x) && mostly(i)) ei = i; });   // e.g. Wix's "Email 1", not "Email subscriber status"
     if (ei < 0) { var best = 0; for (var c = 0; c < width; c++) { var n = data.filter(function (r) { return isEmail(r[c]); }).length; if (n > best) { best = n; ei = c; } } }
     if (ei < 0) return { rows: [] };
     var find = function (re) { var k = -1; head.forEach(function (x, i) { if (k < 0 && i !== ei && re.test(x)) k = i; }); return k; };
     var full = hasHead ? find(/^(guest |full |customer )?name$|^guest$/i) : -1, first = hasHead ? find(/first/i) : -1, last = hasHead ? find(/last|surname/i) : -1;
+    // a subscription column (Wix, Square, Mailchimp exports): only bring in people still subscribed
+    var si = hasHead ? find(/subscri|marketing|consent|opt.?in/i) : -1, skipped = 0;
+    if (si >= 0) data = data.filter(function (r) { var v = String(r[si] || '').trim().toLowerCase(); var yes = /^(subscribed|yes|true|opted.?in|subscribed.*)$/.test(v) && !/un|never|not|no\b/.test(v); if (!yes) skipped++; return yes; });
     var out = data.map(function (r) {
       var nm = full >= 0 ? r[full] : [first >= 0 ? r[first] : '', last >= 0 ? r[last] : ''].join(' ');
       return { email: String(r[ei] || '').trim().replace(/^mailto:/i, ''), name: String(nm || '').replace(/\s+/g, ' ').trim() };
     }).filter(function (r) { return r.email; });
-    return { rows: out, emailCol: hasHead ? head[ei] || 'email' : 'column ' + (ei + 1), nameCol: full >= 0 ? head[full] : first >= 0 || last >= 0 ? [head[first], head[last]].filter(Boolean).join(' + ') : '' };
+    return { rows: out, emailCol: hasHead ? head[ei] || 'email' : 'column ' + (ei + 1), nameCol: full >= 0 ? head[full] : first >= 0 || last >= 0 ? [head[first], head[last]].filter(Boolean).join(' + ') : '', statusCol: si >= 0 ? head[si] : '', notSubscribed: skipped };
   }
   function loadXlsx() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
