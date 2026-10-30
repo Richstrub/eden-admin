@@ -7,7 +7,7 @@ html,body{font-weight:400}
 .hb-mo-h{text-transform:none;letter-spacing:-.005em;font-weight:500}
 
 /* ---------- hand-tuned ---------- */
-:root{--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+:root{--sans:"DM Sans",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 html,body{letter-spacing:-.003em}
 .hb-ng{font-size:calc(var(--u)*.92)}
 .hb-sub{font-size:calc(var(--u)*1.12)}
