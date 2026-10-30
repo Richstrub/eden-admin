@@ -553,7 +553,7 @@ body,.ed{color:#1f2226}
 
 /* ---------- Ledger format: the back office (payroll & financials, inventory, temperatures,
    schedule, employees, reviews, ordering, website analytics) ---------- */
-#viewPayroll,#viewAnalytics,#viewInventory,#viewTemps,#viewSchedule,#viewEmployees,#viewReviews,#viewOrders{--r-card:4px;--r-btn:4px;--r-input:3px;--r-seg:5px;--r-chip:3px;--r-s:3px;--r-m:4px;--card-shadow:none;--card-line:rgba(15,18,21,.1);font-variant-numeric:tabular-nums}
+#viewPayroll,#viewAnalytics,#viewInventory,#viewTemps,#viewSchedule,#viewEmployees,#viewReviews,#viewOrders{--r-card:5px;--r-btn:5px;--r-input:4px;--r-seg:6px;--r-chip:4px;--r-s:4px;--r-m:5px;--card-shadow:none;--card-line:rgba(15,18,21,.1);font-variant-numeric:tabular-nums}
 #viewPayroll .an-in,#viewAnalytics .an-in,#viewInventory .an-in,#viewTemps .an-in,#viewSchedule .an-in,#viewEmployees .an-in,#viewReviews .an-in,#viewOrders .an-in{padding-top:22px;padding-bottom:56px}
 #viewPayroll h1,#viewAnalytics h1,#viewInventory h1,#viewTemps h1,#viewSchedule h1,#viewEmployees h1,#viewReviews h1,#viewOrders h1,#viewPayroll .an-h1,#viewAnalytics .an-h1,#viewInventory .an-h1,#viewTemps .an-h1,#viewSchedule .an-h1,#viewEmployees .an-h1,#viewReviews .an-h1,#viewOrders .an-h1{font-size:2.35rem;line-height:1.1}
 #viewPayroll .td-card,#viewAnalytics .td-card,#viewInventory .td-card,#viewTemps .td-card,#viewSchedule .td-card,#viewEmployees .td-card,#viewReviews .td-card,#viewOrders .td-card,#viewPayroll .rc-card,#viewAnalytics .rc-card,#viewInventory .rc-card,#viewTemps .rc-card,#viewSchedule .rc-card,#viewEmployees .rc-card,#viewReviews .rc-card,#viewOrders .rc-card,#viewPayroll .an-card,#viewAnalytics .an-card,#viewInventory .an-card,#viewTemps .an-card,#viewSchedule .an-card,#viewEmployees .an-card,#viewReviews .an-card,#viewOrders .an-card,#viewPayroll .cke-card,#viewAnalytics .cke-card,#viewInventory .cke-card,#viewTemps .cke-card,#viewSchedule .cke-card,#viewEmployees .cke-card,#viewReviews .cke-card,#viewOrders .cke-card,#viewPayroll .tp-card,#viewAnalytics .tp-card,#viewInventory .tp-card,#viewTemps .tp-card,#viewSchedule .tp-card,#viewEmployees .tp-card,#viewReviews .tp-card,#viewOrders .tp-card,#viewPayroll .soon-card,#viewAnalytics .soon-card,#viewInventory .soon-card,#viewTemps .soon-card,#viewSchedule .soon-card,#viewEmployees .soon-card,#viewReviews .soon-card,#viewOrders .soon-card,#viewPayroll .pr-scroll,#viewAnalytics .pr-scroll,#viewInventory .pr-scroll,#viewTemps .pr-scroll,#viewSchedule .pr-scroll,#viewEmployees .pr-scroll,#viewReviews .pr-scroll,#viewOrders .pr-scroll,#viewPayroll .sc-scroll,#viewAnalytics .sc-scroll,#viewInventory .sc-scroll,#viewTemps .sc-scroll,#viewSchedule .sc-scroll,#viewEmployees .sc-scroll,#viewReviews .sc-scroll,#viewOrders .sc-scroll{border:1px solid rgba(15,18,21,.1);box-shadow:none}
@@ -574,3 +574,25 @@ body,.ed{color:#1f2226}
 #viewPayroll .an-tabs a,#viewAnalytics .an-tabs a,#viewInventory .an-tabs a,#viewTemps .an-tabs a,#viewSchedule .an-tabs a,#viewEmployees .an-tabs a,#viewReviews .an-tabs a,#viewOrders .an-tabs a,#viewPayroll .sc-tabs button,#viewAnalytics .sc-tabs button,#viewInventory .sc-tabs button,#viewTemps .sc-tabs button,#viewSchedule .sc-tabs button,#viewEmployees .sc-tabs button,#viewReviews .sc-tabs button,#viewOrders .sc-tabs button,#viewPayroll .tp-tab,#viewAnalytics .tp-tab,#viewInventory .tp-tab,#viewTemps .tp-tab,#viewSchedule .tp-tab,#viewEmployees .tp-tab,#viewReviews .tp-tab,#viewOrders .tp-tab,#viewPayroll .fn-rbtn,#viewAnalytics .fn-rbtn,#viewInventory .fn-rbtn,#viewTemps .fn-rbtn,#viewSchedule .fn-rbtn,#viewEmployees .fn-rbtn,#viewReviews .fn-rbtn,#viewOrders .fn-rbtn{border-radius:3px}
 #viewPayroll input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewAnalytics input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewInventory input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewTemps input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewSchedule input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewEmployees input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewReviews input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewOrders input:not([type=checkbox]):not([type=radio]):not([type=range]),#viewPayroll select,#viewAnalytics select,#viewInventory select,#viewTemps select,#viewSchedule select,#viewEmployees select,#viewReviews select,#viewOrders select,#viewPayroll textarea,#viewAnalytics textarea,#viewInventory textarea,#viewTemps textarea,#viewSchedule textarea,#viewEmployees textarea,#viewReviews textarea,#viewOrders textarea{border-radius:3px}
 #viewPayroll .ed-btn,#viewAnalytics .ed-btn,#viewInventory .ed-btn,#viewTemps .ed-btn,#viewSchedule .ed-btn,#viewEmployees .ed-btn,#viewReviews .ed-btn,#viewOrders .ed-btn,#viewPayroll .ed-btn.small,#viewAnalytics .ed-btn.small,#viewInventory .ed-btn.small,#viewTemps .ed-btn.small,#viewSchedule .ed-btn.small,#viewEmployees .ed-btn.small,#viewReviews .ed-btn.small,#viewOrders .ed-btn.small{border-radius:4px}
+
+/* ---------- G2 continuous corners (Apple-style "squircle" curvature) ----------
+   Browsers that support corner-shape draw every rounded corner as a superellipse, so the curve eases
+   into the straight edge with no visible kink. Radii grow a little to keep the same apparent size.
+   True circles (ticks, avatars, dots) stay circles. Other browsers keep ordinary rounded corners. */
+@supports (corner-shape: superellipse(1.5)){
+  *,*::before,*::after{corner-shape:superellipse(1.5)}
+  :root{--r-card:22px;--r-s:10px;--r-m:15px;--r-l:20px;--r-input:12px;--r-seg:12px}
+  input[type=checkbox],input[type=radio],
+  .an-lg-dot,.cl-mev i,.cq-steps i,.em-av,.em-ghost::before,.em-row-t.unread::before,.eo-cl-mark,.eo-n,.eo-task-n,.mp-x,
+  .nt-mic-dot,.nt-ring,.nt-share-i,.nt-sw,.pa-x,.pq-cell.is-changed::after,.pq-keych,.pq-knob,.pr-slotn,.rc-app .rc-irow td:first-child::before,
+  .sb-av,.sc-card-h .sc-x,.td-tick,.td-tl-now::before,.tm-avatar,.tm-tick,.tm-tl-now::before,.pp-box,.pp-table .pp-box,.pp-ini,.pp-inibtn,
+  .ti-hit,.tn-dot,.tp-dot{corner-shape:round}
+}
+/* boxes with a dark title bar: the bar follows the box's curve instead of poking out at the corners */
+.pp-sec,.pp-notes,.cke-card,.rc-card,.an-card,.tp-card,.eo-card,.pq-card{overflow:hidden}
+.pp-paper .pp-sec,.pp-paper .pp-notes{overflow:visible}
+/* Basics: an even outline on screen (the thick left edge fought the curve); its title bar is ember instead. Print keeps the thick edge. */
+.pp-basics{border-left-width:1.5px}
+.pp-basics .pp-sec-h{background:#8a5226}
+.pp-paper .pp-basics{border-left-width:4px}
+.pp-paper .pp-basics .pp-sec-h{background:#111}
