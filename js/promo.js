@@ -52,6 +52,7 @@
       return '<p style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.65;color:#3a3d40">' + linkify(p).replace(/\n/g, '<br>') + '</p>';
     }).join('');
   }
+  var HEADER_GIF = 'https://edencny.com/assets/images/email/hearth-header.gif';
   function buildEmail(c) {
     var d = c.design || {};
     var btn = d.button_text && d.button_url ? '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:10px auto 26px"><tr><td bgcolor="#0f1215" style="background:#0f1215;border-radius:2px">' +
@@ -61,8 +62,10 @@
       '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f4f1ea">' + esc(c.preheader || '') + '&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f1ea"><tr><td align="center" style="padding:28px 12px">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff">' +
-      '<tr><td align="center" style="padding:30px 24px 22px;background:#0f1215"><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:28px;letter-spacing:14px;color:#f3eee5;padding-left:14px">EDEN</div>' +
-      '<div style="font-family:Helvetica,Arial,sans-serif;font-size:10px;letter-spacing:4px;text-transform:uppercase;color:#d58b4f;margin-top:8px">Syracuse, New York</div></td></tr>' +
+      // the website's hearth: embers rising over the coals behind the wordmark (an animated GIF; Outlook on Windows shows the first frame)
+      '<tr><td align="center" bgcolor="#08090b" style="padding:0;background:#08090b"><a href="https://edencny.com/" style="display:block;text-decoration:none">' +
+      '<img src="' + HEADER_GIF + '" width="600" height="270" alt="EDEN · Locally sourced, wood fired cuisine" style="display:block;width:100%;max-width:600px;height:auto;border:0;' +
+      'background:#08090b;color:#f3eee5;font-family:Georgia,\'Times New Roman\',serif;font-size:24px;letter-spacing:6px;text-align:center;line-height:270px"></a></td></tr>' +
       (d.image ? '<tr><td style="padding:0"><img src="' + esc(d.image) + '" alt="' + esc(d.image_alt || d.heading || '') + '" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>' : '') +
       '<tr><td style="padding:40px 44px 14px">' +
       (d.heading ? '<h1 style="margin:0 0 22px;font-family:Georgia,\'Times New Roman\',serif;font-weight:normal;font-size:31px;line-height:1.2;color:#0f1215;text-align:center">' + esc(d.heading) + '</h1>' : '') +
