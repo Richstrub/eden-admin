@@ -52,6 +52,7 @@
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
     P.payReady = ctx.isOwner ? q(sb.from('pay_rates').select('emp').limit(1)) : null;
     P.events = q(sb.from('events').select('id,title,type,date,start,end,room,guests,all_day').gte('date', today).lte('date', iso(addDays(now, 7))));
+    P.eod = mgr ? q(sb.from('eod_reports').select('*').eq('status', 'submitted').order('report_date', { ascending: false }).order('submitted_at', { ascending: false }).limit(4)) : null;
     P.notes = mgr ? q(sb.from('notes').select('id,title,body,author,edited_by,updated_at,shared').eq('shared', true)) : null;
     P.todos = q(sb.from('todos').select('*'));
     P.me = q(sb.rpc('team_me'));
@@ -145,7 +146,17 @@
         .map(function (s) { var e = byId[s.emp]; return { name: shortName(e.name), position: s.role || e.position || '', start: s.start, end: s.end || '', note: s.note || '' }; });
     }
     var notes = (d.notes || []).slice().sort(function (a, b) { return a.updated_at < b.updated_at ? 1 : -1; }).slice(0, 3);
-    return { items: items, counts: counts, tonight: tonight, week: week, crew: crew, crewKnown: !!(d.thisWeek && d.emps), notes: notes, w: w };
+    // the last night's end of day report(s): the most recent date with a submitted report
+    var eod = null;
+    if (d.eod) {
+      var ld = d.eod.length ? d.eod[0].report_date : null;
+      eod = { reports: d.eod.filter(function (x) { return x.report_date === ld; }), date: ld };
+      // was there a service night since then with no report? (Eden is open Wednesday to Saturday)
+      var miss = null;
+      for (var k = 1; k <= 6; k++) { var dd = addDays(w.now, -k); if (ld && iso(dd) <= ld) break; if (dd.getDay() >= 3 && dd.getDay() <= 6) { miss = dd; break; } }
+      eod.missing = miss;
+    }
+    return { items: items, counts: counts, tonight: tonight, week: week, crew: crew, crewKnown: !!(d.thisWeek && d.emps), notes: notes, w: w, eod: eod };
   }
 
   /* ---------- who's working: the same timeline as the Hub's daily schedule ---------- */
@@ -221,6 +232,7 @@
       needs.appendChild(list);
     }
     needs.appendChild(h('p', { cls: 'td-fine', text: ctx.isOwner ? 'Payroll shows only for you; managers see the rest of this list.' : 'This list only shows what your role can take care of.' }));
+    if (ctx.isMgr && r.eod) needs.appendChild(eodCard(r.eod));
     grid.appendChild(needs);
     // side: tonight, week, shared notes, shortcuts
     var side = h('aside', { cls: 'td-side', 'aria-label': 'Today at Eden' });
@@ -252,6 +264,54 @@
     ]));
     grid.appendChild(side);
     el.appendChild(grid);
+  }
+
+  // Last night's end of day report: a link to it, the numbers, and anything that needs attention
+  var EOD_FLAGS = [['incidents', 'Incident'], ['safety_concerns', 'Safety'], ['complaints', 'Complaint'], ['guest_followups', 'Guest follow-up'], ['payment_discrepancies', 'Payment discrepancy'],
+    ['equipment_issues', 'Equipment'], ['maintenance', 'Maintenance'], ['staff_followup', 'Staff follow-up'], ['conduct_issues', 'Conduct'], ['closing_outstanding', 'Closing left undone'],
+    ['stock_shortages', 'Shortage'], ['sold_out', 'Sold out / 86'], ['inventory_discrepancies', 'Inventory'], ['next_priorities', 'Next shift'], ['final_priorities', 'Priorities']];
+  function clip(t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1).replace(/\s+\S*$/, '') + '…' : t; }
+  function money0(v) { return '$' + Math.round(+v).toLocaleString('en-US'); }
+  function eodCard(E) {
+    var card = h('section', { cls: 'td-card td-eod', 'aria-labelledby': 'tdEodH' });
+    card.appendChild(h('p', { cls: 'td-k', id: 'tdEodH', text: 'End of day report' }));
+    if (E.missing) card.appendChild(h('a', { cls: 'td-eod-miss', href: '#eod', on: { click: function (e) { e.preventDefault(); go('#eod'); } } },
+      [h('b', { text: 'No report yet for ' + E.missing.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) }), h('span', { text: 'File it now ›' })]));
+    if (!E.reports.length) { if (!E.missing) card.appendChild(h('p', { cls: 'td-none', text: 'No end of day reports yet.' })); return card; }
+    var day = parseDay(E.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    E.reports.forEach(function (rp) {
+      var shift = rp.shift === 'private' ? 'Private event' : rp.shift === 'both' ? 'Dinner & private event' : 'Dinner';
+      var covers = rp.total_covers != null ? rp.total_covers : rp.actual_covers;
+      var nums = [covers != null ? covers + ' covers' : '', rp.net_sales != null ? money0(rp.net_sales) + ' net' : '', rp.avg_per_cover != null ? money0(rp.avg_per_cover) + ' a cover' : '',
+        rp.service_rating ? 'service ' + rp.service_rating + '/5' : ''].filter(Boolean).join(' · ');
+      var a = h('a', { cls: 'td-eod-link', href: '#eod/r/' + rp.id, title: 'Open the full report', on: { click: function (e) { e.preventDefault(); go('#eod/r/' + rp.id); } } }, [
+        h('b', { text: day + ' · ' + shift }), h('span', { text: [nums, rp.prepared_by ? 'by ' + rp.prepared_by : ''].filter(Boolean).join(' · ') }), h('em', { text: 'Open report ›' })]);
+      card.appendChild(a);
+      if (rp.overview) card.appendChild(h('p', { cls: 'td-eod-ov', text: clip(rp.overview, 220) }));
+      // action items first, then anything flagged
+      var acts = (rp.action_items || []).filter(function (x) { return x && x.task; });
+      var pri = function (x) { return /high|urgent/i.test(x.priority || '') ? 0 : /med/i.test(x.priority || '') ? 1 : 2; };
+      acts.sort(function (x, y) { return pri(x) - pri(y) || String(x.deadline || '9').localeCompare(String(y.deadline || '9')); });
+      if (acts.length) {
+        card.appendChild(h('p', { cls: 'td-eod-h', text: 'Action items · ' + acts.length }));
+        card.appendChild(h('ul', { cls: 'td-eod-list' }, acts.slice(0, 6).map(function (x) {
+          return h('li', { cls: pri(x) === 0 ? 'hot' : '' }, [h('b', { text: clip(x.task, 120) }),
+            h('span', { text: [x.assigned, x.priority ? x.priority + ' priority' : '', x.deadline ? 'by ' + parseDay(x.deadline).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : ''].filter(Boolean).join(' · ') })]);
+        }).concat(acts.length > 6 ? [h('li', null, [h('span', { text: 'and ' + (acts.length - 6) + ' more in the report' })])] : [])));
+      }
+      var flags = EOD_FLAGS.filter(function (f) { return String(rp[f[0]] || '').trim() && !/^(none|n\/?a|no|-|nothing)\.?$/i.test(String(rp[f[0]]).trim()); });
+      if (rp.closing_done === false && !flags.some(function (f) { return f[0] === 'closing_outstanding'; })) flags.push(['_closing', 'Closing checklist not finished']);
+      if (flags.length) {
+        card.appendChild(h('p', { cls: 'td-eod-h', text: 'Worth a look' }));
+        card.appendChild(h('ul', { cls: 'td-eod-list' }, flags.slice(0, 6).map(function (f) {
+          var hot = /incident|safety|complaint|discrepanc|conduct/i.test(f[0]);
+          return h('li', { cls: hot ? 'hot' : '' }, [h('b', { text: f[1] }), h('span', { text: f[0] === '_closing' ? '' : clip(rp[f[0]], 140) })]);
+        })));
+      }
+      if (!acts.length && !flags.length) card.appendChild(h('p', { cls: 'td-none', text: 'No action items or issues flagged.' }));
+    });
+    card.appendChild(h('a', { cls: 'td-more', href: '#eod/past', text: 'Past reports ›' }));
+    return card;
   }
 
   // tick a to-do off right here (the same as ticking it on the To-do page)

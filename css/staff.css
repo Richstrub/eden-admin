@@ -2913,3 +2913,19 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .rv-stat b{display:block;font-family:var(--serif);font-weight:400;font-size:1.5rem;line-height:1.1}
 .rv-stat small{display:block;font-size:.72rem;color:var(--stone)}
 .rv-stat.low b{color:#8a2a1e}
+/* Today: last night's end of day report */
+.td-eod{margin-top:6px}
+.td-eod-link{display:grid;gap:2px;padding:10px 12px;border:1px solid var(--line);background:#faf8f4;text-decoration:none;color:var(--ink)}
+.td-eod-link:hover{border-color:#8a5226}
+.td-eod-link b{font-weight:500;font-size:.98rem}
+.td-eod-link span{font-size:.8rem;color:var(--stone)}
+.td-eod-link em{font-style:normal;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:#8a5226;margin-top:2px}
+.td-eod-ov{font-size:.86rem;line-height:1.5;color:#3d4247}
+.td-eod-h{font-size:.6rem;letter-spacing:.24em;text-transform:uppercase;color:var(--stone);margin-top:4px}
+.td-eod-list{list-style:none;display:grid;gap:6px;padding:0;margin:0}
+.td-eod-list li{display:grid;gap:1px;padding:6px 0 6px 10px;border-left:2px solid var(--line);font-size:.86rem}
+.td-eod-list li.hot{border-left-color:#b0412c}
+.td-eod-list b{font-weight:500}
+.td-eod-list span{font-size:.8rem;color:var(--stone)}
+.td-eod-miss{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:#fdf5e4;border:1px solid rgba(160,110,20,.4);color:#6b4a0c;text-decoration:none;font-size:.88rem}
+.td-eod-miss span{white-space:nowrap;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;align-self:center}
