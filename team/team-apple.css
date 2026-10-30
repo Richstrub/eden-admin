@@ -2,32 +2,32 @@
 .tm-switch{border-radius:12px}
 .tm-switch button{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500}
 .tm-btn{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500;border-radius:980px;background:var(--fill);border-color:transparent}
-.tm-eyebrow{text-transform:none;letter-spacing:-.005em;font-size:0.794rem;font-weight:600}
-.tm-h{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:600}
-.tm-day span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
-.tm-today{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:600}
-.tm-dcol{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
-.tm-dhead span{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:600}
-.tm-note{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
-.tm-viewtog{box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-eyebrow{text-transform:none;letter-spacing:-.005em;font-size:0.794rem;font-weight:500}
+.tm-h{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:500}
+.tm-day span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
+.tm-today{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:500}
+.tm-dcol{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
+.tm-dhead span{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:500}
+.tm-note{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
+.tm-viewtog{box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
 .tm-viewtog button{text-transform:none;letter-spacing:-.005em;font-weight:500}
 .tm-offnote{border-radius:12px}
-.tm-cal-h{text-transform:none;letter-spacing:-.005em;font-size:0.719rem;font-weight:600}
+.tm-cal-h{text-transform:none;letter-spacing:-.005em;font-size:0.719rem;font-weight:500}
 .tm-cal-off.pending{border-radius:12px}
-.tm-toform{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
-.tm-toform label{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-toform{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
+.tm-toform label{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
 .tm-toform input[type=date],.tm-toform input[type=time],.tm-toform input[type=text]{border-radius:8px}
-.tm-req{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
-.tm-pill{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:600;border-radius:980px}
-.tm-dgo{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
-.tm-tl-scroll{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
-.tm-tl-ruler .tm-tl-who span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-req{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
+.tm-pill{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:500;border-radius:980px}
+.tm-dgo{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
+.tm-tl-scroll{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
+.tm-tl-ruler .tm-tl-who span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:500}
 .tm-tabs a{font-weight:500}
 .tm-confirm{border-radius:12px}
 .tm-viewtog button{font-size:0.84rem}
-.tm-rvlist li{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-rvlist li{border-radius:12px;box-shadow:0 1px 3px rgba(15,18,21,.045);border-color:transparent}
 .tm-rvscore{border-radius:12px}
-.tm-revform label{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:600}
+.tm-revform label{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:500}
 .tm-revform textarea{border-radius:8px}
 
 /* ---------- hand-tuned ---------- */
@@ -49,3 +49,14 @@
 .tm-switch{border:0;border-radius:9px;background:rgba(243,238,229,.1);padding:2px}
 .tm-switch button{border-radius:7px;font-size:.86rem;font-weight:500;letter-spacing:0;text-transform:none}
 .tm-h{border-bottom:0;padding-bottom:4px;margin-bottom:10px}
+
+/* cleaner, and the review pop-up's heading centered */
+.tm-bar{background:var(--ink);-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:0}
+.tm-rvlist li{border-color:transparent}
+.tm-shift{border-top-color:transparent;border-right-color:transparent;border-bottom-color:transparent}
+.tm-revdlg>.tm-revin>h2,.tm-revdlg>.tm-revin>.tm-small2,.tm-revdlg .tm-rvoverall{text-align:center}
+.tm-revtop{justify-content:center;position:sticky}
+.tm-revtop .tm-btn{position:absolute;right:0;border:0;background:rgba(15,18,21,.05)}
+.tm-revacts{justify-content:center}
+.tm-revform label{font-size:.82rem;font-weight:500;letter-spacing:0;text-transform:none}
+.tm-rvs{border-top-color:rgba(15,18,21,.07)}

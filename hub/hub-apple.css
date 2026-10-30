@@ -1,10 +1,10 @@
 /* Hub: Apple-style layer (Chrome 83: no flex gap, no :is/:where). */
 html,body{font-weight:400}
-.hb-ng{text-transform:none;letter-spacing:-.005em;font-weight:600}
-.hb-sub{text-transform:none;letter-spacing:-.005em;font-weight:600}
-.hb-pgroup h4{text-transform:none;letter-spacing:-.005em;font-weight:600}
-.hb-wk-h span{text-transform:none;letter-spacing:-.005em;font-weight:600}
-.hb-mo-h{text-transform:none;letter-spacing:-.005em;font-weight:600}
+.hb-ng{text-transform:none;letter-spacing:-.005em;font-weight:500}
+.hb-sub{text-transform:none;letter-spacing:-.005em;font-weight:500}
+.hb-pgroup h4{text-transform:none;letter-spacing:-.005em;font-weight:500}
+.hb-wk-h span{text-transform:none;letter-spacing:-.005em;font-weight:500}
+.hb-mo-h{text-transform:none;letter-spacing:-.005em;font-weight:500}
 
 /* ---------- hand-tuned ---------- */
 :root{--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
@@ -27,3 +27,6 @@ html,body{letter-spacing:-.003em}
 .hb-seg button{border-radius:calc(var(--u)*.7);color:#cfc9bd;font-weight:500;transition:background-color .2s ease,color .2s ease}
 .hb-seg button+button{border-left:0}
 .hb-seg button[aria-pressed="true"]{background:#3a3f45;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+/* Hub pop-up boxes: centered */
+.hb-sheet-in{text-align:center}
+.hb-sheet-in input,.hb-sheet-in textarea{text-align:left}
