@@ -2942,3 +2942,11 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .ed-cut-tick input{width:20px;height:20px;accent-color:var(--ember)}
 .ed-cut-tick input:checked+span{color:#8a5226;font-weight:500}
 .ed-item.ed-cutrow{background:#fffaf3}
+
+/* menu editor: dietary marks on a dish */
+.ed-diet{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ed-diet-t{display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border-radius:999px;background:var(--fill,#efe7db);font-size:.82rem;color:#5c584f;cursor:pointer;user-select:none}
+.ed-diet-t input{width:16px;height:16px;margin:0;accent-color:var(--ember)}
+.ed-diet-t b{font-weight:600;font-size:.72rem;letter-spacing:.06em;color:var(--ink)}
+.ed-diet-t.on{background:#f6e6d6;color:#7a4519}
+.ed-diet-t.on b{color:#8a5226}

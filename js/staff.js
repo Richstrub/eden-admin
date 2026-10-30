@@ -805,6 +805,7 @@
         ib.appendChild(confirmBtn('✕', function () { g.items.splice(ii, 1); markDirty(); edRender(); }, 'Remove item'));
         row.appendChild(ib);
         if (!isWine(it) && isKitchen(t)) {
+          row.appendChild(dietRow(it));
           row.appendChild(pairRow(it));
         }
         list.appendChild(row);
@@ -891,6 +892,20 @@
       });
     });
     return out;
+  }
+  /* dietary marks: tick Gluten free / Vegetarian / Dairy free on a dish; the website and iPad menu show GF · V · DF beside its name */
+  var DIETS = [['gf', 'GF', 'Gluten free'], ['veg', 'V', 'Vegetarian'], ['df', 'DF', 'Dairy free']];
+  function dietRow(it) {
+    var r = document.createElement('div'); r.className = 'ed-diet'; r.setAttribute('role', 'group'); r.setAttribute('aria-label', 'Dietary marks for ' + (it.name || 'this item'));
+    DIETS.forEach(function (d) {
+      var lab = document.createElement('label'); lab.className = 'ed-diet-t' + (it[d[0]] ? ' on' : '');
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!it[d[0]]; cb.disabled = !ed.canWrite;
+      cb.onchange = function () { if (cb.checked) it[d[0]] = true; else delete it[d[0]]; lab.classList.toggle('on', cb.checked); markDirty(); };
+      var b = document.createElement('b'); b.textContent = d[1];
+      var sp = document.createElement('span'); sp.textContent = d[2];
+      lab.appendChild(cb); lab.appendChild(b); lab.appendChild(sp); r.appendChild(lab);
+    });
+    return r;
   }
   function pairRow(it) {
     var pr = document.createElement('div'); pr.className = 'ed-pairrow';
