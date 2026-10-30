@@ -306,6 +306,7 @@
     $('tabCalendar').setAttribute('aria-current', pg === 'calendar' ? 'page' : 'false');
     $('tabBeos').setAttribute('aria-current', pg === 'beos' ? 'page' : 'false');
     $('tabEod').setAttribute('aria-current', pg === 'eod' ? 'page' : 'false');
+    (function () { var nav = document.querySelector('.tm-tabs'), cur = nav && nav.querySelector('[aria-current="page"]'); if (nav && cur && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: Math.max(0, cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2), behavior: 'smooth' }); })();   // phones: keep the current page's tab in view
     document.title = pg === 'recipes' ? 'Recipes · Eden Team' : pg === 'calendar' ? 'Calendar · Eden Team' : pg === 'beos' ? 'BEOs · Eden Team' : pg === 'eod' ? 'End of day report · Eden Team' : pg === 'preshift' ? 'Pre-shift · Eden Team' : pg === 'resources' ? 'Resources · Eden Team' : pg === 'prep' ? 'Prep List · Eden Team' : pg === 'orders' ? 'Ordering · Eden Team' : 'Eden Team';
     var admin = me.role === 'owner' || me.role === 'manager' || me.access === 'owner' || me.access === 'manager';
     var st = function (box) { return function (t, k) { var m = box.querySelector('.rc-status'); if (m) { m.textContent = t || ''; m.className = 'rc-status' + (k ? ' ' + k : ''); } }; };
