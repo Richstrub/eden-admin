@@ -1,0 +1,29 @@
+/* Hub: Apple-style layer (Chrome 83: no flex gap, no :is/:where). */
+html,body{font-weight:400}
+.hb-ng{text-transform:none;letter-spacing:-.005em;font-weight:600}
+.hb-sub{text-transform:none;letter-spacing:-.005em;font-weight:600}
+.hb-pgroup h4{text-transform:none;letter-spacing:-.005em;font-weight:600}
+.hb-wk-h span{text-transform:none;letter-spacing:-.005em;font-weight:600}
+.hb-mo-h{text-transform:none;letter-spacing:-.005em;font-weight:600}
+
+/* ---------- hand-tuned ---------- */
+:root{--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+html,body{letter-spacing:-.003em}
+.hb-ng{font-size:calc(var(--u)*.92)}
+.hb-sub{font-size:calc(var(--u)*1.12)}
+.hb-pgroup h4{font-size:calc(var(--u)*1.05)}
+.hb-wk-h span,.hb-mo-h{font-size:calc(var(--u)*1)}
+.hb-nb{border-right:0;border-radius:calc(var(--u)*1.1);margin:2px calc(var(--u)*.6);transition:background-color .18s ease,color .18s ease}
+.hb-nb[aria-current="true"]{background:rgba(233,141,76,.18);color:#fff;border-right:0}
+.hb-pop{border-radius:0 calc(var(--u)*1.6) calc(var(--u)*1.6) 0;overflow:hidden;animation:hb-in .34s cubic-bezier(.32,.72,0,1) both}
+.hb-pop-h{background:rgba(23,27,31,.94)}
+.hb-pop-x{border:0;border-radius:980px;background:rgba(243,239,230,.12);font-weight:500}
+.hb-btn{border:0;border-radius:980px;background:rgba(243,239,230,.1);font-weight:500}
+.hb-sheet{background:rgba(5,7,9,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.hb-sheet-in{border:0;box-shadow:0 30px 80px rgba(0,0,0,.5);animation:hb-in .34s cubic-bezier(.32,.72,0,1) both}
+@keyframes hb-in{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+/* Day / Week / Month: a dark segmented control */
+.hb-seg{border:0;background:rgba(243,239,230,.08);padding:3px;border-radius:calc(var(--u)*.9)}
+.hb-seg button{border-radius:calc(var(--u)*.7);color:#cfc9bd;font-weight:500;transition:background-color .2s ease,color .2s ease}
+.hb-seg button+button{border-left:0}
+.hb-seg button[aria-pressed="true"]{background:#3a3f45;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}

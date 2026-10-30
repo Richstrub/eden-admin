@@ -1,0 +1,51 @@
+/* Team page: Apple-style layer for team.css (loaded after css/apple.css). */
+.tm-switch{border-radius:12px}
+.tm-switch button{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500}
+.tm-btn{text-transform:none;letter-spacing:-.005em;font-size:0.84rem;font-weight:500;border-radius:980px;background:var(--fill);border-color:transparent}
+.tm-eyebrow{text-transform:none;letter-spacing:-.005em;font-size:0.794rem;font-weight:600}
+.tm-h{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:600}
+.tm-day span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-today{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:600}
+.tm-dcol{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-dhead span{text-transform:none;letter-spacing:-.005em;font-size:0.769rem;font-weight:600}
+.tm-note{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-viewtog{box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-viewtog button{text-transform:none;letter-spacing:-.005em;font-weight:500}
+.tm-offnote{border-radius:12px}
+.tm-cal-h{text-transform:none;letter-spacing:-.005em;font-size:0.719rem;font-weight:600}
+.tm-cal-off.pending{border-radius:12px}
+.tm-toform{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-toform label{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-toform input[type=date],.tm-toform input[type=time],.tm-toform input[type=text]{border-radius:8px}
+.tm-req{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-pill{text-transform:none;letter-spacing:-.005em;font-size:0.694rem;font-weight:600;border-radius:980px}
+.tm-dgo{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-tl-scroll{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-tl-ruler .tm-tl-who span{text-transform:none;letter-spacing:-.005em;font-size:0.744rem;font-weight:600}
+.tm-tabs a{font-weight:500}
+.tm-confirm{border-radius:12px}
+.tm-viewtog button{font-size:0.84rem}
+.tm-rvlist li{border-radius:12px;box-shadow:0 1px 2px rgba(15,18,21,.04),0 1px 1px rgba(15,18,21,.02);border-color:rgba(15,18,21,.09)}
+.tm-rvscore{border-radius:12px}
+.tm-revform label{text-transform:none;letter-spacing:-.005em;font-size:0.818rem;font-weight:600}
+.tm-revform textarea{border-radius:8px}
+
+/* ---------- hand-tuned ---------- */
+.tm-bar{background:rgba(15,18,21,.9);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid rgba(243,238,229,.08)}
+.tm-btn{border-radius:980px;font-size:.86rem;font-weight:500;letter-spacing:-.005em;text-transform:none}
+.tm-main .tm-btn{border:0;background:var(--fill);color:var(--ink)}
+.tm-main .tm-btn:hover{background:var(--fill-2)}
+.tm-btn.primary,.tm-main .tm-btn.primary{border:0;background:var(--ember);color:#fff}
+.tm-btn.primary:hover,.tm-main .tm-btn.primary:hover{background:#9d6236}
+.tm-btn:active:not(:disabled){transform:scale(.97)}
+/* Day / Week / Month: a segmented control */
+.tm-viewtog{border:0;border-radius:9px;background:rgba(15,18,21,.065);padding:2px;box-shadow:none}
+.tm-viewtog button{border-radius:7px;padding:6px 14px;font-size:.84rem;font-weight:500;color:#4d4943}
+.tm-viewtog button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,18,21,.12),0 0 0 .5px rgba(15,18,21,.05)}
+/* previous / this week / next */
+.tm-step{border:0;background:rgba(15,18,21,.065);border-radius:980px}
+.tm-step .tm-btn,.tm-main .tm-step .tm-btn{font-size:.84rem;padding:7px 14px;color:var(--ink)}
+.tm-step .tm-btn + .tm-btn{border-left:.5px solid rgba(15,18,21,.12)}
+.tm-switch{border:0;border-radius:9px;background:rgba(243,238,229,.1);padding:2px}
+.tm-switch button{border-radius:7px;font-size:.86rem;font-weight:500;letter-spacing:0;text-transform:none}
+.tm-h{border-bottom:0;padding-bottom:4px;margin-bottom:10px}
