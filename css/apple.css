@@ -410,7 +410,7 @@ dialog[open]::backdrop{animation:ap-fade .25s var(--ease) both}
   #viewTemps,#viewReviews{padding:20px 16px 60px}
   .sb{box-shadow:none;transition:transform .38s var(--spring),box-shadow .38s var(--ease)}
   .sb-open .sb{box-shadow:12px 0 40px rgba(0,0,0,.35)}
-  .sb-scrim{background:rgba(15,18,21,.38);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:ap-fade .25s var(--ease) both}
+  .sb-scrim{background:rgba(15,18,21,.38);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);transition:opacity .3s var(--ease)}
   .sb-nav a,.sb-soon{padding-top:10px;padding-bottom:10px;font-size:1rem}
   .sb-back{padding:6px 12px}
   .an-tabs,.sc-tabs,.tp-tabs{flex-wrap:nowrap;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}

@@ -275,6 +275,57 @@
   $('sbClose').addEventListener('click', function () { closeDrawer(); $('sbOpen').focus(); });
   $('sbScrim').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('app').classList.contains('sb-open')) { closeDrawer(); $('sbOpen').focus(); } });
+  /* swipe right anywhere to pull the menu open (it follows your finger); swipe left to push it closed */
+  (function swipe() {
+    var app = $('app'), sb = app.querySelector('.sb'), scrim = $('sbScrim');
+    var g = null;   // the gesture in progress
+    function drawerMode() { return window.matchMedia('(max-width:1023px)').matches; }
+    function blocked(t) {   // a touch that belongs to something else: typing, sliders, pop-ups, or a box that scrolls sideways
+      if (document.querySelector('dialog[open], .sc-modal, .mp-back, .acct-back')) return true;
+      for (var el = t; el && el !== document.body; el = el.parentElement) {
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return true;
+        if (el.scrollWidth > el.clientWidth + 2) {
+          var ox = getComputedStyle(el).overflowX;
+          if ((ox === 'auto' || ox === 'scroll') && el.scrollLeft > 0) return true;   // let it scroll back left first
+        }
+      }
+      return false;
+    }
+    function place(x) { sb.style.transform = 'translateX(' + Math.min(0, x) + 'px)'; }
+    document.addEventListener('touchstart', function (e) {
+      g = null;
+      if (!drawerMode() || e.touches.length !== 1) return;
+      var open = app.classList.contains('sb-open');
+      if (!open && blocked(e.target)) return;
+      var p = e.touches[0];
+      g = { x: p.clientX, y: p.clientY, t: Date.now(), open: open, w: sb.offsetWidth, on: false, dx: 0 };
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!g) return;
+      var p = e.touches[0], dx = p.clientX - g.x, dy = p.clientY - g.y;
+      if (!g.on) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        if (Math.abs(dy) > Math.abs(dx) * 0.7 || (g.open ? dx > 0 : dx < 0)) { g = null; return; }   // scrolling, or the wrong way
+        g.on = true; sb.style.transition = 'none';
+        if (!g.open) { scrim.hidden = false; scrim.style.opacity = '0'; }
+      }
+      g.dx = dx;
+      var x = g.open ? dx : dx - g.w;
+      place(x);
+      scrim.style.opacity = String(Math.max(0, Math.min(1, 1 + Math.min(0, x) / g.w)));
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    function end() {
+      if (!g || !g.on) { g = null; return; }
+      var fast = Math.abs(g.dx) / Math.max(1, Date.now() - g.t) > 0.45, far = Math.abs(g.dx) > g.w * 0.35;
+      var wasOpen = g.open; g = null;
+      sb.style.transition = ''; sb.style.transform = ''; scrim.style.opacity = '';
+      if (!wasOpen) { if (fast || far) openDrawer(); else scrim.hidden = true; }
+      else if (fast || far) closeDrawer();
+    }
+    document.addEventListener('touchend', end);
+    document.addEventListener('touchcancel', end);
+  })();
   $('sideNav').addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
     try { sessionStorage.removeItem('eden-from-today'); } catch (x) {}   // chose a page from the menu, not from Today
