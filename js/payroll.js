@@ -326,7 +326,7 @@
     if (final() && r && r.snap) return r.snap;
     return { name: e.name || 'Former employee', position: e.position || '', pay_type: rate.pay_type || 'hourly', rate: rate.rate == null ? null : +rate.rate,
       weekly_salary: rate.weekly_salary == null ? null : +rate.weekly_salary,
-      // Keenan (commission and tips): any hours on his timesheet put him in the tip pool
+      // Keenan (commission and tips, no hourly rate): any hours on his timesheet put him in the tip pool
       tip_eligible: autoPool(e, rate, r) ? true : r && r.pool != null ? !!r.pool : !!rate.tip_eligible,
       kitchen_rate: rate.kitchen_rate == null ? null : +rate.kitchen_rate, commission: !!rate.commission };
   }
@@ -340,7 +340,8 @@
     }).map(function (id) { return (P.row.rows[id].snap || {}).name || empById(id).name; });
   }
   function autoPool(e, rate, r) {
-    var commissioned = !!(rate && rate.commission) || /^keenan\b/i.test(String(e && e.name || ''));
+    // only for commission-only staff (no hourly rate, like Keenan); hourly staff who also earn commission (Tyler) keep their own tip-pool setting
+    var commissioned = (!!(rate && rate.commission) && (rate.rate == null || rate.rate === '')) || /^keenan\b/i.test(String(e && e.name || ''));
     return commissioned && !!r && (r.hours || []).some(function (x) { return +x > 0; });
   }
   function empIds() { return Object.keys((P.row && P.row.rows) || {}).filter(function (k) { return k.charAt(0) !== '_'; }); }
