@@ -457,10 +457,13 @@
   function parseCsv(t) {
     var rows = [], row = [], cell = '', q = false;
     t = String(t || '').replace(/^﻿/, '');
+    // one separator per file, picked from the header line (Wix's Labels column has semicolons inside a comma file)
+    var first = t.split(/\r?\n/)[0] || '', cnt = function (c) { return first.split(c).length - 1; };
+    var sep = cnt('\t') > cnt(',') && cnt('\t') >= cnt(';') ? '\t' : cnt(';') > cnt(',') ? ';' : ',';
     for (var i = 0; i < t.length; i++) {
       var ch = t[i];
       if (q) { if (ch === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; continue; }
-      if (ch === '"') q = true; else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cell); cell = ''; }
+      if (ch === '"') q = true; else if (ch === sep) { row.push(cell); cell = ''; }
       else if (ch === '\n' || ch === '\r') { if (ch === '\r' && t[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
       else cell += ch;
     }
