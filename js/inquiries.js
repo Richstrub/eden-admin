@@ -470,7 +470,7 @@
   /* ---------- the BEO, saved with the event ----------
      The BEO form keeps its work in this browser under 'eden-beo-doc-<id>'. Every change is copied to the
      database here, so the BEO is the same on every computer. */
-  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-'; var OPEN = 'eden-beo-open-', BEO_V = '20261020b';
+  var DOCK = 'eden-beo-doc-', SYNC = 'eden-beo-sync-'; var OPEN = 'eden-beo-open-', BEO_V = '20261030a';
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   function pushBeo(r, text) {
     var data; try { data = JSON.parse(text); } catch (e) { return Promise.resolve(); }

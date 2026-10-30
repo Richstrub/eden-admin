@@ -114,6 +114,8 @@ dialog textarea{min-height:80px}
   .summary{position:static;border:1px solid #999;break-inside:avoid}
   input,select,textarea{border:none;border-bottom:1px solid #999;border-radius:0;background:transparent}
   tr.off{display:none}
+  .np{display:none!important}
+  .masthead .lede,p.warn,.block > h2.tog::before,.lines .z,.blank-more{display:none!important}
 }
 /* Staff sheets: hidden on screen, the only thing printed in staff mode */
 #staff{display:none}
@@ -350,7 +352,7 @@ body.staff-view .ss + .ss{margin-top:34px;padding-top:18px;border-top:3px solid 
   <label class="f">Special requests, vendor details, and anything the kitchen and service team should know<textarea data-k="notes"></textarea></label>
 </section>
 
-<section class="block">
+<section class="block" id="approval">
   <h2>Approval</h2>
   <p class="note">By signing, the client confirms the selections, guest counts, and charges on this BEO. Changes after signing must be made in writing and approved by the event manager.</p>
   <div class="sig">
@@ -1248,7 +1250,61 @@ $('xlsxBtn').addEventListener('click',()=>{
   saveFile(blob,name,'Excel spreadsheet','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.xlsx');
 });
 
-$('printBtn').addEventListener('click',()=>{endStaff();try{window.print();}catch(e){}});
+$('printBtn').addEventListener('click',()=>{endStaff();markPrint();try{window.print();}catch(e){}});
+
+/* ---------- Print only what's filled in: blank fields, unchosen items, empty tables and empty sections stay off the page ---------- */
+function filled(el){
+  if(el.type==='checkbox'||el.type==='radio')return el.checked&&el.value!=='';
+  const v=String(el.value||'').trim();
+  if(!v)return false;
+  if(el.type==='number')return parseFloat(v)>0;
+  return true;
+}
+function markPrint(){
+  clearPrint();
+  if(document.body.classList.contains('staff-print'))return;
+  const np=el=>el&&el.classList.add('np');
+  const form=$('form');
+  // table rows with nothing chosen or entered
+  form.querySelectorAll('table.items tbody tr').forEach(tr=>{
+    const ins=[...tr.querySelectorAll('input,select,textarea')];
+    if(tr.classList.contains('off')||!ins.length)return;
+    const sel=tr.querySelector('input[type=checkbox][data-k$=".sel"],input[type=checkbox][data-k^="bf."]');
+    const qty=tr.querySelector('input.qty');
+    const has=sel?sel.checked:qty?filled(qty):ins.some(filled);
+    if(!has)np(tr);
+  });
+  // tables left empty: hide the table and the heading and notes that introduce it
+  form.querySelectorAll('.table-wrap').forEach(w=>{
+    const t=w.querySelector('table');
+    if(t&&[...t.querySelectorAll('tbody tr')].some(tr=>!tr.classList.contains('np')&&!tr.classList.contains('off')))return;
+    np(w);
+    for(let e=w.previousElementSibling;e&&!e.matches('h2');e=e.previousElementSibling){
+      if(e.matches('.table-wrap')||e.matches('.fields'))break;
+      np(e);if(e.matches('h3'))break;
+    }
+  });
+  // blank fields, unticked options, unchosen menu levels (signature lines always print)
+  form.querySelectorAll('label.f,label.tier,.inline > label').forEach(l=>{
+    if(l.closest('#approval'))return;
+    const el=l.querySelector('input,select,textarea');
+    if(el&&!filled(el))np(l);
+  });
+  form.querySelectorAll('.inline,.tiers,.fields').forEach(g=>{
+    if(g.closest('#approval'))return;
+    if(![...g.querySelectorAll('label')].some(l=>!l.classList.contains('np')))np(g);
+  });
+  form.querySelectorAll('p.warn,p.ok,p.note[id]').forEach(p=>{if(!p.textContent.trim())np(p);});
+  // sections where nothing is filled in at all
+  form.querySelectorAll('section.block').forEach(sec=>{
+    if(sec.id==='approval')return;
+    const any=[...sec.querySelectorAll('input,select,textarea')].some(el=>!el.closest('.np')&&!el.closest('tr.off')&&filled(el)&&(el.dataset.k?S[el.dataset.k]!==undefined&&String(S[el.dataset.k])!==String(DEFAULTS[el.dataset.k]):true));
+    if(!any)np(sec);
+  });
+}
+function clearPrint(){document.querySelectorAll('.np').forEach(e=>e.classList.remove('np'));}
+window.addEventListener('beforeprint',markPrint);
+window.addEventListener('afterprint',clearPrint);
 if(DOC){
   document.title=DOC.title;
   const h=document.querySelector('.masthead h1');if(h)h.textContent=DOC.title;
