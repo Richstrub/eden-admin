@@ -52,7 +52,27 @@
       return '<p style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.65;color:#3a3d40">' + linkify(p).replace(/\n/g, '<br>') + '</p>';
     }).join('');
   }
-  var HEADER_GIF = 'https://edencny.com/assets/images/email/hearth-header.gif';
+  var HEADER_GIF = 'https://edencny.com/assets/images/email/hearth-header.gif', HEADER_BYTES = 1200377;   // the GIF's size, so it can be counted without downloading it
+  // How heavy an email is: the email itself plus every picture a guest's phone downloads to show it
+  var SIZE_LIMIT = 10 * 1024 * 1024;
+  function mb(b) { return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB'; }
+  function weigh(cur) {
+    var html = String(cur.html || ''), bytes = new Blob([html, String(cur.text_body || '')]).size;
+    var srcs = []; html.replace(/<img[^>]+src="([^"]+)"/gi, function (m, u) { u = u.replace(/&amp;/g, '&'); if (srcs.indexOf(u) < 0) srcs.push(u); });
+    return Promise.all(srcs.map(function (u) {
+      if (u === HEADER_GIF) return HEADER_BYTES;
+      if (/^data:/i.test(u)) return Math.round(u.length * .75);
+      return fetch(u, { method: 'HEAD', cache: 'no-store' }).then(function (r) { var n = +r.headers.get('content-length'); if (n) return n;
+        return fetch(u, { cache: 'no-store' }).then(function (r2) { return r2.ok ? r2.blob().then(function (x) { return x.size; }) : 0; }); }).catch(function () { return 0; });
+    })).then(function (sizes) { return sizes.reduce(function (a, n) { return a + n; }, bytes); });
+  }
+  // before a test, a schedule or a send: warn when the email is over 10 MB
+  function sizeOk(cur, what) {
+    return weigh(cur).then(function (b) {
+      if (b <= SIZE_LIMIT) return true;
+      return confirm('Heads up: this email is about ' + mb(b) + ', over the 10 MB limit.\n\nLarge emails load slowly on phones, can be clipped or sent to spam, and use up guests’ data. Try a smaller photo.\n\n' + what + ' anyway?');
+    }, function () { return true; });
+  }
   function buildEmail(c) {
     var d = c.design || {};
     var btn = d.button_text && d.button_url ? '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:10px auto 26px"><tr><td bgcolor="#0f1215" style="background:#0f1215;border-radius:2px">' +
@@ -255,32 +275,37 @@
     var acts = h('div', { cls: 'pm-acts' }, [
       h('div', { cls: 'pm-act' }, [h('h3', { text: 'Send a test' }), h('div', { cls: 'pm-row' }, [testTo, h('button', { type: 'button', cls: 'eo-btn', text: 'Send test', on: { click: function () {
         var why = ready(); if (why) { say(why, 'err'); return; }
-        var b = this; b.disabled = true; say('Sending a test…');
+        var b = this;
+        sizeOk(current(), 'Send the test').then(function (go) { if (!go) return;
+        b.disabled = true; say('Sending a test…');
         save().then(function () { var cur = current(); return api('promo/test', { to: testTo.value, subject: cur.subject, html: cur.html, text: cur.text_body }); }).then(function (j) {
           b.disabled = false;
           say(j.ok ? 'Test sent to ' + testTo.value + '. Check your inbox (and spam, the first time).' : j.error === 'email' ? 'Check the address.' : j.error === 'no_resend' ? 'Sending isn’t switched on yet (RESEND_API_KEY).' : 'Couldn’t send the test' + (j.message ? ': ' + j.message : '.'), j.ok ? 'ok' : 'err');
-        });
+        }); });
       } } })])]),
       h('div', { cls: 'pm-act' }, [h('h3', { text: 'Schedule' }), h('div', { cls: 'pm-row' }, [at, h('button', { type: 'button', cls: 'eo-btn', text: c.status === 'scheduled' ? 'Change time' : 'Schedule', on: { click: function () {
         var why = ready(); if (why) { say(why, 'err'); return; }
         var t = new Date(at.value); if (isNaN(t) || t < new Date(Date.now() - 60000)) { say('Pick a time in the future.', 'err'); return; }
+        sizeOk(current(), 'Schedule it').then(function (go) { if (!go) return;
         if (!confirm('Send this email to ' + n + ' guest' + (n === 1 ? '' : 's') + ' on ' + when(t) + '?')) return;
         save().then(function () { return P.ctx.sb.from('promo_campaigns').update({ status: 'scheduled', scheduled_at: t.toISOString(), error: '' }).eq('id', c.id); }).then(function (r) {
           if (r.error) { say('Couldn’t schedule it.', 'err'); return; }
           say('Scheduled for ' + when(t) + '. It goes out within 5 minutes of that time.', 'ok'); openEmail(c.id);
-        });
+        }); });
       } } })]), h('small', { text: 'New York time. It goes out within 5 minutes of the time you pick.' })]),
       h('div', { cls: 'pm-act pm-now' }, [h('h3', { text: 'Send now' }), h('p', { cls: 'pm-n', text: 'To ' + n + ' guest' + (n === 1 ? '' : 's') + ' on the list.' }), h('button', { type: 'button', cls: 'eo-btn pm-sendnow', text: 'Send now', disabled: !n, on: { click: function () {
         var why = ready(); if (why) { say(why, 'err'); return; }
+        var b = this;
+        sizeOk(current(), 'Send it').then(function (go) { if (!go) return;
         if (!confirm('Send “' + current().subject + '” to ' + n + ' guest' + (n === 1 ? '' : 's') + ' now? This can’t be undone.')) return;
-        var b = this; b.disabled = true; say('Sending…');
+        b.disabled = true; say('Sending…');
         save().then(function () { return P.ctx.sb.from('promo_campaigns').update({ status: 'scheduled', scheduled_at: new Date().toISOString(), error: '' }).eq('id', c.id); }).then(function (r) {
           if (r.error) { b.disabled = false; say('Couldn’t send it.', 'err'); return; }
           return api('promo/run', {}).then(function (j) {
             say(j.error === 'no_resend' ? 'Saved to go out, but sending isn’t switched on yet (RESEND_API_KEY).' : j.error ? 'It’s queued and will go out within 5 minutes.' : 'Sending. You’ll see the results here as they come in.', j.error ? 'err' : 'ok');
             openEmail(c.id);
           });
-        });
+        }); });
       } } })])
     ]);
     var top = h('div', { cls: 'pm-edtop' }, [back, state]);
