@@ -365,7 +365,7 @@
     var tb = h('tbody'), lastPos = null, perDay = [0, 0, 0, 0, 0, 0, 0];
     emps.forEach(function (e) {
       var pos = e.position || '';
-      if (pos !== lastPos) { tb.appendChild(h('tr', { cls: 'sc-group' }, [h('td', { colspan: '9', text: pos || 'No position' })])); lastPos = pos; }
+      if (pos !== lastPos) { tb.appendChild(h('tr', { cls: 'sc-group' }, [h('td', { colspan: '9' }, [h('span', { cls: 'sc-gl', text: pos || 'No position' })])])); lastPos = pos; }
       var tr = h('tr', { cls: e.active === false ? 'inactive' : null });
       tr.appendChild(h('td', { cls: 'sc-name' }, [h('span', { cls: 'sc-ename', text: e.name || 'Unnamed' }), e.phone ? null : h('span', { cls: 'sc-warn', text: 'No mobile number' }),
         h('button', { type: 'button', cls: 'sc-copyone', title: 'Copy ' + (e.name || 'this person') + '’s shifts from last week into this week', 'aria-label': 'Copy last week for ' + (e.name || 'this person'), text: '↻ Copy last week', on: { click: function () { copyLastWeekFor(e); } } })]));

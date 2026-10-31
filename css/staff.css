@@ -2950,3 +2950,20 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .ed-diet-t b{font-weight:600;font-size:.72rem;letter-spacing:.06em;color:var(--ink)}
 .ed-diet-t.on{background:#f6e6d6;color:#7a4519}
 .ed-diet-t.on b{color:#8a5226}
+
+/* Schedule on phones and tablets: the day row and the name column stay put while the grid scrolls either way */
+@media (max-width:1180px),(pointer:coarse){
+  #viewSchedule .sc-scroll{overflow:auto;max-height:calc(100vh - 130px);max-height:calc(100dvh - 130px);overscroll-behavior:contain}
+  .sc-grid{border-collapse:separate;border-spacing:0}
+  .sc-grid thead th{position:sticky;top:0;z-index:3;background:var(--ivory)}
+  .sc-grid .sc-name,.sc-grid .sc-foot td:first-child{position:sticky;left:0;z-index:2;background:#fff;box-shadow:1px 0 0 rgba(15,18,21,.08)}
+  .sc-grid .sc-foot td:first-child{background:#fcfbf8}
+  .sc-grid tr.inactive .sc-name{background:#faf8f4}
+  .sc-grid thead th.sc-name-h{left:0;z-index:4;box-shadow:1px 0 0 rgba(15,18,21,.08)}
+  .sc-grid .sc-gl{position:sticky;left:12px;display:inline-block}
+}
+@media (max-width:700px){
+  .sc-grid .sc-name{min-width:118px;max-width:132px;padding:10px 8px}
+  .sc-grid .sc-ename{font-size:1rem}
+  .sc-grid .sc-cell{min-width:104px}
+}
