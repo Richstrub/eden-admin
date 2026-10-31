@@ -731,11 +731,21 @@
     return hit || (v ? v.charAt(0).toUpperCase() + v.slice(1) : '');
   }
   // fix wines already on the list ("america", "America ") so they sort under United States; saved with the next publish
+  // also: stray spaces ("Gamay " is a different grape to "Gamay" when the list is browsed by grape), and a bare
+  // appellation like "Finger Lakes" filed with its full name ("Finger Lakes, New York") when the list already has it
   function tidyCountries(d) {
-    var changed = false;
-    (d.tabs || []).forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) {
-      if (it && typeof it.country === 'string') { var n = normCountry(it.country); if (n !== it.country) { it.country = n; changed = true; } }
-    }); }); });
+    var changed = false, wines = [];
+    (d.tabs || []).forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { if (it && isWine(it)) wines.push(it); }); }); });
+    wines.forEach(function (it) {
+      ['name', 'grape', 'appellation'].forEach(function (k) { if (typeof it[k] === 'string' && it[k] !== it[k].trim().replace(/\s+/g, ' ')) { it[k] = it[k].trim().replace(/\s+/g, ' '); changed = true; } });
+      if (typeof it.country === 'string') { var n = normCountry(it.country); if (n !== it.country) { it.country = n; changed = true; } }
+    });
+    wines.forEach(function (it) {
+      var a = it.appellation; if (!a || a.indexOf(',') >= 0) return;
+      var full = wines.filter(function (w) { return w.appellation && w.country === it.country && w.appellation.toLowerCase().indexOf(a.toLowerCase() + ',') === 0; }).map(function (w) { return w.appellation; })[0]
+        || (APPS[it.country] || []).filter(function (x) { return x.toLowerCase().indexOf(a.toLowerCase() + ',') === 0; })[0];
+      if (full) { it.appellation = full; changed = true; }
+    });
     return changed;
   }
   // appellations and grapes: everything already on the wine list, plus the usual ones, so the choices grow with the list
