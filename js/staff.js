@@ -731,6 +731,12 @@
     return hit || (v ? v.charAt(0).toUpperCase() + v.slice(1) : '');
   }
   // fix wines already on the list ("america", "America ") so they sort under United States; saved with the next publish
+  // tasting notes written for wines that were on the list without one (filled in only while the note is empty)
+  var WINE_NOTES = {
+    'los bermejos diego seco': { desc: 'Diego, a rare white grape of the Canary Islands, from vines set in hollows dug into Lanzarote’s black volcanic ash and sheltered by low stone walls, fermented in steel: lime, tart orange and lemongrass over a smoky, sea-breeze minerality, crisp and focused, with a long, saline finish.' },
+    'terroir silex sancerre gerard fiou artisan vigneron': { desc: 'Sancerre rouge: Pinot Noir from southwest-facing slopes of clay and flint, fermented in steel and rested six months in oak barrels: red cherry and wild raspberry with a cool, flinty edge, light-bodied and bright, finishing fresh and savory. Lovely lightly chilled.', appellation: 'Loire, France' },
+    'cantina ortaccio vecchi filari': { desc: 'Sangiovese and Grechetto Rosso with a little Ciliegiolo from old vines on the volcanic tufa around Lake Bolsena, one parcel planted in 1948, aged in oak and bottled unfined with no added sulfur: dark cherry and plum, wild herbs and a savory, mineral streak, deep and long.' }
+  };
   // also: stray spaces ("Gamay " is a different grape to "Gamay" when the list is browsed by grape), and a bare
   // appellation like "Finger Lakes" filed with its full name ("Finger Lakes, New York") when the list already has it
   function tidyCountries(d) {
@@ -739,6 +745,11 @@
     wines.forEach(function (it) {
       ['name', 'grape', 'appellation'].forEach(function (k) { if (typeof it[k] === 'string' && it[k] !== it[k].trim().replace(/\s+/g, ' ')) { it[k] = it[k].trim().replace(/\s+/g, ' '); changed = true; } });
       if (typeof it.country === 'string') { var n = normCountry(it.country); if (n !== it.country) { it.country = n; changed = true; } }
+    });
+    wines.forEach(function (it) {
+      var n = WINE_NOTES[String(it.name || '').toLowerCase().replace(/[’']/g, '').replace(/\s+/g, ' ').trim()]; if (!n) return;
+      if (!String(it.desc || '').trim()) { it.desc = n.desc; changed = true; }
+      if (n.appellation && !String(it.appellation || '').trim()) { it.appellation = n.appellation; changed = true; }
     });
     wines.forEach(function (it) {
       var a = it.appellation; if (!a || a.indexOf(',') >= 0) return;
