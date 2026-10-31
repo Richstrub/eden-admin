@@ -52,7 +52,7 @@
       return '<p style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.65;color:#3a3d40">' + linkify(p).replace(/\n/g, '<br>') + '</p>';
     }).join('');
   }
-  var HEADER_GIF = 'https://edencny.com/assets/images/email/hearth-header.gif', HEADER_BYTES = 1200377;   // the GIF's size, so it can be counted without downloading it
+  var HEADER_GIF = 'https://edencny.com/assets/images/email/hearth-header.jpg', HEADER_BYTES = 32619;   // the header picture's size, so it can be counted without downloading it
   // How heavy an email is: the email itself plus every picture a guest's phone downloads to show it
   var SIZE_LIMIT = 10 * 1024 * 1024;
   function mb(b) { return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB'; }
@@ -82,10 +82,10 @@
       '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f4f1ea">' + esc(c.preheader || '') + '&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f1ea"><tr><td align="center" style="padding:28px 12px">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff">' +
-      // the website's hearth: embers rising over the coals behind the wordmark (an animated GIF; Outlook on Windows shows the first frame)
+      // the website's hearth: the homepage hero (wordmark, embers and coals) as a still picture
       '<tr><td align="center" bgcolor="#08090b" style="padding:0;background:#08090b"><a href="https://edencny.com/" style="display:block;text-decoration:none">' +
-      '<img src="' + HEADER_GIF + '" width="600" height="270" alt="EDEN · Locally sourced, wood fired cuisine" style="display:block;width:100%;max-width:600px;height:auto;border:0;' +
-      'background:#08090b;color:#f3eee5;font-family:Georgia,\'Times New Roman\',serif;font-size:24px;letter-spacing:6px;text-align:center;line-height:270px"></a></td></tr>' +
+      '<img src="' + HEADER_GIF + '" width="600" height="300" alt="EDEN · Locally sourced, wood fired cuisine" style="display:block;width:100%;max-width:600px;height:auto;border:0;' +
+      'background:#08090b;color:#f3eee5;font-family:Georgia,\'Times New Roman\',serif;font-size:24px;letter-spacing:6px;text-align:center;line-height:300px"></a></td></tr>' +
       (d.image ? '<tr><td style="padding:0"><img src="' + esc(d.image) + '" alt="' + esc(d.image_alt || d.heading || '') + '" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>' : '') +
       '<tr><td style="padding:40px 44px 14px">' +
       (d.heading ? '<h1 style="margin:0 0 22px;font-family:Georgia,\'Times New Roman\',serif;font-weight:normal;font-size:31px;line-height:1.2;color:#0f1215;text-align:center">' + esc(d.heading) + '</h1>' : '') +
