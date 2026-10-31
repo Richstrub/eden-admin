@@ -143,10 +143,18 @@
   }
 
   /* ---------- Emails ---------- */
+  // stopped by Resend's daily or monthly limit (the worker marks these "LIMIT:daily: …" / "LIMIT:monthly: …")
+  // (emails stopped before this change say "Resend is busy" or mention the quota)
+  function isLimit(c) { return /^LIMIT:|quota|Resend is busy/i.test(c.error || ''); }
+  function limitText(c) { return /^LIMIT:/.test(c.error || '') ? String(c.error).replace(/^LIMIT:\w+:\s*/, '') : 'Resend stopped sending, most likely its daily limit (the free plan allows 100 emails a day and 3,000 a month).'; }
+  function nextReset() {   // Resend's daily limit resets at midnight UTC (8 pm New York time in summer, 7 pm in winter); start 5 minutes after
+    var d = new Date(); d.setUTCHours(24, 5, 0, 0); return d;
+  }
   function statusLine(c) {
     if (c.status === 'scheduled') return ['Scheduled', 'for ' + when(c.scheduled_at)];
     if (c.status === 'sending') return ['Sending', 'started ' + when(c.started_at)];
     if (c.status === 'sent') return ['Sent', when(c.sent_at)];
+    if (c.status === 'failed' && isLimit(c)) return ['Paused', 'Resend’s sending limit; ' + (c.recipients || 0) + ' sent so far'];
     if (c.status === 'failed') return ['Didn’t finish', c.error || ''];
     return ['Draft', 'edited ' + when(c.updated_at) + (c.updated_by ? ' by ' + c.updated_by : '')];
   }
@@ -312,7 +320,26 @@
     if (c.status === 'scheduled') top.appendChild(h('div', { cls: 'pm-sched' }, [h('b', { text: 'Scheduled for ' + when(c.scheduled_at) }), h('button', { type: 'button', cls: 'pm-link', text: 'Don’t send (back to draft)', on: { click: function () {
       P.ctx.sb.from('promo_campaigns').update({ status: 'draft', scheduled_at: null }).eq('id', c.id).then(function () { say('Back to a draft.', 'ok'); openEmail(c.id); });
     } } })]));
-    if (c.status === 'failed') top.appendChild(h('div', { cls: 'pm-sched is-err' }, [h('b', { text: 'This email didn’t finish sending' }), h('span', { text: c.error || '' })]));
+    if (c.status === 'failed' && isLimit(c)) {
+      var sentSoFar = c.recipients || 0, left = Math.max(0, n - sentSoFar), monthly = /^LIMIT:monthly/.test(c.error), reset = nextReset();
+      var resume = function (at, msg, now) {
+        P.ctx.sb.from('promo_campaigns').update({ status: 'scheduled', scheduled_at: at.toISOString(), error: '' }).eq('id', c.id).then(function (r) {
+          if (r.error) { say('Couldn’t schedule the rest.', 'err'); return; }
+          say(msg, 'ok'); if (now) api('promo/run', {}).then(function () { openEmail(c.id); }); else openEmail(c.id);
+        });
+      };
+      top.appendChild(h('div', { cls: 'pm-sched is-err' }, [
+        h('b', { text: 'Paused: ' + sentSoFar + ' guest' + (sentSoFar === 1 ? '' : 's') + ' got this email, about ' + left + ' still to go' }),
+        h('span', { text: limitText(c) + ' Nobody gets it twice: sending again only goes to the guests who haven’t had it yet.' }),
+        monthly ? null : h('button', { type: 'button', cls: 'eo-btn', text: 'Send the rest when the limit resets (' + reset.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')', on: { click: function () {
+          resume(reset, 'Scheduled: the rest go out after ' + when(reset) + '. If the limit is reached again, it pauses here and you can schedule the next round.');
+        } } }),
+        h('button', { type: 'button', cls: 'pm-link', text: 'Send the rest now (after upgrading Resend)', on: { click: function () {
+          if (!confirm('Send to the ' + left + ' guests who haven’t had it yet? Only do this if your Resend plan now allows it.')) return;
+          resume(new Date(), 'Sending the rest. You’ll see the results here as they come in.', true);
+        } } })
+      ]));
+    } else if (c.status === 'failed') top.appendChild(h('div', { cls: 'pm-sched is-err' }, [h('b', { text: 'This email didn’t finish sending' }), h('span', { text: c.error || '' })]));
     body.appendChild(top);
     body.appendChild(h('div', { cls: 'pm-ed' }, [
       h('div', { cls: 'pm-form eo-card' }, [

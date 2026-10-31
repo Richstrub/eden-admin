@@ -107,6 +107,8 @@ async function resendBatch(env, msgs, idem) {
     const r = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json', 'Idempotency-Key': idem }, body: JSON.stringify(msgs) });
     const j = await r.json().catch(() => ({}));
     if (r.ok) return { ids: ((j && j.data) || []).map(x => (x && x.id) || '') };
+    // the plan's daily or monthly limit (free plan: 100 a day, 3,000 a month): waiting a second won't help
+    if (j && /quota_exceeded/.test(j.name || '')) return { quota: /monthly/.test(j.name) ? 'monthly' : 'daily', error: j.message || 'Resend sending limit reached' };
     if (r.status === 429 || r.status >= 500) { await wait(1200 * (attempt + 1)); continue; }
     return { error: (j && (j.message || j.name)) || ('Resend said ' + r.status) };
   }
@@ -120,12 +122,15 @@ export async function promoRun(env, key) {
     const camp = await rpc(env, 'promo_claim_server', { p_key: key });
     if (!camp || camp.none || camp.error) break;
     out.campaigns.push(camp.id);
-    let error = '', done = false;
+    let error = '', done = false, size = 100;
     while (Date.now() - start < 20000) {
-      const batch = await rpc(env, 'promo_batch_server', { p_key: key, p_campaign: camp.id, p_limit: 100 });
+      const batch = await rpc(env, 'promo_batch_server', { p_key: key, p_campaign: camp.id, p_limit: size });
       if (!Array.isArray(batch)) { error = 'Couldn’t read the guest list.'; break; }
       if (!batch.length) { done = true; break; }
-      const res = await resendBatch(env, batch.map(c => message(env, camp, c)), camp.id + ':' + batch[0].id);
+      const res = await resendBatch(env, batch.map(c => message(env, camp, c)), camp.id + ':' + batch[0].id + ':' + batch.length);
+      // a full batch is refused whole when only part of the day's limit is left: use up what's left in smaller batches
+      if (res.quota === 'daily' && size > 1) { size = size > 10 ? Math.floor(size / 2) : 1; await wait(550); continue; }
+      if (res.quota) { error = 'LIMIT:' + res.quota + ': Resend’s ' + res.quota + ' sending limit was reached (the free plan allows 100 emails a day and 3,000 a month).'; break; }
       if (res.error) { error = res.error; break; }
       await rpc(env, 'promo_record_server', { p_key: key, p_campaign: camp.id, p_rows: batch.map((c, i) => ({ contact_id: c.id, email: c.email, resend_id: res.ids[i] || '', error: res.ids[i] ? '' : 'not accepted' })) });
       out.sent += batch.length;
