@@ -455,17 +455,44 @@
     var q = ((M.q || '') + (M.unreadOnly ? ' is:unread' : '')).trim();   // Gmail's own search, so it matches Gmail exactly
     return api('list', { label: M.q ? 'ALL' : M.label, q: q, page: M.page || '' }).then(function (j) {
       if (seq !== M.listSeq || id !== M.acct) return;
-      M.threads = j.threads || []; M.next = j.next || '';
+      var fresh = j.threads || [];
+      if (quiet && M.threads.length > fresh.length && M.more) {   // older email already scrolled in: refresh the top, keep the rest
+        var ids = {}; fresh.forEach(function (t) { ids[t.id] = 1; });
+        M.threads = fresh.concat(M.threads.slice(fresh.length).filter(function (t) { return !ids[t.id]; }));
+      } else { M.threads = fresh; M.next = j.next || ''; M.more = false; }
       Object.keys(M.sel).forEach(function (k) { if (!M.threads.some(function (t) { return t.id === k; })) delete M.sel[k]; });
       if (M.label === 'INBOX' && !M.q && !M.page) { var n = 0; M.threads.forEach(function (t) { if (t.unread) n++; }); if (n > (M.unread[id] || 0)) M.unread[id] = n; }
       paintList();
     }, function (e) { if (seq === M.listSeq) paintList(e); });
   }
+  // scrolling to the bottom brings in the next 25 older emails, all the way back
+  function loadMore() {
+    if (!M.next || M.loadingMore || !M.acct) return;
+    var seq = M.listSeq, id = M.acct, page = M.next;
+    M.loadingMore = true; paintFoot();
+    var q = ((M.q || '') + (M.unreadOnly ? ' is:unread' : '')).trim();
+    api('list', { label: M.q ? 'ALL' : M.label, q: q, page: page }).then(function (j) {
+      M.loadingMore = false;
+      if (seq !== M.listSeq || id !== M.acct) return;
+      var have = {}; M.threads.forEach(function (t) { have[t.id] = 1; });
+      M.threads = M.threads.concat((j.threads || []).filter(function (t) { return !have[t.id]; }));
+      M.next = j.next || ''; M.more = true;
+      paintList();
+    }, function () { M.loadingMore = false; M.moreErr = true; paintFoot(); });
+  }
+  function paintFoot() {
+    var f = M.el && M.el.querySelector('.em-more'); if (!f) return;
+    f.innerHTML = '';
+    if (M.next) {
+      if (M.loadingMore) f.appendChild(h('span', { cls: 'em-more-t', text: 'Loading older email…' }));
+      else f.appendChild(h('button', { type: 'button', cls: 'em-link', text: M.moreErr ? 'Couldn’t load more. Try again' : 'Load older email', on: { click: function () { M.moreErr = false; loadMore(); } } }));
+    } else if (M.threads.length > 25) f.appendChild(h('span', { cls: 'em-more-t', text: 'That’s everything in ' + (M.q ? 'this search' : labelName(M.label)) + '.' }));
+  }
   function selIds() { return Object.keys(M.sel); }
   function setUnreadOnly(on) { if (M.unreadOnly === on) return; M.unreadOnly = on; try { localStorage.setItem('eden-mail-unread', on ? '1' : ''); } catch (e) {} M.page = ''; M.back = []; M.sel = {}; loadList(); }
   function paintList(err, loading) {
     var list = M.el.querySelector('.em-list'); if (!list) return;
-    var old = list.querySelector('.em-rows'), scroll = old ? old.scrollTop : 0;
+    var old = list.querySelector('.em-rows'), scroll = old ? old.scrollTop : 0, winY = window.scrollY;
     var hadFocus = document.activeElement && document.activeElement.classList.contains('em-search');
     list.innerHTML = '';
     var a = acct(), ids = selIds(), any = ids.length > 0;
@@ -479,8 +506,6 @@
       h('label', { cls: 'em-chkw em-chkw-all' }, [all]),
       h('h2', { cls: 'em-ltitle', text: M.q ? 'Search' : labelName(M.label) }),
       h('span', { cls: 'em-sp' }),
-      M.back.length ? ib('prev', 'Newer', function () { M.page = M.back.pop() || ''; loadList(); }) : null,
-      M.next ? ib('next', 'Older', function () { M.back.push(M.page); M.page = M.next; loadList(); }) : null,
       ib('refresh', 'Refresh', function () { loadList(); counts(); })]));
     var q = h('input', { type: 'search', cls: 'em-search', placeholder: 'Search ' + ((a && a.address) || 'mail'), value: M.q, 'aria-label': 'Search mail', enterkeyhint: 'search' });
     q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { M.q = q.value.trim(); M.page = ''; M.back = []; M.sel = {}; q.blur(); paintSide(); loadList(); } });
@@ -509,8 +534,14 @@
     if (M.label === 'TRASH' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes email in Trash for good after 30 days.' }));
     if (M.label === 'SPAM' && !M.q && M.threads.length) rows.appendChild(h('p', { cls: 'em-banner', text: 'Gmail deletes spam for good after 30 days.' }));
     M.threads.forEach(function (t, i) { rows.appendChild(row(t, any, i)); });
-    list.appendChild(rows);
+    if (!err && !loading && M.threads.length) {
+      var foot = h('div', { cls: 'em-more' }); rows.appendChild(foot);
+      list.appendChild(rows); paintFoot();
+      if (M.io) M.io.disconnect();
+      if ('IntersectionObserver' in window) { M.io = new IntersectionObserver(function (es) { if (es.some(function (e) { return e.isIntersecting; })) loadMore(); }, { rootMargin: '700px 0px' }); M.io.observe(foot); }
+    } else list.appendChild(rows);
     rows.scrollTop = scroll;
+    if (Math.abs(window.scrollY - winY) > 2) window.scrollTo(0, winY);
     if (hadFocus) { q.focus(); }
   }
   // choose an email; shift-click chooses everything between it and the last one chosen

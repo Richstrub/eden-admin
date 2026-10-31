@@ -2968,3 +2968,4 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
   .sc-grid .sc-cell{min-width:104px}
 }
 .ed select.ed-country{width:100%;min-width:0;font:inherit;font-size:.95rem;padding:9px 10px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.em-more{padding:18px 16px 26px;text-align:center;font-size:.86rem;color:var(--stone)}.em-more .em-link{font-size:.9rem}
