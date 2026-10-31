@@ -738,6 +738,64 @@
     }); }); });
     return changed;
   }
+  // appellations and grapes: everything already on the wine list, plus the usual ones, so the choices grow with the list
+  var APPS = {
+    'United States': ['Finger Lakes, New York', 'Seneca Lake, New York', 'Cayuga Lake, New York', 'Keuka Lake, New York', 'Hudson River Region, New York', 'North Fork of Long Island, New York', 'The Hamptons, New York', 'Niagara Escarpment, New York', 'Lake Erie, New York', 'New York',
+      'Napa Valley, California', 'Sonoma County, California', 'Russian River Valley, California', 'Alexander Valley, California', 'Santa Cruz Mountains, California', 'Paso Robles, California', 'Santa Barbara County, California', 'Central Coast, California', 'California',
+      'Willamette Valley, Oregon', 'Dundee Hills, Oregon', 'Oregon', 'Columbia Valley, Washington', 'Walla Walla Valley, Washington', 'Washington'],
+    'France': ['Alsace, France', 'Beaujolais, France', 'Bordeaux, France', 'Burgundy, France', 'Champagne, France', 'Jura, France', 'Languedoc-Roussillon, France', 'Loire, France', 'Provence, France', 'Rhône, France', 'Savoie, France', 'Sud-Ouest, France'],
+    'Italy': ['Abruzzo, Italy', 'Campania, Italy', 'Emilia-Romagna, Italy', 'Friuli-Venezia Giulia, Italy', 'Lazio, Italy', 'Lombardy, Italy', 'Marche, Italy', 'Piedmont, Italy', 'Puglia, Italy', 'Sardinia, Italy', 'Sicily, Italy', 'Trentino-Alto Adige, Italy', 'Tuscany, Italy', 'Umbria, Italy', 'Veneto, Italy'],
+    'Spain': ['Catalonia, Spain', 'DOCA Rioja, Spain', 'Do Navarra, Spain', 'Galicia, Spain', 'Jerez, Spain', 'País Vasco, Spain', 'Priorat, Spain', 'Ribera del Duero, Spain', 'Rías Baixas, Spain', 'Vc Islas Canarias, Spain'],
+    'Portugal': ['Alentejo, Portugal', 'Dão, Portugal', 'Porto and Douro, Portugal', 'Vinho Verde, Portugal', 'Madeira, Portugal'],
+    'Germany': ['Mosel-Saar-Ruwer, Germany', 'Nahe, Germany', 'Pfalz, Germany', 'Rheingau, Germany', 'Rheinhessen, Germany'],
+    'Austria': ['Burgenland, Austria', 'Kamptal, Austria', 'Kremstal, Austria', 'Wachau, Austria'],
+    'Argentina': ['Cuyo, Argentina', 'Mendoza, Argentina', 'Patagonia, Argentina', 'Salta, Argentina'],
+    'Chile': ['Casablanca Valley, Chile', 'Colchagua Valley, Chile', 'Maipo Valley, Chile'],
+    'Australia': ['Barossa Valley, Australia', 'McLaren Vale, Australia', 'South Australia, Australia', 'Yarra Valley, Australia'],
+    'New Zealand': ['Central Otago, New Zealand', 'Marlborough, New Zealand', 'North Island, New Zealand', 'South Island, New Zealand'],
+    'South Africa': ['Stellenbosch, South Africa', 'Swartland, South Africa', 'Western Cape, South Africa']
+  };
+  var GRAPES = ['Albariño', 'Aligoté', 'Barbera', 'Blaufränkisch', 'Bordeaux Blend', 'Cabernet Franc', 'Cabernet Sauvignon', 'Carménère', 'Chardonnay', 'Chenin Blanc', 'Dolcetto', 'Gamay', 'Garnacha', 'Gewürztraminer', 'Grenache', 'Grüner Veltliner',
+    'Lagrein', 'Malbec', 'Merlot', 'Mourvèdre', 'Muscadet', 'Nebbiolo', 'Petit Verdot', 'Pinot Blanc', 'Pinot Gris', 'Pinot Grigio', 'Pinot Noir', 'Port', 'Red Blend', 'Rhône Blend', 'Riesling', 'Rosé Blend', 'Sangiovese', 'Saperavi',
+    'Sauvignon Blanc', 'Sémillon', 'Sparkling Blend', 'Syrah', 'Tempranillo', 'Touriga Nacional', 'Vermentino', 'Vidal Blanc', 'Viognier', 'White Blend', 'Zinfandel'];
+  function usedWine(key, country) {   // values already on the wine list
+    var out = [];
+    ((ed.draft && ed.draft.tabs) || []).forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) {
+      var v = it && String(it[key] || '').trim();
+      if (v && isWine(it) && (!country || normCountry(it.country) === country) && out.indexOf(v) < 0) out.push(v);
+    }); }); });
+    return out;
+  }
+  function uniqSort(a) { var seen = {}, out = []; a.forEach(function (v) { var k = v.toLowerCase(); if (v && !seen[k]) { seen[k] = 1; out.push(v); } }); return out.sort(function (x, y) { return x.localeCompare(y); }); }
+  function appOptions(country) { return uniqSort((country ? (APPS[country] || []) : []).concat(usedWine('appellation', country || null))); }
+  function grapeOptions() { return uniqSort(GRAPES.concat(usedWine('grape'))); }
+  // a dropdown with the choices, the current value kept even if it isn't one of them, and "Another…" to type a new one
+  function pickField(label, val, options, onchange, quick, other) {
+    var w = document.createElement('label'); w.className = 'ed-field' + (quick ? ' ed-qa-f' : '');
+    var s = document.createElement('span'); s.textContent = label; w.appendChild(s);
+    var sel = document.createElement('select'); sel.disabled = !ed.canWrite; sel.className = 'ed-country';
+    var last = String(val || '').trim();
+    function fill(list) {
+      sel.innerHTML = '';
+      if (last && list.indexOf(last) < 0) list = list.concat([last]);
+      sel.appendChild(new Option('Choose…', ''));
+      list.forEach(function (c) { sel.appendChild(new Option(c, c)); });
+      sel.appendChild(new Option(other || 'Another…', '__other'));
+      sel.value = last;
+    }
+    fill(options());
+    sel.addEventListener('change', function () {
+      var v = sel.value;
+      if (v === '__other') {
+        var typed = String(prompt(label) || '').trim();
+        if (!typed) { sel.value = last; return; }
+        last = typed; fill(options()); v = typed;
+      }
+      last = v; onchange(v); if (!quick) markDirty();
+    });
+    w.refill = function () { fill(options()); };
+    w.appendChild(sel); return w;
+  }
   function countryField(val, onchange, quick) {
     var w = document.createElement('label'); w.className = 'ed-field' + (quick ? ' ed-qa-f' : '');
     var s = document.createElement('span'); s.textContent = 'Country'; w.appendChild(s);
@@ -827,9 +885,10 @@
           row.classList.add('ed-wine');
           var nm = field('Wine', it.name, function (v) { it.name = v; }); nm.classList.add('wide'); row.appendChild(nm);
           if (kind) invCombo(nm, it, t, g, row, kind);
-          row.appendChild(countryField(it.country, function (v) { it.country = v; }));
-          row.appendChild(field('Appellation', it.appellation, function (v) { it.appellation = v; }));
-          row.appendChild(field('Grape', it.grape, function (v) { it.grape = v; }));
+          var appF = pickField('Appellation', it.appellation, function () { return appOptions(normCountry(it.country)); }, function (v) { it.appellation = v; }, false, 'Another appellation…');
+          row.appendChild(countryField(it.country, function (v) { it.country = v; appF.refill(); }));
+          row.appendChild(appF);
+          row.appendChild(pickField('Grape', it.grape, grapeOptions, function (v) { it.grape = v; }, false, 'Another grape…'));
           row.appendChild(field('Bottle price', it.bottle, function (v) { it.bottle = v; it.price = v || (it.glass ? it.glass + ' glass' : ''); }));
           row.appendChild(field('Glass price', it.glass, function (v) { if (v) it.glass = v; else delete it.glass; if (!it.bottle) it.price = v ? v + ' glass' : ''; }));
           var wd = field('Tasting note', it.desc, function (v) { it.desc = v; }); wd.classList.add('desc'); row.appendChild(wd);
@@ -1162,8 +1221,10 @@
     var nameF = input(wine ? 'Wine' : (kind ? 'Drink' : 'Dish / drink'), 'name', 'ed-qa-name');
     row.appendChild(nameF); row.appendChild(sw);
     if (wine) {
-      row.appendChild(countryField('', function (v) { draft.country = v; }, true));
-      row.appendChild(input('Grape', 'grape'));
+      var qApp = pickField('Appellation', '', function () { return appOptions(normCountry(draft.country)); }, function (v) { draft.appellation = v; }, true, 'Another appellation…');
+      row.appendChild(countryField('', function (v) { draft.country = v; qApp.refill(); }, true));
+      row.appendChild(qApp);
+      row.appendChild(pickField('Grape', '', grapeOptions, function (v) { draft.grape = v; }, true, 'Another grape…'));
       row.appendChild(input('Bottle price', 'bottle', 'ed-qa-num'));
       row.appendChild(input('Glass price', 'glass', 'ed-qa-num'));
     } else {
