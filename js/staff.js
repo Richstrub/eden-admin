@@ -299,7 +299,10 @@
       if (!open && blocked(e.target)) return;
       var p = e.touches[0];
       g = { x: p.clientX, y: p.clientY, t: Date.now(), open: open, w: sb.offsetWidth, on: false, dx: 0 };
-    }, { passive: true });
+      // a swipe that starts at the very left edge would also trigger Safari's own "swipe back" (which slides in a
+      // snapshot of the previous page, menu and all, underneath this one). Claim it for the menu instead.
+      if (!open && p.clientX <= 24 && e.cancelable && !(e.target.closest && e.target.closest('a,button,input,select,textarea,label,[role="button"]'))) e.preventDefault();
+    }, { passive: false });
     document.addEventListener('touchmove', function (e) {
       if (!g) return;
       var p = e.touches[0], dx = p.clientX - g.x, dy = p.clientY - g.y;
