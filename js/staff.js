@@ -722,11 +722,51 @@
     return wrap;
   }
 
+  /* wine countries: a fixed list in the editor, and the same country typed different ways counts as one */
+  var COUNTRIES = ['United States', 'France', 'Italy', 'Spain', 'Portugal', 'Germany', 'Austria', 'Switzerland', 'Greece', 'Hungary', 'Slovenia', 'Croatia', 'Georgia', 'Lebanon', 'Israel', 'England', 'Canada', 'Mexico', 'Argentina', 'Chile', 'Uruguay', 'South Africa', 'Australia', 'New Zealand', 'Japan'];
+  function normCountry(c) {
+    var v = String(c || '').trim();
+    if (/^(u\.?s\.?a?\.?|united states( of america)?|america|american|new york|california|oregon|washington state)$/i.test(v)) return 'United States';
+    var hit = COUNTRIES.filter(function (x) { return x.toLowerCase() === v.toLowerCase(); })[0];
+    return hit || (v ? v.charAt(0).toUpperCase() + v.slice(1) : '');
+  }
+  // fix wines already on the list ("america", "America ") so they sort under United States; saved with the next publish
+  function tidyCountries(d) {
+    var changed = false;
+    (d.tabs || []).forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) {
+      if (it && typeof it.country === 'string') { var n = normCountry(it.country); if (n !== it.country) { it.country = n; changed = true; } }
+    }); }); });
+    return changed;
+  }
+  function countryField(val, onchange, quick) {
+    var w = document.createElement('label'); w.className = 'ed-field' + (quick ? ' ed-qa-f' : '');
+    var s = document.createElement('span'); s.textContent = 'Country'; w.appendChild(s);
+    var sel = document.createElement('select'); sel.disabled = !ed.canWrite; sel.className = 'ed-country';
+    var cur = normCountry(val), list = COUNTRIES.slice();
+    if (cur && list.indexOf(cur) < 0) list.push(cur);
+    sel.appendChild(new Option('Choose…', ''));
+    list.forEach(function (c) { sel.appendChild(new Option(c, c)); });
+    sel.appendChild(new Option('Another country…', '__other'));
+    sel.value = cur;
+    var last = cur;
+    sel.addEventListener('change', function () {
+      var v = sel.value;
+      if (v === '__other') {
+        var typed = normCountry(prompt('Country name') || '');
+        if (!typed) { sel.value = last; return; }
+        if (![].some.call(sel.options, function (o) { return o.value === typed; })) sel.insertBefore(new Option(typed, typed), sel.lastChild);
+        sel.value = v = typed;
+      }
+      last = v; onchange(v); if (!quick) markDirty();
+    });
+    w.appendChild(sel); return w;
+  }
   function edRender() {
     var side = $('edTabs'), main = $('edMain');
     side.innerHTML = ''; main.innerHTML = '';
     var d = ed.draft;
     if (!d) { importBanner(main); return; }
+    if (ed.canWrite && tidyCountries(d)) setTimeout(markDirty, 0);
     if (ed.tab !== 'supper' && ed.tab >= d.tabs.length) ed.tab = 0;
     d.tabs.forEach(function (t, i) { var b = document.createElement('button'); b.type = 'button'; b.textContent = t.label || 'Untitled'; b.setAttribute('aria-current', i === ed.tab); b.onclick = function () { ed.tab = i; edRender(); }; side.appendChild(b); });
     var sb2 = document.createElement('button'); sb2.type = 'button'; sb2.className = 'ed-side-sup'; sb2.textContent = 'Supper Club'; sb2.setAttribute('aria-current', ed.tab === 'supper'); sb2.onclick = function () { ed.tab = 'supper'; edRender(); }; side.appendChild(sb2);
@@ -787,7 +827,7 @@
           row.classList.add('ed-wine');
           var nm = field('Wine', it.name, function (v) { it.name = v; }); nm.classList.add('wide'); row.appendChild(nm);
           if (kind) invCombo(nm, it, t, g, row, kind);
-          row.appendChild(field('Country', it.country, function (v) { it.country = v; }));
+          row.appendChild(countryField(it.country, function (v) { it.country = v; }));
           row.appendChild(field('Appellation', it.appellation, function (v) { it.appellation = v; }));
           row.appendChild(field('Grape', it.grape, function (v) { it.grape = v; }));
           row.appendChild(field('Bottle price', it.bottle, function (v) { it.bottle = v; it.price = v || (it.glass ? it.glass + ' glass' : ''); }));
@@ -1122,7 +1162,7 @@
     var nameF = input(wine ? 'Wine' : (kind ? 'Drink' : 'Dish / drink'), 'name', 'ed-qa-name');
     row.appendChild(nameF); row.appendChild(sw);
     if (wine) {
-      row.appendChild(input('Country', 'country'));
+      row.appendChild(countryField('', function (v) { draft.country = v; }, true));
       row.appendChild(input('Grape', 'grape'));
       row.appendChild(input('Bottle price', 'bottle', 'ed-qa-num'));
       row.appendChild(input('Glass price', 'glass', 'ed-qa-num'));
