@@ -10,35 +10,47 @@
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   var D = document;
 
+  var tap = null, lastPlay = new WeakMap();
   function play(el, cls) {
     if (!el) return;
+    var t = Date.now(), prev = lastPlay.get(el);
+    if (prev && t - prev < 500) return;   // never stack two animations on the same page
+    lastPlay.set(el, t);
     el.classList.remove('mo-in', 'mo-push', 'mo-back');
     void el.offsetWidth;   // restart the animation
     el.classList.add(cls);
     var done = function () { el.classList.remove(cls); el.removeEventListener('animationend', end); };
     var end = function (e) { if (e.target === el) done(); };
     el.addEventListener('animationend', end);
-    setTimeout(done, 700);
+    setTimeout(done, 650);
   }
 
-  /* ---- 1. pages: a section that was hidden is shown ---- */
+  // only animate what the person asked for: a tap, a key or a back/forward within the last moment
+  var acted = 0;
+  ['pointerdown', 'keydown', 'popstate', 'hashchange'].forEach(function (ev) { window.addEventListener(ev, function () { acted = Date.now(); }, true); });
+  function recent() { return Date.now() - acted < 900; }
+
+  /* ---- 1. pages: one of the app's top-level pages is shown ---- */
+  function isPage(s) {   // a section with sibling sections, not inside another section (Schedule, Prep, Recipes…)
+    if (!s || s.tagName !== 'SECTION' || !s.parentElement || (s.parentElement.closest && s.parentElement.closest('section'))) return false;
+    return [].some.call(s.parentElement.children, function (c) { return c !== s && c.tagName === 'SECTION'; });
+  }
   var pageObs = new MutationObserver(function (ms) {
     ms.forEach(function (m) {
       var t = m.target;
-      if (m.oldValue !== null && !t.hidden && t.tagName === 'SECTION') play(t, 'mo-in');
+      if (m.oldValue !== null && !t.hidden && isPage(t) && recent()) { tap = null; play(t, 'mo-in'); }
     });
   });
-  function watchPages() { D.querySelectorAll('section').forEach(function (s) { if (!s._mo) { s._mo = 1; pageObs.observe(s, { attributes: true, attributeFilter: ['hidden'], attributeOldValue: true }); } }); }
+  function watchPages() { D.querySelectorAll('section').forEach(function (s) { if (!s._mo && isPage(s)) { s._mo = 1; pageObs.observe(s, { attributes: true, attributeFilter: ['hidden'], attributeOldValue: true }); } }); }
 
   /* ---- 2. drilling in and out: a tap inside a page that changes the page's heading ---- */
-  var tap = null;
   function heading(v) {
     var hs = v.querySelectorAll('h1,h2,.bs-bar b,.rc-title');
     for (var i = 0; i < hs.length; i++) if (hs[i].offsetParent !== null || hs[i].getClientRects().length) return hs[i].textContent.trim();
     return '';
   }
   D.addEventListener('click', function (e) {
-    var v = e.target.closest && e.target.closest('section');
+    var v = e.target.closest && e.target.closest('section'); while (v && !isPage(v) && v.parentElement) { var up = v.parentElement.closest('section'); if (!up) break; v = up; }
     var el = e.target.closest && e.target.closest('a,button,[role="button"],li,tr,[tabindex]');
     if (!v || !el || v.hidden) { tap = null; return; }
     var txt = String(el.getAttribute('aria-label') || el.textContent || '').trim();

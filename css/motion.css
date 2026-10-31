@@ -2,61 +2,62 @@
    Pages fade up when you switch tabs, opening something slides it in from the right (and Back slides it out),
    pop-ups rise like iOS sheets over a dimming backdrop, full-screen panels slide up from the bottom,
    and buttons give a little press. Run by js/motion.js; nothing moves for people who turn on Reduce Motion. */
-:root{--mo-ease:cubic-bezier(.32,.72,0,1);--mo-spring:cubic-bezier(.2,.9,.25,1.05)}
+:root{--mo-ease:cubic-bezier(.22,1,.36,1);--mo-spring:cubic-bezier(.22,1,.36,1)}   /* smooth ease-out, no bounce */
+.mo-in,.mo-push,.mo-back,.mo-ov-in>*,.mo-ov-out>*,.mo-ov-in.nt,.mo-ov-in.pp-preview,.mo-ov-in.em-compose-w,dialog[open]{will-change:transform,opacity;backface-visibility:hidden}
 
 /* switching pages (tabs / sidebar) */
-.mo-in{animation:moIn .32s var(--mo-ease) both}
-@keyframes moIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.mo-in{animation:moIn .3s ease-out both}
+@keyframes moIn{from{opacity:0;transform:translate3d(0,6px,0)}to{opacity:1;transform:none}}
 
 /* opening something inside a page (a recipe, a BEO, a report): push from the right; Back: from the left */
-.mo-push{animation:moPush .42s var(--mo-ease) both}
-.mo-back{animation:moBack .42s var(--mo-ease) both}
-@keyframes moPush{from{opacity:.0;transform:translateX(56px)}40%{opacity:1}to{opacity:1;transform:none}}
-@keyframes moBack{from{opacity:0;transform:translateX(-56px)}40%{opacity:1}to{opacity:1;transform:none}}
+.mo-push{animation:moPush .46s var(--mo-ease) both}
+.mo-back{animation:moBack .46s var(--mo-ease) both}
+@keyframes moPush{from{opacity:.35;transform:translate3d(32px,0,0)}to{opacity:1;transform:none}}
+@keyframes moBack{from{opacity:.35;transform:translate3d(-32px,0,0)}to{opacity:1;transform:none}}
 
 /* pop-ups: the backdrop dims in, the card rises (a sheet from the bottom on phones) */
-.mo-ov-in{animation:moFade .26s ease both}
-.mo-ov-in>.sc-card,.mo-ov-in>.acct-card,.mo-ov-in>*:first-child:not(.sc-card):not(script){animation:moPop .44s var(--mo-spring) both}
-dialog[open]{animation:moPop .44s var(--mo-spring) both}
-dialog[open]::backdrop{animation:moFade .26s ease both}
+.mo-ov-in{animation:moFade .3s ease-out both}
+.mo-ov-in>.sc-card,.mo-ov-in>.acct-card,.mo-ov-in>*:first-child:not(.sc-card):not(script){animation:moPop .42s var(--mo-ease) both}
+dialog[open]{animation:moPop .42s var(--mo-ease) both}
+dialog[open]::backdrop{animation:moFade .3s ease-out both}
 @keyframes moFade{from{opacity:0}to{opacity:1}}
-@keyframes moPop{from{opacity:0;transform:translateY(26px) scale(.965)}to{opacity:1;transform:none}}
+@keyframes moPop{from{opacity:0;transform:translate3d(0,14px,0) scale(.98)}to{opacity:1;transform:none}}
 @media (max-width:700px){
-  .mo-ov-in>.sc-card,.mo-ov-in>.acct-card,.mo-ov-in>*:first-child:not(.sc-card):not(script),dialog[open]{animation:moSheet .46s var(--mo-ease) both}
+  .mo-ov-in>.sc-card,.mo-ov-in>.acct-card,.mo-ov-in>*:first-child:not(.sc-card):not(script),dialog[open]{animation:moSheet .48s var(--mo-ease) both}
 }
-@keyframes moSheet{from{transform:translateY(70vh)}to{transform:none}}
+@keyframes moSheet{from{opacity:0;transform:translate3d(0,56px,0)}to{opacity:1;transform:none}}
 
 /* full-screen panels (Notes, print preview) and the email composer slide up from the bottom */
-.mo-ov-in.nt,.mo-ov-in.pp-preview,.mo-ov-in.em-compose-w{animation:moUp .46s var(--mo-ease) both}
+.mo-ov-in.nt,.mo-ov-in.pp-preview,.mo-ov-in.em-compose-w{animation:moUp .5s var(--mo-ease) both}
 .mo-ov-in.nt>*,.mo-ov-in.pp-preview>*,.mo-ov-in.em-compose-w>*{animation:none!important}
-@keyframes moUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes moUp{from{transform:translate3d(0,100%,0)}to{transform:none}}
 
 /* closing: the reverse, quicker */
-.mo-ov-out{animation:moFadeOut .2s ease both!important;pointer-events:none}
-.mo-ov-out>.sc-card,.mo-ov-out>.acct-card,.mo-ov-out>*:first-child:not(.sc-card):not(script){animation:moPopOut .2s ease-in both!important}
+.mo-ov-out{animation:moFadeOut .22s ease-in both!important;pointer-events:none}
+.mo-ov-out>.sc-card,.mo-ov-out>.acct-card,.mo-ov-out>*:first-child:not(.sc-card):not(script){animation:moPopOut .22s ease-in both!important}
 .mo-ov-out.nt,.mo-ov-out.pp-preview,.mo-ov-out.em-compose-w{animation:moDown .26s cubic-bezier(.4,0,1,1) both!important}
 .mo-ov-out.nt>*,.mo-ov-out.pp-preview>*,.mo-ov-out.em-compose-w>*{animation:none!important}
-dialog.mo-ov-out{animation:moPopOut .2s ease-in both!important}
+dialog.mo-ov-out{animation:moPopOut .22s ease-in both!important}
 @keyframes moFadeOut{to{opacity:0}}
-@keyframes moPopOut{to{opacity:0;transform:translateY(18px) scale(.97)}}
-@keyframes moDown{to{transform:translateY(100%)}}
+@keyframes moPopOut{to{opacity:0;transform:translate3d(0,10px,0) scale(.985)}}
+@keyframes moDown{to{transform:translate3d(0,100%,0)}}
 @media (max-width:700px){
-  .mo-ov-out>.sc-card,.mo-ov-out>.acct-card,.mo-ov-out>*:first-child:not(.sc-card):not(script),dialog.mo-ov-out{animation:moSheetOut .26s cubic-bezier(.4,0,1,1) both!important}
+  .mo-ov-out>.sc-card,.mo-ov-out>.acct-card,.mo-ov-out>*:first-child:not(.sc-card):not(script),dialog.mo-ov-out{animation:moSheetOut .24s ease-in both!important}
 }
-@keyframes moSheetOut{to{transform:translateY(70vh)}}
+@keyframes moSheetOut{to{opacity:0;transform:translate3d(0,48px,0)}}
 
 /* menus drop open from where you tapped */
-.tm-menu:not([hidden]),.acct-menu:not([hidden]){animation:moMenu .22s var(--mo-spring) both;transform-origin:top right}
-@keyframes moMenu{from{opacity:0;transform:scale(.92) translateY(-6px)}to{opacity:1;transform:none}}
+.tm-menu:not([hidden]),.acct-menu:not([hidden]){animation:moMenu .24s var(--mo-ease) both;transform-origin:top right}
+@keyframes moMenu{from{opacity:0;transform:scale(.96) translate3d(0,-4px,0)}to{opacity:1;transform:none}}
 
 /* a little press on anything you tap */
 button,.ed-btn,.tm-btn,.tm-tabs a,.sb-nav a,.has-more,[role="button"]{-webkit-tap-highlight-color:transparent}
-@media (hover:none){
-  button:not(:disabled),.ed-btn,.tm-btn,.tm-tabs a,[role="button"]{transition:transform .18s var(--mo-ease),opacity .18s}
-  button:not(:disabled):active,.ed-btn:active,.tm-btn:active,.tm-tabs a:active,[role="button"]:active{transform:scale(.96);opacity:.82}
+@media (hover:none){   /* buttons only (not whole rows), a gentle dip that eases back */
+  .ed-btn,.tm-btn,.tm-tabs a,.eo-btn,.sc-x{transition:transform .22s var(--mo-ease)}
+  .ed-btn:not(:disabled):active,.tm-btn:not(:disabled):active,.tm-tabs a:active,.eo-btn:not(:disabled):active,.sc-x:active{transform:scale(.97);transition-duration:.08s}
 }
 
 @media (prefers-reduced-motion:reduce){
   .mo-in,.mo-push,.mo-back,.mo-ov-in,.mo-ov-in>*,.mo-ov-out,.mo-ov-out>*,dialog[open],dialog[open]::backdrop,.tm-menu,.acct-menu{animation:none!important}
-  button:active,.ed-btn:active,.tm-btn:active,.tm-tabs a:active,[role="button"]:active{transform:none!important}
+  .ed-btn:active,.tm-btn:active,.tm-tabs a:active,.eo-btn:active,.sc-x:active{transform:none!important}
 }
