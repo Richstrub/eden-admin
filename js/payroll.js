@@ -49,7 +49,7 @@
   }
   function isMissing(e) { return e && (e.code === 'PGRST205' || e.code === '42P01' || /could not find the table|does not exist|schema cache/i.test(e.message || '')); }
   function isMissingCol(e) { return e && (e.code === 'PGRST204' || e.code === '42703' || /column .* (does not exist|of .* in the schema cache)|could not find the '.*' column/i.test(e.message || '')); }
-  function r2(n) { return Math.round((+n || 0) * 100) / 100; }
+  function r2(n) { var x = (+n || 0) * 100; return Math.round(x + (x >= 0 ? 1e-7 : -1e-7)) / 100; }   // half-cents round up (6.79 h × $17.50 = $118.83), despite floating-point
   function money(n) { n = r2(n); return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function hrs(n) { n = r2(n); return n ? String(n) : '0'; }
   function numIn(v) { var s = String(v == null ? '' : v).replace(/[$,\s]/g, ''); if (s === '') return null; var n = parseFloat(s); return isFinite(n) ? n : null; }
@@ -384,6 +384,11 @@
   // which kind of hours fall after the 40th hour of the week: day by day, and within a day in the order the
   // shifts were clocked in (kept from the Square import); hours typed in by hand count tip pool, then not in the
   // tip pool, then kitchen within the day
+  // each kind's pay including its own overtime (Tip Weighted Payroll's separate kitchen / outside-the-pool lines)
+  function kOT(L) { return L.otBy ? L.otBy.kit : 0; }
+  function nOT(L) { return L.otBy ? L.otBy.nt : 0; }
+  function kPayAll(L) { return L.regBy ? r2(L.regBy.kit + L.otPayBy.kit) : L.kitPay; }
+  function nPayAll(L) { return L.regBy ? r2(L.regBy.nt + L.otPayBy.nt) : L.ntPay; }
   function otSplit(r, days, ndays, kdays, ot) {
     var out = { main: 0, nt: 0, kit: 0 }; if (!(ot > 0)) return out;
     var seq = Array.isArray(r.seq) ? r.seq : [], run = 0;
@@ -423,10 +428,11 @@
         var straight = r2((main + nt) * rate + kit * krate);
         L.mainPay = r2(main * rate); L.kitPay = r2(kit * krate); L.ntPay = r2(nt * rate);
         L.otBy = otSplit(r, days, ndays, kdays, L.ot);
-        var otStraight = r2(L.otBy.main * rate + L.otBy.nt * rate + L.otBy.kit * krate);
-        var prem = r2(r2(L.otBy.main * rate * (OT_RATE - 1)) + r2(L.otBy.nt * rate * (OT_RATE - 1)) + r2(L.otBy.kit * krate * (OT_RATE - 1)));
-        straight = r2(L.mainPay + L.ntPay + L.kitPay);   // so the lines on the sheet add up to the cent
-        L.regPay = r2(straight - otStraight); L.otPay = r2(otStraight + prem);
+        // straight time (up to 40) and overtime (hours × rate × 1.5) for each kind of hours, rounded line by line
+        // so the Hours sheet adds up to the cent
+        L.regBy = { main: r2((main - L.otBy.main) * rate), nt: r2((nt - L.otBy.nt) * rate), kit: r2((kit - L.otBy.kit) * krate) };
+        L.otPayBy = { main: r2(L.otBy.main * rate * OT_RATE), nt: r2(L.otBy.nt * rate * OT_RATE), kit: r2(L.otBy.kit * krate * OT_RATE) };
+        L.regPay = r2(L.regBy.main + L.regBy.nt + L.regBy.kit); L.otPay = r2(L.otPayBy.main + L.otPayBy.nt + L.otPayBy.kit);
         L.sickPay = r2(L.sick * rate); L.holPay = r2(L.hol * rate);
         if (info.rate == null && main && !info.commission) L.warn = 'No hourly rate set';
         if (kit && info.kitchen_rate == null) L.warn = 'No kitchen rate set';
@@ -1132,15 +1138,13 @@
       if (i.pay_type === 'salary') add('Salary', 'weekly', L.salary);
       else {
         var blended = L.total ? (L.regPay + L.otPay / OT_RATE) / L.total : 0;
-        if (L.main) add(i.tip_eligible ? 'Hours in the tip pool' : 'Hours', x2(L.main, rate), r2(L.main * rate));
-        if (L.nt) add('Hours outside the tip pool', x2(L.nt, rate), L.ntPay);
-        if (L.kit) add('Kitchen hours', x2(L.kit, i.kitchen_rate == null ? rate : i.kitchen_rate), L.kitPay);
-        if (L.ot && (L.kit || L.nt) && L.otBy) {   // overtime on the job worked after the 40th hour
-          var kr = i.kitchen_rate == null ? rate : +i.kitchen_rate;
-          [['main', i.tip_eligible ? 'tip pool' : 'regular', rate], ['nt', 'not in the tip pool', rate], ['kit', 'kitchen', kr]].forEach(function (o) {
-            if (L.otBy[o[0]]) add('Overtime premium, ' + o[1], hrs(L.otBy[o[0]]) + ' h over 40 × ½ × ' + money(o[2]), r2(L.otBy[o[0]] * o[2] * (OT_RATE - 1)));
-          });
-        } else if (L.ot) add('Overtime premium', hrs(L.ot) + ' h over 40 × ½ × ' + money(blended), r2(L.wages - (L.mainPay + L.ntPay + L.kitPay)));
+        var kr = i.kitchen_rate == null ? rate : +i.kitchen_rate, ob = L.otBy || { main: 0, nt: 0, kit: 0 }, rb = L.regBy || {}, opb = L.otPayBy || {};
+        if (L.main - ob.main > 0) add(i.tip_eligible ? 'Hours in the tip pool' : 'Hours', x2(L.main - ob.main, rate), rb.main);
+        if (L.nt - ob.nt > 0) add('Hours outside the tip pool', x2(L.nt - ob.nt, rate), rb.nt);
+        if (L.kit - ob.kit > 0) add('Kitchen hours', x2(L.kit - ob.kit, kr), rb.kit);
+        if (ob.main) add('Overtime' + (L.kit || L.nt ? (i.tip_eligible ? ', tip pool' : '') : ''), hrs(ob.main) + ' h over 40 × ' + money(r2(rate * OT_RATE)) + ' (' + money(rate) + ' × 1.5)', opb.main);
+        if (ob.nt) add('Overtime, outside the tip pool', hrs(ob.nt) + ' h over 40 × ' + money(r2(rate * OT_RATE)) + ' (' + money(rate) + ' × 1.5)', opb.nt);
+        if (ob.kit) add('Overtime, kitchen', hrs(ob.kit) + ' h over 40 × ' + money(r2(kr * OT_RATE)) + ' (' + money(kr) + ' × 1.5)', opb.kit);
         if (L.sick) add('Sick', x2(L.sick, rate), L.sickPay);
         if (L.hol) add('Holiday', x2(L.hol, rate), L.holPay);
       }
@@ -1592,21 +1596,20 @@
       var rate = +L.info.rate || 0, krate = L.info.kitchen_rate == null ? rate : +L.info.kitchen_rate, sub = function (label, h, rt) {
         aoa.push(['', '   ' + label, '', '', '', '', '', '', '', '', h, rt, r2(h * rt)]); money2.push(aoa.length);
       };
-      if (L.main) sub(L.info.tip_eligible ? 'Hours in the tip pool' : 'Regular hours', L.main, rate);
-      if (L.nt) sub('Hours not in the tip pool', L.nt, rate);
-      if (L.kit) sub('Kitchen hours', L.kit, krate);
-      if (L.ot && L.otBy) {   // overtime goes with the job worked after the 40th hour: the extra half on that job's rate
-        [['main', L.info.tip_eligible ? 'tip pool' : 'regular', rate], ['nt', 'not in the tip pool', rate], ['kit', 'kitchen', krate]].forEach(function (o) {
-          var oh = L.otBy[o[0]]; if (!oh) return;
-          aoa.push(['', '   Overtime premium, ' + o[1] + ' hours: ' + hrs(oh) + ' h over 40 at ' + money(o[2] * OT_RATE) + '/hr in all (' + money(o[2]) + ' + ' + money(o[2] * (OT_RATE - 1)) + ')', '', '', '', '', '', '', '', '', oh, r2(o[2] * (OT_RATE - 1)), r2(oh * o[2] * (OT_RATE - 1))]);
-          money2.push(aoa.length);
-        });
-      }
+      var ob = L.otBy || { main: 0, nt: 0, kit: 0 }, rb = L.regBy || {}, opb = L.otPayBy || {};
+      var line = function (label, h, rt, pay) { aoa.push(['', '   ' + label, '', '', '', '', '', '', '', '', r2(h), rt, pay]); money2.push(aoa.length); };
+      // straight time first (hours up to 40), then overtime for each kind: hours × (rate × 1.5)
+      if (L.main - ob.main > 0) line(L.info.tip_eligible ? 'Hours in the tip pool' : 'Regular hours', L.main - ob.main, rate, rb.main);
+      if (L.nt - ob.nt > 0) line('Hours not in the tip pool', L.nt - ob.nt, rate, rb.nt);
+      if (L.kit - ob.kit > 0) line('Kitchen hours', L.kit - ob.kit, krate, rb.kit);
+      if (ob.main) line('Overtime, ' + (L.info.tip_eligible ? 'tip pool' : 'regular') + ' hours (' + money(rate) + ' × 1.5)', ob.main, r2(rate * OT_RATE), opb.main);
+      if (ob.nt) line('Overtime, hours not in the tip pool (' + money(rate) + ' × 1.5)', ob.nt, r2(rate * OT_RATE), opb.nt);
+      if (ob.kit) line('Overtime, kitchen hours (' + money(krate) + ' × 1.5)', ob.kit, r2(krate * OT_RATE), opb.kit);
       aoa.push(['', '   ' + x[1] + ' total: ' + hrs(L.total) + ' h', '', '', '', '', '', '', '', '', L.total, '', r2(L.regPay + L.otPay)]); money2.push(aoa.length);
     });
     var first = 3, last = aoa.length;
     aoa.push([], [], []);
-    var kn = split.length ? [split.join(', ') + ': the indented lines break the hours down by kind (Hours, Rate and Pay columns). Overtime is paid at 1.5× the rate of the job worked after the 40th hour of the week; its lines show the extra half on top of the straight time above.'] : [];
+    var kn = split.length ? [split.join(', ') + ': the indented lines break the hours down by kind (Hours, Rate and Pay columns). Kind-of-hours lines are straight time up to 40 hours; the Overtime lines are the hours after the 40th, paid at 1.5× the rate of the job being worked.'] : [];
     var tot = ['', ''].concat(['C', 'D', 'E', 'F', 'G', 'H', 'I'].map(function (col) { return { t: 'n', v: 0, f: 'SUM(' + col + first + ':' + col + Math.max(last, first) + ')' }; }));
     aoa.push(tot);
     if (kn.length || P.row.notes) { aoa.push([]); kn.forEach(function (t) { aoa.push(['', t]); }); if (P.row.notes) aoa.push(['', 'Notes: ' + P.row.notes]); }
@@ -1635,18 +1638,18 @@
     put(['Kitchen', ''].concat(dayHead, cols));
     kitchen.forEach(function (L) {
       var i = L.info, rate = i.pay_type === 'salary' ? i.weekly_salary : i.rate;
-      put([sheetName(L), rate == null ? '' : rate].concat(L.days.map(function (x) { return x || ''; }), [r2(L.reg - L.kit) || (i.pay_type === 'salary' ? '' : 0), L.ot, '', '', r2(L.wages - L.kitPay), r2(L.total - L.kit)]), [1, 11, 12, 13]);
-      if (L.kit) put([sheetName(L) + ' (kitchen)', i.kitchen_rate == null ? '' : i.kitchen_rate].concat(L.kdays.map(function (x) { return x || ''; }), [L.kit, '', '', '', L.kitPay, L.kit]), [1, 11, 12, 13]);
+      put([sheetName(L), rate == null ? '' : rate].concat(L.days.map(function (x) { return x || ''; }), [r2(L.reg - (L.kit - kOT(L))) || (i.pay_type === 'salary' ? '' : 0), r2(L.ot - kOT(L)) || '', '', '', r2(L.wages - kPayAll(L)), r2(L.total - L.kit)]), [1, 11, 12, 13]);
+      if (L.kit) put([sheetName(L) + ' (kitchen)', i.kitchen_rate == null ? '' : i.kitchen_rate].concat(L.kdays.map(function (x) { return x || ''; }), [r2(L.kit - kOT(L)), kOT(L) || '', '', '', kPayAll(L), L.kit]), [1, 11, 12, 13]);
     });
     wait.forEach(function (L) {   // tip-pool staff's hours outside the tip pool, and their kitchen hours
       var i = L.info;
-      if (L.nt) put([sheetName(L) + ' (not in tip pool)', i.rate == null ? '' : i.rate].concat(L.ndays.map(function (x) { return x || ''; }), [L.nt, '', '', '', L.ntPay, L.nt]), [1, 11, 12, 13]);
-      if (L.kit) put([sheetName(L) + ' (kitchen)', i.kitchen_rate == null ? '' : i.kitchen_rate].concat(L.kdays.map(function (x) { return x || ''; }), [L.kit, '', '', '', L.kitPay, L.kit]), [1, 11, 12, 13]);
+      if (L.nt) put([sheetName(L) + ' (not in tip pool)', i.rate == null ? '' : i.rate].concat(L.ndays.map(function (x) { return x || ''; }), [r2(L.nt - nOT(L)), nOT(L) || '', '', '', nPayAll(L), L.nt]), [1, 11, 12, 13]);
+      if (L.kit) put([sheetName(L) + ' (kitchen)', i.kitchen_rate == null ? '' : i.kitchen_rate].concat(L.kdays.map(function (x) { return x || ''; }), [r2(L.kit - kOT(L)), kOT(L) || '', '', '', kPayAll(L), L.kit]), [1, 11, 12, 13]);
     });
     put(['Waitstaff', ''].concat(dayHead, cols));
     wait.forEach(function (L) {
       var i = L.info;
-      put([sheetName(L), i.rate == null ? '' : i.rate].concat(L.days.map(function (x) { return x || ''; }), [r2(L.main - L.ot), L.ot, L.tips, L.comm || '', r2(L.wages - L.kitPay - L.ntPay), L.main]), [1, 11, 12, 13]);
+      put([sheetName(L), i.rate == null ? '' : i.rate].concat(L.days.map(function (x) { return x || ''; }), [r2(L.main - (L.otBy ? L.otBy.main : L.ot)), (L.otBy ? L.otBy.main : L.ot) || '', L.tips, L.comm || '', r2(L.wages - kPayAll(L) - nPayAll(L)), L.main]), [1, 11, 12, 13]);
     });
     aoa.push([]);
     put(['Tips Collected', ''].concat(dayHead, ['Total']));
