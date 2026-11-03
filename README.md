@@ -106,6 +106,18 @@ Setup (each step works on its own; anything not set up is skipped):
 
 The Catering & BEOs page shows a status line saying which of these are working. When edencny.com points to the new website, change `SITE_URL` in `wrangler.jsonc` and `guestSite` in `js/config.js` to `https://edencny.com/`.
 
+## Inventory: Scan invoice
+
+Inventory → **Scan invoice**: take a photo of a vendor invoice (several photos for a long one), or choose a PDF, or a CSV/Excel
+invoice downloaded from the vendor. Each line comes back next to the inventory item it matches, with the units conversion
+(invoice price ÷ counting units in one invoice unit), the new cost, the old cost and the change. Tick the lines that are right
+and press Update prices. Ticked lines are remembered by vendor + item code (or description), so the next invoice matches by
+itself. Each item's edit window shows its price history.
+
+Setup: run `supabase/invoices.sql` (after `inventory.sql`). Photos and PDFs are read by Claude (`invoice-worker.js`): create an
+API key at console.anthropic.com and add it as secret `ANTHROPIC_API_KEY` (Workers → eden-admin → Settings → Variables and
+Secrets). A few cents an invoice. CSV and Excel invoices are read on the page and need neither.
+
 ## End of day reports
 
 Office > End of day report: the closing manager's report (service, sales, guests, food and beverage, team, operations,

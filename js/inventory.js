@@ -146,6 +146,7 @@
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Inventory' }), h('h1', { cls: 'sc-week', text: cat.label })]),
       h('div', { cls: 'iv-tools' }, [
         h('label', { cls: 'sc-f iv-date' }, [h('span', { text: 'Count date' }), date]),
+        window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } }),
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
@@ -399,6 +400,11 @@
     return rows;
   }
 
+  function scanInvoice() {
+    flush();
+    window.EdenInvoiceScan.open({ items: I.items, saveItems: saveItems, sb: sb(), status: status, done: render, modal: modal, h: h, cat: I.cat, uid: uid });
+  }
+
   /* ---------- dialogs ---------- */
   function modal(title, bodyKids, footKids, wide) {
     var back = h('div', { cls: 'sc-modal' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true' });
@@ -447,6 +453,12 @@
       msg
     ], foot);
     m.el.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); save(); } });
+    if (!isNew) sb().from('inventory_prices').select('price_date,vendor,invoice_line,invoice_price,invoice_unit,per_unit,unit_cost').eq('item_id', it.id).order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(6).then(function (r) {
+      if (r.error || !r.data || !r.data.length) return;
+      msg.parentNode.insertBefore(h('div', { cls: 'iv-hist' }, [h('b', { text: 'Price history from invoices' }), h('ul', null, r.data.map(function (p) {
+        return h('li', null, [h('span', { text: dayLabel(p.price_date) + ' · ' + (p.vendor || '') }), h('span', { text: money(p.unit_cost) + (it.unit ? ' / ' + it.unit : '') + (p.per_unit && +p.per_unit !== 1 ? ' (' + money(p.invoice_price) + ' / ' + (p.invoice_unit || 'unit') + ' ÷ ' + (+p.per_unit) + ')' : '') })]);
+      }))]), msg);
+    });
     setTimeout(function () { f.name.focus(); }, 30);
     function save() {
       var name = f.name.value.trim();
@@ -518,6 +530,6 @@
       if (!I.loaded && !I.loading) { render(); load().then(render); } else render();
     },
     refresh: function () { if (I.el && !I.el.hidden) render(); },
-    _test: { I: I, catItems: catItems }
+    _test: { I: I, catItems: catItems, scanInvoice: function () { scanInvoice(); } }
   };
 })();
