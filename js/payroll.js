@@ -1524,28 +1524,40 @@
       if (!(L.total || L.tips || L.comm || L.salary || L.sick || L.hol)) return;
       var pc = payco(L.id); rows.push([pc.id || '', pc.name || L.info.name, L]); if (!pc.id) warn.push(L.info.name);
     });
-    var aoa = [['Employee ID', 'Employee Name', 'REGULAR', 'OVERTIME', 'SICK', 'HOLIDAY', 'TIPS CC', 'TIPS PAID', 'Comission'], []];
+    var aoa = [['Employee ID', 'Employee Name', 'REGULAR', 'OVERTIME', 'SICK', 'HOLIDAY', 'TIPS CC', 'TIPS PAID', 'Comission', '', 'Hours', 'Rate', 'Pay'], []];
+    var money2 = [], split = [];
     rows.forEach(function (x) {
       var L = x[2], reg = L.info.pay_type === 'salary' ? (L.reg || OT_AFTER) : L.reg;
       aoa.push([x[0], x[1], reg || '', L.ot || '', L.sick || '', L.hol || '', L.tipsCard || '', L.tipsCash || '', L.comm || '']);
+      // someone paid more than one way (Tyler): a line for each kind of hours under their row, with its rate and pay.
+      // These lines leave REGULAR / OVERTIME empty, so the totals still add up once.
+      if (!(L.kit || L.nt) || L.info.pay_type === 'salary') return;
+      split.push(x[1]);
+      var rate = +L.info.rate || 0, krate = L.info.kitchen_rate == null ? rate : +L.info.kitchen_rate, sub = function (label, h, rt) {
+        aoa.push(['', '   ' + label, '', '', '', '', '', '', '', '', h, rt, r2(h * rt)]); money2.push(aoa.length);
+      };
+      if (L.main) sub(L.info.tip_eligible ? 'Hours in the tip pool' : 'Regular hours', L.main, rate);
+      if (L.nt) sub('Hours not in the tip pool', L.nt, rate);
+      if (L.kit) sub('Kitchen hours', L.kit, krate);
+      var straight = r2(L.main * rate + L.nt * rate + L.kit * krate), blended = L.total ? r2(straight / L.total) : 0;
+      if (L.ot) {
+        aoa.push(['', '   Overtime premium: the extra half for the ' + hrs(L.ot) + ' h over 40, on the week’s blended rate of ' + money(blended) + '/hr (' + money(straight) + ' ÷ ' + hrs(L.total) + ' h)', '', '', '', '', '', '', '', '', L.ot, r2(blended * 0.5), L.otPay ? r2(L.otPay - L.ot * blended) : r2(L.ot * blended * 0.5)]);
+        money2.push(aoa.length);
+      }
+      aoa.push(['', '   ' + x[1] + ' total: ' + hrs(L.total) + ' h', '', '', '', '', '', '', '', '', L.total, '', r2(L.regPay + L.otPay)]); money2.push(aoa.length);
     });
-    var first = 3, last = 2 + rows.length;
+    var first = 3, last = aoa.length;
     aoa.push([], [], []);
-    var kn = rows.filter(function (x) { return x[2].kit || x[2].nt; }).map(function (x) {
-      var L = x[2], bits = [];
-      if (L.main) bits.push(hrs(L.main) + ' h ' + (L.info.tip_eligible ? 'in the tip pool ' : '') + 'at ' + money(L.info.rate) + '/hr');
-      if (L.nt) bits.push(hrs(L.nt) + ' h not in the tip pool at ' + money(L.info.rate) + '/hr');
-      if (L.kit) bits.push(hrs(L.kit) + ' h kitchen at ' + money(L.info.kitchen_rate) + '/hr');
-      return x[1] + ': ' + hrs(L.total) + ' hours = ' + bits.join(' + ') + '.';
-    });
+    var kn = split.length ? [split.join(', ') + ': the indented lines break the hours down by kind (Hours, Rate and Pay columns). Overtime is the extra half on top of straight time, at the week’s blended rate.'] : [];
     var tot = ['', ''].concat(['C', 'D', 'E', 'F', 'G', 'H', 'I'].map(function (col) { return { t: 'n', v: 0, f: 'SUM(' + col + first + ':' + col + Math.max(last, first) + ')' }; }));
     aoa.push(tot);
     if (kn.length || P.row.notes) { aoa.push([]); kn.forEach(function (t) { aoa.push(['', t]); }); if (P.row.notes) aoa.push(['', 'Notes: ' + P.row.notes]); }
     loadXLSX().then(function () {
       var X = window.XLSX, wb = X.utils.book_new(), ws = X.utils.aoa_to_sheet(aoa), cells = [];
       for (var r = first; r <= last + 4; r++) ['G', 'H', 'I'].forEach(function (col) { cells.push(col + r); });
+      money2.forEach(function (r) { cells.push('L' + r, 'M' + r); });
       fmtCells(ws, X, cells, '$#,##0.00');
-      ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 11 }, { wch: 8 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }];
+      ws['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 11 }, { wch: 8 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 2 }, { wch: 8 }, { wch: 9 }, { wch: 11 }];
       var range = weekLabel(P.week);   // e.g. Oct 11 – 17, 2026: the sheet's tab and the file's name
       X.utils.book_append_sheet(wb, ws, range.replace(/[\\\/?*\[\]:]/g, '-').slice(0, 31));
       done(wb, 'Eden Hospitality Hours ' + range.replace(/\s*–\s*/g, '-') + '.xlsx');   // plain hyphen: some browsers drop names with a dash
