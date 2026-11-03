@@ -171,6 +171,8 @@
     if (v.indexOf('promo/') === 0) { sub = v.slice(6); v = 'promo'; if (!/^(list|e\/[0-9a-f-]{36})$/.test(sub)) sub = ''; }
     var calFocus = null;   // #calendar/e/<date>/<event id>: open the calendar on that day with the event showing (from Today)
     if (v.indexOf('calendar/e/') === 0) { var cm = /^calendar\/e\/(\d{4}-\d{2}-\d{2})\/(.*)$/.exec(v); if (cm) calFocus = { date: cm[1], id: decodeURIComponent(cm[2]) }; v = 'calendar'; }
+    var invArg = '';
+    if (v.indexOf('inventory/') === 0) { invArg = v.slice(10); v = 'inventory'; }   // back from connecting the scanner's Google Drive folder
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
     if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (v === 'reviews' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
@@ -229,7 +231,7 @@
     } else if (v === 'inventory') {
       status('');
       if (!store.loaded) loadAll().catch(function () {}); // menu, for "add from the menu" 
-      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName,
+      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName, arg: invArg,
         getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'prep') {
       status('');

@@ -3004,3 +3004,11 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
   .is-use{grid-row:span 4}.is-line,.is-it,.is-old{grid-column:2/-1}.is-old span{display:inline;margin-right:8px}
   .is-item{max-width:none}
 }
+.is-bar{margin:16px 0 18px;padding:12px 14px;border:1px solid rgba(0,0,0,.08);border-radius:14px;background:var(--card,#fff)}
+.is-bar-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.is-bar-h b{display:block}.is-bar-h span,.is-inbox span{display:block;color:var(--muted,#7f7a71);font-size:.84rem;margin-top:2px}
+.is-bar-t{display:flex;gap:8px;flex-wrap:wrap}
+.is-inbox{list-style:none;margin:10px 0 0;padding:0}
+.is-inbox li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid rgba(0,0,0,.06);flex-wrap:wrap}
+.is-inbox li.is-bad span{color:#a3392b}
+@media print{.is-bar{display:none!important}}

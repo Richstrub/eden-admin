@@ -201,7 +201,8 @@
     sel.addEventListener('change', function () { onChange(sel.value); });
     return sel;
   }
-  function review(inv, links) {
+  function review(inv, links, opts) {
+    opts = opts || {}; var savedId = null;
     inv.lines = (inv.lines || []).filter(function (l) { return l.unit_price != null; });
     match(inv, links);
     var f = {
@@ -294,7 +295,7 @@
         return A.sb.from('inventory_invoices').insert({ vendor: vendor, invoice_no: f.no.value.trim(), invoice_date: date, total: inv.total == null ? null : inv.total, lines: inv.lines.map(clean), source: inv.source || '', created_by: who }).select('id').single();
       }).then(function (r) {
         if (r.error) throw r.error;
-        var invId = r.data.id;
+        var invId = savedId = r.data.id;
         return A.saveItems(adds.concat(upd)).then(function () {
           use.forEach(function (L) { hist.push({ item_id: L.item, invoice_id: invId, price_date: date || undefined, vendor: vendor, invoice_line: L.description, invoice_price: L.unit_price, invoice_unit: L.unit || '', per_unit: L.per, unit_cost: L.newCost, old_cost: L.old }); });
           return Promise.all([
@@ -308,6 +309,7 @@
         var warn = res.some(function (x) { return x && x.error; });
         m.close();
         A.status('Updated ' + use.length + ' price' + (use.length === 1 ? '' : 's') + ' from ' + vendor + (f.no.value.trim() ? ' invoice ' + f.no.value.trim() : '') + '.' + (warn ? ' (Price history or matching memory didn’t save.)' : ''), warn ? 'err' : 'ok');
+        if (opts.after) opts.after(savedId);
         A.done();
       }).catch(function (e) {
         applyBtn.disabled = false; msg.className = 'sc-msg err';
@@ -317,5 +319,124 @@
   }
   function lbl(text, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: text }), input]); }
 
-  window.EdenInvoiceScan = { open: open, _test: { match: match, guessPer: guessPer, canon: canon, score: score, readSheet: readSheet, review: function (api, inv, links) { A = api; review(inv, links); } } };
+
+  /* ---------- the scanner's Google Drive folder: scans waiting to be checked ---------- */
+  var D = { st: null, inbox: [], at: 0, missing: false, busy: false };
+  function post(path, body) {
+    return A.sb.auth.getSession().then(function (x) {
+      var jwt = x && x.data && x.data.session && x.data.session.access_token || '';
+      return fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt }, body: JSON.stringify(body || {}) });
+    }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._ok = r.ok; return j; }); }, function () { return { _ok: false, message: 'Couldn’t reach the staff site. Check your connection.' }; });
+  }
+  function ago(t) {
+    if (!t) return 'not yet';
+    var m = Math.round((Date.now() - new Date(t).getTime()) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function loadBar() {
+    return Promise.all([
+      A.sb.rpc('inv_drive_status'),
+      A.sb.from('inventory_inbox').select('id,file_name,file_created,status,invoice,error,created_at').in('status', ['waiting', 'error']).order('created_at', { ascending: false }).limit(40)
+    ]).then(function (res) {
+      D.at = Date.now();
+      if (res[0].error) { D.missing = true; D.st = null; return; }
+      D.missing = false; D.st = res[0].data || null; D.inbox = res[1].error ? [] : res[1].data || [];
+    }, function () { D.at = Date.now(); });
+  }
+  function bar(api) {
+    A = api;
+    var el = h('div', { cls: 'is-bar', hidden: true });
+    var paint = function () { paintBar(el, paint); };
+    if (D.at) paint();
+    if (Date.now() - D.at > 60000) loadBar().then(paint);
+    return el;
+  }
+  function paintBar(el, again) {
+    var st = D.st; el.innerHTML = '';
+    if (D.missing || !st || st.error) { el.hidden = true; return; }
+    if (!st.address) {
+      if (!st.can_change) { el.hidden = true; return; }
+      el.hidden = false;
+      el.appendChild(h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: 'Scanner' }), h('span', { text: 'Scans saved into a Google Drive folder show up here, read and ready to check.' })]),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Connect Google Drive', on: { click: connect } })]));
+      return;
+    }
+    el.hidden = false;
+    var waiting = D.inbox.filter(function (x) { return x.status === 'waiting'; }), bad = D.inbox.filter(function (x) { return x.status === 'error'; });
+    var line = st.status === 'reconnect' ? 'Google Drive needs to be connected again.' : !st.folder ? 'No folder picked yet.' :
+      'Folder “' + st.folder + '” · checked ' + ago(st.last_check) + (st.last_error ? ' · ' + st.last_error : '');
+    var check = h('button', { type: 'button', cls: 'ed-btn small', text: D.busy ? 'Checking…' : 'Check now', disabled: D.busy || !st.folder, on: { click: function () {
+      D.busy = true; again();
+      post('drive/check').then(function (j) {
+        D.busy = false;
+        if (!j._ok) A.status(j.message || 'Couldn’t check the folder.', 'err');
+        else A.status(j.added || j.failed ? (j.added ? j.added + ' new invoice' + (j.added === 1 ? '' : 's') + ' ready to check.' : '') + (j.failed ? ' ' + j.failed + ' couldn’t be read.' : '') + (j.more ? ' ' + j.more + ' more on the next check.' : '') : 'No new scans.', 'ok');
+        return loadBar();
+      }).then(again);
+    } } });
+    var tools = [check];
+    if (st.can_change) {
+      if (st.status === 'reconnect') tools.unshift(h('button', { type: 'button', cls: 'ed-btn small', text: 'Reconnect', on: { click: connect } }));
+      tools.push(h('button', { type: 'button', cls: 'ed-btn small', text: st.folder ? 'Change folder' : 'Find folder', on: { click: folderDialog } }));
+    }
+    el.appendChild(h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: waiting.length ? waiting.length + ' scanned invoice' + (waiting.length === 1 ? '' : 's') + ' waiting' : 'Scanner' }), h('span', { text: line })]), h('div', { cls: 'is-bar-t' }, tools)]));
+    if (!waiting.length && !bad.length) return;
+    el.appendChild(h('ul', { cls: 'is-inbox' }, waiting.concat(bad).map(function (x) {
+      var inv = x.invoice || {}, n = (inv.lines || []).length;
+      var dismiss = h('button', { type: 'button', cls: 'ed-btn small', text: 'Dismiss', title: 'Remove from this list (the file stays in Google Drive)', on: { click: function () {
+        A.sb.from('inventory_inbox').update({ status: 'dismissed', done_at: new Date().toISOString() }).eq('id', x.id).then(function () { D.inbox = D.inbox.filter(function (y) { return y.id !== x.id; }); again(); });
+      } } });
+      return h('li', { cls: x.status === 'error' ? 'is-bad' : '' }, [
+        h('div', null, [h('b', { text: x.status === 'error' ? x.file_name : (inv.vendor || 'Unknown vendor') + (inv.invoice_no ? ' · #' + inv.invoice_no : '') }),
+          h('span', { text: x.status === 'error' ? 'Couldn’t read it: ' + (x.error || 'unknown problem') : [inv.date, n + ' line' + (n === 1 ? '' : 's'), inv.total != null ? money(inv.total) : '', x.file_name].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'is-bar-t' }, [x.status === 'waiting' ? h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Check lines', on: { click: function () { openWaiting(x, again); } } }) : null, dismiss])
+      ]);
+    })));
+  }
+  function openWaiting(x, again) {
+    loadLinks().then(function (links) {
+      var inv = JSON.parse(JSON.stringify(x.invoice || {}));
+      review(inv, links, { after: function (invId) {
+        A.sb.from('inventory_inbox').update({ status: 'done', invoice_id: invId, done_at: new Date().toISOString() }).eq('id', x.id).then(function () {});
+        D.inbox = D.inbox.filter(function (y) { return y.id !== x.id; }); again();
+      } });
+    }, function (e) { A.status(e.message, 'err'); });
+  }
+  function connect() {
+    A.status('Opening Google…', 'dirty');
+    post('drive/start').then(function (j) { if (j._ok && j.url) location.href = j.url; else A.status(j.message || 'Couldn’t start the Google sign-in.', 'err'); });
+  }
+  function folderDialog() {
+    var name = h('input', { type: 'text', value: (D.st && D.st.folder) || 'Eden Invoices' }), msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var m = A.modal('Scanner folder', [
+      h('p', { cls: 'sc-sub', text: 'The Google Drive folder your scanner saves into (connected as ' + D.st.address + '). Only new scans from the last 30 days are read; nothing in the folder is changed.' }),
+      lbl('Folder name in Google Drive', name), msg
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Disconnect', on: { click: function () {
+      if (!confirm('Disconnect Google Drive? Scans waiting here stay; new scans won’t come in until you connect again.')) return;
+      post('drive/remove').then(function () { m.close(); return loadBar(); }).then(function () { A.done(); });
+    } } }), h('button', { type: 'button', cls: 'ed-btn', text: 'Find folder', on: { click: function () {
+      msg.className = 'sc-msg is-info'; msg.textContent = 'Looking…';
+      post('drive/folder', { name: name.value.trim() }).then(function (j) {
+        if (!j._ok) { msg.className = 'sc-msg'; msg.textContent = j.message || 'Couldn’t look in Google Drive.'; return; }
+        if (!j.folder) { msg.className = 'sc-msg'; msg.textContent = j.message; return; }
+        m.close(); A.status('Scanner folder: ' + j.folder + '. New scans are checked every 5 minutes.', 'ok'); loadBar().then(function () { A.done(); });
+      });
+    } } })]);
+  }
+  // back from Google's sign-in: #inventory/drive?k=… or ?err=…
+  function handleArg(api, arg) {
+    A = api;
+    var q = new URLSearchParams(String(arg || '').replace(/^drive\??/, ''));
+    var err = q.get('err');
+    if (err) { A.status({ denied: 'Google Drive wasn’t connected (permission not given).', scope: 'Tick “See and download all your Google Drive files” when Google asks, then connect again.', norefresh: 'Google didn’t give a lasting permission. Connect again.', driveapi: 'Turn on the Google Drive API in Google Cloud (APIs & Services → Library → Google Drive API → Enable), then connect again.', expired: 'That sign-in took too long. Connect again.' }[err] || 'Google sign-in didn’t work. Try again.', 'err'); return; }
+    var k = q.get('k'); if (!k) return;
+    A.status('Connecting Google Drive…', 'dirty');
+    post('drive/finish', { k: k }).then(function (j) {
+      if (!j._ok) { A.status(j.message || 'Couldn’t connect Google Drive.', 'err'); return; }
+      A.status(j.folder ? 'Connected ' + j.address + '. Scanner folder: ' + j.folder + '. New scans are checked every 5 minutes.' : j.message, j.folder ? 'ok' : 'err');
+      return loadBar().then(function () { A.done(); if (!j.folder) folderDialog(); });
+    });
+  }
+
+  window.EdenInvoiceScan = { open: open, bar: bar, handleArg: handleArg, _test: { match: match, guessPer: guessPer, canon: canon, score: score, readSheet: readSheet, review: function (api, inv, links) { A = api; review(inv, links); } } };
 })();

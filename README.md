@@ -114,6 +114,11 @@ invoice downloaded from the vendor. Each line comes back next to the inventory i
 and press Update prices. Ticked lines are remembered by vendor + item code (or description), so the next invoice matches by
 itself. Each item's edit window shows its price history.
 
+**Scanner folder**: the office scanner saves each scan as a PDF into a Google Drive folder (default name "Eden Invoices").
+Every 5 minutes the worker reads new scans with Claude and lists them on the Inventory page under "scanned invoices waiting";
+Check now looks right away. The folder is only read, never changed. Setup: run `supabase/invoice-scanner.sql`, turn on the
+Google Drive API in the same Google Cloud project as Business email, then Inventory → Connect Google Drive (Owner or a manager).
+
 Setup: run `supabase/invoices.sql` (after `inventory.sql`). Photos and PDFs are read by Claude (`invoice-worker.js`): create an
 API key at console.anthropic.com and add it as secret `ANTHROPIC_API_KEY` (Workers → eden-admin → Settings → Variables and
 Secrets). A few cents an invoice. CSV and Excel invoices are read on the page and need neither.

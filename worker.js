@@ -31,7 +31,7 @@ import BUILD_KEY from './inquiry-key.generated.js';   // INQUIRY_KEY from the Bu
 import { mailRoute } from './mail-worker.js';          // Business email (Gmail), see that file
 import { preshiftRoute, preshiftRefresh } from './preshift-worker.js';   // Pre-shift reservations from OpenTable
 import { promoRoute, promoRun, promoEvent } from './promo-worker.js';     // Promotional emails (Resend)
-import { invoiceRoute } from './invoice-worker.js';                       // Inventory: read vendor invoices with Claude
+import { invoiceRoute, driveRoute, drivePoll } from './invoice-worker.js';                       // Inventory: read vendor invoices with Claude
 
 const SITE_HOSTS = /(^|\.)edencny\.com$|(^|[.-])eden-website\.richard-a-strub\.workers\.dev$|^richstrub\.github\.io$/i;
 const BOTS = /bot|crawl|spider|slurp|preview|headless|lighthouse|pagespeed|facebookexternalhit|embedly|quora link|whatsapp|telegram|discord|curl|wget|python|axios|node-fetch|go-http|java\/|monitor|uptime|pingdom|scan/i;
@@ -640,6 +640,7 @@ export default {
     if (url.pathname === '/admin/tips') return adminTips(req, env);
     if (url.pathname === '/inbound') return inbound(req, env);
     if (url.pathname === '/inventory/read') return invoiceRoute(req, env, rpc);
+    if (url.pathname.indexOf('/drive/') === 0) return driveRoute(req, env, url.pathname, rpc, inqKey(env));
     if (url.pathname === '/preshift/refresh') return preshiftRoute(req, env, inqKey(env));
     if (url.pathname.indexOf('/mail/') === 0) { const r = await mailRoute(req, env, url.pathname); if (r) return r; }
     if (url.pathname.indexOf('/promo/') === 0) { const r = await promoRoute(req, env, url.pathname, inqKey(env)); if (r) return r; }
@@ -653,6 +654,8 @@ export default {
     ctx.waitUntil(elitechPull(env).catch(() => null));
     // once a day at 9 am: employee reviews coming due (the database makes sure it only sends once)
     ctx.waitUntil(reviewReminders(env).catch(() => null));
+    // every 5 minutes: new scans in the scanner's Google Drive folder (Inventory), read and waiting to be checked
+    ctx.waitUntil(drivePoll(env, inqKey(env), 3).catch(() => null));
     // every 20 minutes (on the hour, :20 and :40): Pre-shift and the Prep List
     const min = new Date(evt && evt.scheduledTime ? evt.scheduledTime : Date.now()).getUTCMinutes();
     if (min % 20 >= 5) return;

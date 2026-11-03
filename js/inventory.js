@@ -152,6 +152,7 @@
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
       ])
     ]));
+    if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
     wrap.appendChild(h('div', { cls: 'sc-tabs iv-tabs', role: 'tablist' }, CATS.map(function (c) {
       return h('button', { type: 'button', role: 'tab', 'aria-selected': c.id === I.cat ? 'true' : 'false', 'data-cat': c.id, on: { click: function () { if (c.id !== I.cat) { flush(); I.cat = c.id; I.filter = ''; render(); } } } },
         [c.label, counts[c.id] ? h('span', { cls: 'sc-count', text: String(counts[c.id]) }) : null]);
@@ -400,10 +401,8 @@
     return rows;
   }
 
-  function scanInvoice() {
-    flush();
-    window.EdenInvoiceScan.open({ items: I.items, saveItems: saveItems, sb: sb(), status: status, done: render, modal: modal, h: h, cat: I.cat, uid: uid });
-  }
+  function scanApi() { return { items: I.items, saveItems: saveItems, sb: sb(), status: status, done: render, modal: modal, h: h, cat: I.cat, uid: uid }; }
+  function scanInvoice() { flush(); window.EdenInvoiceScan.open(scanApi()); }
 
   /* ---------- dialogs ---------- */
   function modal(title, bodyKids, footKids, wide) {
@@ -527,6 +526,7 @@
   window.EdenInventory = {
     show: function (ctx) {
       I.ctx = ctx; I.el = ctx.el;
+      if (ctx.arg && /^drive/.test(ctx.arg) && window.EdenInvoiceScan) { var arg = ctx.arg; setTimeout(function () { window.EdenInvoiceScan.handleArg(scanApi(), arg); }, 0); }
       if (!I.loaded && !I.loading) { render(); load().then(render); } else render();
     },
     refresh: function () { if (I.el && !I.el.hidden) render(); },

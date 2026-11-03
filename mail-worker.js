@@ -139,6 +139,7 @@ async function callback(req, env) {
   if (missing(env).length) return go('err=not_ready');
   const st = await unseal(env, url.searchParams.get('state'), 'state');
   if (!st || !(st.exp > Date.now())) return go('err=expired');
+  if (st.k === 'drive') return driveCallback(req, env, url, st);   // the scanner's Google Drive folder (Inventory), same Google client
   if (url.searchParams.get('error')) return go('err=' + (url.searchParams.get('error') === 'access_denied' ? 'denied' : 'google'));
   const code = url.searchParams.get('code') || '';
   if (!code) return go('err=google');
@@ -334,5 +335,29 @@ export async function mailRoute(req, env, path) {
   return null;
 }
 
+/* ---- Inventory: the scanner's Google Drive folder (read-only), connected with the same Google client ---- */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+async function driveCallback(req, env, url, st) {
+  const go = q => Response.redirect(staffUrl(env, req) + '#inventory/drive?' + q, 302);
+  if (url.searchParams.get('error')) return go('err=' + (url.searchParams.get('error') === 'access_denied' ? 'denied' : 'google'));
+  const code = url.searchParams.get('code') || '';
+  if (!code) return go('err=google');
+  const t = await googleToken(env, { grant_type: 'authorization_code', code, redirect_uri: redirectUri(env, req) });
+  if (!t.ok) return go('err=google');
+  if (!t.j.refresh_token) return go('err=norefresh');
+  if (String(t.j.scope || '').split(' ').indexOf(DRIVE_SCOPE) === -1) return go('err=scope');
+  let address = '';
+  try { const a = await (await fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', { headers: { Authorization: 'Bearer ' + t.j.access_token } })).json(); address = String((a.user && a.user.emailAddress) || ''); } catch (e) {}
+  if (!address) return go('err=driveapi');
+  const k = await seal(env, { u: st.u, t: t.j.refresh_token, a: address, exp: Date.now() + 20 * 60000 }, 'drive-connect');
+  return go('k=' + encodeURIComponent(k));
+}
+async function driveStartUrl(env, req, userId) {
+  const state = await seal(env, { u: userId, k: 'drive', exp: Date.now() + 20 * 60000 }, 'state');
+  const p = new URLSearchParams({ client_id: String(env.GOOGLE_CLIENT_ID).trim(), redirect_uri: redirectUri(env, req), response_type: 'code', scope: DRIVE_SCOPE,
+    access_type: 'offline', prompt: 'select_account consent', include_granted_scopes: 'false', state });
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString();
+}
+
 // shared with the Pre-shift reader (preshift-worker.js)
-export const mailInternals = { gmailFor, gj, unsealToken, missing };
+export const mailInternals = { gmailFor, gj, unsealToken, missing, seal, unseal, googleToken, accessFor, userOf, driveStartUrl };
