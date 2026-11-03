@@ -502,7 +502,7 @@
         body.appendChild(sec);
       });
       if (!shownN && !P.editing) body.appendChild(h('p', { cls: 'pa-empty', text: P.q ? 'Nothing matches “' + P.q.trim() + '”.' : P.filter === 'todo' ? 'Everything’s done. Nice work.' : P.filter === 'done' ? 'Nothing ticked off yet.' : (P.bar ? 'No cocktails with ingredients on the menu yet.' : 'No dishes on the Kitchen menu yet.') }));
-      if (resetInfo) body.appendChild(h('p', { cls: 'pa-foot', text: resetInfo + ' · resets for the next day at 8:00 pm' }));
+      if (resetInfo) body.appendChild(h('p', { cls: 'pa-foot', text: resetInfo + ' · resets for the next service day at 8:00 pm, Wednesday to Saturday nights' }));
       appCount();
     }
     paintBody();
@@ -545,7 +545,7 @@
       ])
     ]));
     if (!P.ctx.cook) wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
-      (P.db === true ? 'Tick a line when it’s done, fill in On hand, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next day at 8:00 pm unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
+      (P.db === true ? 'Tick a line when it’s done, fill in On hand, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next service day at 8:00 pm on Wednesday to Saturday nights (not Sunday to Tuesday) unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
       '“Combined” merges components used in more than one dish (it keeps its own ticks). Prints on one landscape 11 × 8½ page.' }));
     wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));
     if (P.db === false && P.ctx.role === 'owner') wrap.appendChild(h('p', { cls: 'pp-setup', text: 'To share the Prep List with managers and cooks, run supabase/prep-list.sql in Supabase (SQL Editor → New query → paste → Run), then reload.' }));

@@ -6,7 +6,7 @@
 --   employee, and can also see and fill in the Prep List (on the staff page's Prep List tab).
 -- Prep List: what's done, on hand, to prep and who did it is saved for everyone (Owner, managers, Kitchen
 --   logins and cooks all see the same list). The Owner and managers can reset it for the next day; if nobody
---   does, it resets itself at 8:00 pm (New York time). A reset clears the filled-in values only: items added to
+--   does, it resets itself at 8:00 pm (New York time) on Wednesday to Saturday nights. A reset clears the filled-in values only: items added to
 --   the list and lines taken off it stay.
 
 -- 1. The Cook permission
@@ -63,18 +63,32 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.prep_me() from public, anon, authenticated;
 
--- 8:00 pm reset (New York time), unless someone already reset it that afternoon or evening.
--- Also catches up if the list is still for a day that has passed.
+-- Eden is open Wednesday to Saturday, so the list only resets on those nights.
+-- The next day the kitchen preps for: the next Wednesday, Thursday, Friday or Saturday on or after a date.
+create or replace function public.prep_next_open(d date) returns date
+language sql immutable set search_path = public as $$
+  select (d + n)::date from generate_series(0, 6) n where extract(dow from d + n) in (3, 4, 5, 6) order by n limit 1
+$$;
+revoke all on function public.prep_next_open(date) from public, anon, authenticated;
+
+-- 8:00 pm reset (New York time) on Wednesday, Thursday, Friday and Saturday nights, unless someone already reset it
+-- that afternoon or evening. Not on Sunday, Monday or Tuesday nights: Saturday's reset sets the list up for Wednesday.
+-- Also catches up if the list is still for a service day that has passed.
 create or replace function public.prep_auto() returns void
 language plpgsql security definer set search_path = public as $$
 declare t timestamp := now() at time zone 'America/New_York'; r public.prep_lists;
 begin
   insert into public.prep_lists (id) values ('eden') on conflict (id) do nothing;
   select * into r from public.prep_lists where id = 'eden' for update;
-  if t::time >= time '20:00' and (r.reset_at is null or (r.reset_at at time zone 'America/New_York') < t::date + time '14:00') then
-    update public.prep_lists set entries = '{}'::jsonb, for_date = t::date + 1, reset_at = now(), reset_by = '', reset_auto = true, updated_at = now() where id = 'eden';
+  if t::time >= time '20:00' and extract(dow from t::date) in (3, 4, 5, 6)
+     and (r.reset_at is null or (r.reset_at at time zone 'America/New_York') < t::date + time '14:00') then
+    update public.prep_lists set entries = '{}'::jsonb, for_date = public.prep_next_open(t::date + 1), reset_at = now(), reset_by = '', reset_auto = true, updated_at = now() where id = 'eden';
+  elsif r.for_date < t::date and r.for_date < public.prep_next_open(t::date) and extract(dow from r.for_date) in (3, 4, 5, 6) then
+    -- a Wednesday–Saturday list whose 8 pm reset was missed
+    update public.prep_lists set entries = '{}'::jsonb, for_date = public.prep_next_open(t::date), reset_at = now(), reset_by = '', reset_auto = true, updated_at = now() where id = 'eden';
   elsif r.for_date < t::date then
-    update public.prep_lists set entries = '{}'::jsonb, for_date = t::date, reset_at = now(), reset_by = '', reset_auto = true, updated_at = now() where id = 'eden';
+    -- a list dated for a closed day (Sunday–Tuesday): just move its date to the next service day, keeping what's filled in
+    update public.prep_lists set for_date = public.prep_next_open(t::date), updated_at = now() where id = 'eden';
   end if;
 end $$;
 revoke all on function public.prep_auto() from public, anon, authenticated;
@@ -169,7 +183,7 @@ declare t timestamp := now() at time zone 'America/New_York';
 begin
   if not coalesce(public.can_schedule(), false) then return jsonb_build_object('error', 'not_allowed'); end if;
   insert into public.prep_lists (id) values ('eden') on conflict (id) do nothing;
-  update public.prep_lists set entries = '{}'::jsonb, for_date = case when t::time >= time '14:00' then t::date + 1 else t::date end,
+  update public.prep_lists set entries = '{}'::jsonb, for_date = public.prep_next_open(case when t::time >= time '14:00' then t::date + 1 else t::date end),
     reset_at = now(), reset_by = public.prep_me(), reset_auto = false, updated_at = now() where id = 'eden';
   return public.prep_row();
 end $$;
