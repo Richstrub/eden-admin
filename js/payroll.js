@@ -303,6 +303,21 @@
     });
     return { hours: out, approx: approx, source: !s ? 'none' : s.status === 'published' ? 'published' : 'draft' };
   }
+  // start the week over: the Square files, hours, tips, kitchen and outside-the-pool hours, sick and holiday hours,
+  // commission and adjustments are cleared, and the hours fill in from the schedule again, like a new week.
+  // The week's notes stay. A finalized week has to be reopened first.
+  function resetWeek() {
+    if (final()) { alert('This week is final. Reopen it first.'); return; }
+    if (!confirm('Reset the week of ' + weekLabel(P.week) + '?\n\nThis clears both Square files and everything taken from them: hours, tips, kitchen and outside-the-tip-pool hours, sick and holiday hours, commission and adjustments. Hours fill in from the schedule again. The notes stay.\n\nThis can’t be undone.')) return;
+    var wk = P.row.week_start, end = iso(addDays(P.week, 6));
+    P.row.rows = {}; P.row.tip_pool = 0;
+    ['source', 'square_file', 'square_at', 'tx_file', 'tx_at'].forEach(function (k) { delete P.row[k]; });
+    fillFromSchedule();
+    saveWeek();
+    sb().from('shift_punches').delete().gte('work_date', wk).lte('work_date', end).then(function () {}, function () {});   // the clock-in times kept from the import
+    paint(false);
+    status('Week reset. Drop the Square files in again to start over.', 'ok');
+  }
   function fillFromSchedule() {
     var sh = scheduleHours().hours;
     shownEmps().forEach(function (e) {
@@ -570,7 +585,8 @@
           if (!sch.source || sch.source === 'none') { alert('There’s no schedule saved for this week.'); return; }
           if (!P.fresh && !confirm('Replace the hours on this page with the hours from the schedule? Tips, kitchen hours and adjustments stay as they are.')) return;
           fillFromSchedule(); saveSoon(); paint(false);
-        } } })]));
+        } } }),
+        h('button', { type: 'button', cls: 'ed-btn ghost small pr-reset', text: 'Reset this week', title: 'Clear the Square files, hours, tips and adjustments and start this week over', on: { click: resetWeek } })]));
     }
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: ro ? 'This week is final and locked. Reopen it if something needs to change.'
       : 'Check each day against Square, fix anything that’s off, then download the two sheets and finalize. Everything saves automatically.' }));
