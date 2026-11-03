@@ -741,6 +741,7 @@
         h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Print summary', on: { click: printSummary } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Eden Hospitality Hours (.xlsx)', on: { click: downloadHours } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Tip Weighted Payroll (.xlsx)', on: { click: downloadTips } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Labor report for Claude (.json)', title: 'This week and the 12 weeks before it, to send to Claude for a labor review', on: { click: downloadReport } }),
         ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
           : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })])
     ]));
@@ -1551,6 +1552,57 @@
   function staffLines(c) { return c.lines.filter(function (L) { return onStaff(L.e); }); }
   function fmtCells(ws, X, cells, z) { cells.forEach(function (a) { if (ws[a] && typeof ws[a].v === 'number') ws[a].z = z; }); }
   // For the payroll company: their sheet, their IDs and spellings, people on staff only
+  /* ---------- Labor report for Claude: this week in full plus the 12 weeks before it, as one JSON file to hand to Claude for a labor review ---------- */
+  function downloadReport() {
+    var c, lb, iv, sm;
+    try { c = calc(); lb = labor(c); iv = invoiceEst(c); sm = summary(); } catch (e) { status('Couldn’t build the report.', 'err'); return; }
+    var wk = iso(P.week), end = iso(addDays(P.week, 6)), sch = scheduleHours();
+    var nm = function (id) { var e = empById(id); return e.name || ((P.row.rows[id] || {}).snap || {}).name || 'Former employee'; };
+    var dayArr = function (a) { var o = {}; (a || []).forEach(function (x, i) { if (+x) o[DAYS[i].slice(0, 3)] = r2(x); }); return o; };
+    status('Building the labor report…');
+    Promise.all([
+      sb().from('payroll_weeks').select('week_start,status,rows').lt('week_start', wk).gte('week_start', iso(addDays(P.week, -84))).order('week_start'),
+      sb().from('shift_punches').select('emp,work_date,clock_in,clock_out,hours,job').gte('work_date', wk).lte('work_date', end).order('work_date')
+    ]).then(function (res) {
+      var past = (res[0].error ? [] : res[0].data || []).map(function (w) {
+        var rows = w.rows || {}, ppl = [];
+        Object.keys(rows).forEach(function (id) {
+          if (id.charAt(0) === '_') return; var r = rows[id] || {};
+          var tot = { tip_pool_or_main: sum(r.hours), kitchen: sum(r.khours), not_in_pool: sum(r.nhours) };
+          var all = r2(tot.tip_pool_or_main + tot.kitchen + tot.not_in_pool);
+          if (all || +r.comm || +r.adj) ppl.push({ name: nm(id), hours: all, by_kind: tot, overtime_hours: r2(Math.max(all - OT_AFTER, 0)), hours_by_day: dayArr([0, 1, 2, 3, 4, 5, 6].map(function (i) { return (+seven(r.hours)[i] || 0) + (+seven(r.khours)[i] || 0) + (+seven(r.nhours)[i] || 0); })) });
+        });
+        var S = rows._sales;
+        return { week_start: w.week_start, status: w.status, financials: rows._summary || null, net_sales_by_day: S ? dayArr(S.net) : null, people: ppl };
+      });
+      var punches = (res[1].error ? [] : res[1].data || []).map(function (x) { return { name: nm(x.emp), date: x.work_date, job: x.job, clock_in: x.clock_in, clock_out: x.clock_out, hours: +x.hours }; });
+      var S = weekSales();
+      var rep = {
+        report: 'Eden labor report', version: 1, made: new Date().toISOString(),
+        restaurant: { name: 'Eden', open: 'Wednesday–Saturday, 5–9 pm', overtime: 'over 40 h in the Sunday–Saturday week at 1.5× the rate of the job worked after the 40th hour', card_fee: CARD_FEE },
+        week: { start: wk, end: end, status: P.row.status || 'draft', notes: P.row.notes || '' },
+        sales: S ? { net: S.net, gross: S.gross, tax: S.tax, from: S.src, net_by_day: dayArr(S.days) } : null,
+        totals: { hours: c.T.total, overtime_hours: c.T.ot, regular_pay: c.T.regPay, overtime_pay: c.T.otPay, salary: c.T.salary, commission: c.T.comm, tips: c.T.tips, gross_pay: c.T.gross, hours_by_day: dayArr(c.T.days) },
+        invoice: { estimate: iv.total, actual: (P.row.rows._invoice && +P.row.rows._invoice.actual) || null, gross: iv.gross, lines: iv.lines.map(function (l) { return { item: l.label, how: l.how, amount: l.amt }; }) },
+        financials: sm,
+        tips_by_day: c.D.map(function (d, i) { return { day: DAYS[i], cash: d.cash, card: d.card, card_fee: d.fee, pool: d.pool, tip_pool_hours: c.tipHrs[i] }; }).filter(function (d) { return d.pool || d.tip_pool_hours; }),
+        people: c.lines.filter(function (L) { return L.total || L.salary || L.comm || L.adj; }).map(function (L) {
+          var i = L.info;
+          return { name: i.name, position: i.position, pay_type: i.pay_type, rate: i.rate, kitchen_rate: i.kitchen_rate, weekly_salary: i.weekly_salary, tip_pool: i.tip_eligible, commission: i.commission,
+            hours: L.total, tip_pool_hours: i.tip_eligible ? L.main : 0, kitchen_hours: L.kit, not_in_pool_hours: i.tip_eligible ? L.nt : L.main,
+            overtime_hours: L.ot, overtime_by_kind: L.otBy || null, regular_pay: L.regPay, overtime_pay: L.otPay, salary: L.salary, commission_pay: L.comm, tips: L.tips, adjustment: L.adj, adjustment_note: L.adjNote, gross: L.gross,
+            hours_by_day: { worked: dayArr(L.days.map(function (x, d) { return x + L.kdays[d] + L.ndays[d]; })), kitchen: dayArr(L.kdays), not_in_pool: dayArr(L.ndays), scheduled: dayArr(sch.hours[L.id]) } };
+        }),
+        schedule_source: sch.source,
+        punches: punches,
+        past_weeks: past
+      };
+      var blob = new Blob([JSON.stringify(rep, null, 1)], { type: 'application/json' }), a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'Eden labor report ' + wk + '.json';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      status('Labor report downloaded. Send it to Claude for a review.', 'ok');
+    }, function () { status('Couldn’t reach the database. Check your connection.', 'err'); });
+  }
   function downloadHours() { hoursBook(function (wb, name) { window.XLSX.writeFile(wb, name); }); }
   // Email the Hours sheet from rich@edencny.com: a new email opens on Business email with the file attached
   var PAYROLL_FROM = 'rich@edencny.com';
