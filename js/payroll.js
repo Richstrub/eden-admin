@@ -741,7 +741,10 @@
         h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Print summary', on: { click: printSummary } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Eden Hospitality Hours (.xlsx)', on: { click: downloadHours } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Tip Weighted Payroll (.xlsx)', on: { click: downloadTips } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Labor report for Claude (.json)', title: 'This week and the 12 weeks before it, to send to Claude for a labor review', on: { click: downloadReport } }),
+        (function () {
+          var sel = h('select', { cls: 'ed-btn small', 'aria-label': 'Labor report range', title: 'How far back the labor report goes' }, [['0', 'This week'], ['30', 'Last 30 days'], ['60', 'Last 60 days'], ['90', 'Last 90 days']].map(function (o) { var x = h('option', { value: o[0], text: o[1] }); return x; }));
+          return h('span', { cls: 'pr-rep' }, [h('button', { type: 'button', cls: 'ed-btn small', text: 'Labor report for Claude (.json)', title: 'Send it to Claude for a labor review', on: { click: function () { downloadReport(sel.value); } } }), sel]);
+        })(),
         ro ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Reopen week', on: { click: reopen } })
           : h('button', { type: 'button', cls: 'ed-btn small', text: 'Finalize week', on: { click: finalize } })])
     ]));
@@ -1553,7 +1556,9 @@
   function fmtCells(ws, X, cells, z) { cells.forEach(function (a) { if (ws[a] && typeof ws[a].v === 'number') ws[a].z = z; }); }
   // For the payroll company: their sheet, their IDs and spellings, people on staff only
   /* ---------- Labor report for Claude: this week in full plus the 12 weeks before it, as one JSON file to hand to Claude for a labor review ---------- */
-  function downloadReport() {
+  function downloadReport(days) {
+    days = +days || 0;   // 0: this week plus the 12 weeks before it; 30 / 60 / 90: every week in that many days back, with clock-ins and schedules
+    var back = days ? Math.ceil(days / 7) * 7 : 84;
     var c, lb, iv, sm;
     try { c = calc(); lb = labor(c); iv = invoiceEst(c); sm = summary(); } catch (e) { status('Couldn’t build the report.', 'err'); return; }
     var wk = iso(P.week), end = iso(addDays(P.week, 6)), sch = scheduleHours();
@@ -1561,16 +1566,23 @@
     var dayArr = function (a) { var o = {}; (a || []).forEach(function (x, i) { if (+x) o[DAYS[i].slice(0, 3)] = r2(x); }); return o; };
     status('Building the labor report…');
     Promise.all([
-      sb().from('payroll_weeks').select('week_start,status,rows').lt('week_start', wk).gte('week_start', iso(addDays(P.week, -84))).order('week_start'),
-      sb().from('shift_punches').select('emp,work_date,clock_in,clock_out,hours,job').gte('work_date', wk).lte('work_date', end).order('work_date')
+      sb().from('payroll_weeks').select('week_start,status,rows').lt('week_start', wk).gte('week_start', iso(addDays(P.week, -back))).order('week_start'),
+      sb().from('shift_punches').select('emp,work_date,clock_in,clock_out,hours,job').gte('work_date', days ? iso(addDays(P.week, -back)) : wk).lte('work_date', end).order('work_date').limit(5000),
+      days ? sb().from('schedule_weeks').select('week_start,shifts,status,published').lt('week_start', wk).gte('week_start', iso(addDays(P.week, -back))) : Promise.resolve({ data: [] })
     ]).then(function (res) {
+      var schBy = {};
+      (res[2].error ? [] : res[2].data || []).forEach(function (s) {
+        var o = schBy[s.week_start] = {};
+        ((s.status === 'published' && s.published ? s.published : s.shifts) || []).forEach(function (sf) { if (sf && sf.emp && sf.day != null) { var a = o[sf.emp] || (o[sf.emp] = [0, 0, 0, 0, 0, 0, 0]); a[sf.day] = r2(a[sf.day] + shiftHours(sf)); } });
+      });
       var past = (res[0].error ? [] : res[0].data || []).map(function (w) {
         var rows = w.rows || {}, ppl = [];
         Object.keys(rows).forEach(function (id) {
           if (id.charAt(0) === '_') return; var r = rows[id] || {};
           var tot = { tip_pool_or_main: sum(r.hours), kitchen: sum(r.khours), not_in_pool: sum(r.nhours) };
           var all = r2(tot.tip_pool_or_main + tot.kitchen + tot.not_in_pool);
-          if (all || +r.comm || +r.adj) ppl.push({ name: nm(id), hours: all, by_kind: tot, overtime_hours: r2(Math.max(all - OT_AFTER, 0)), hours_by_day: dayArr([0, 1, 2, 3, 4, 5, 6].map(function (i) { return (+seven(r.hours)[i] || 0) + (+seven(r.khours)[i] || 0) + (+seven(r.nhours)[i] || 0); })) });
+          var sc = (schBy[w.week_start] || {})[id];
+          if (all || +r.comm || +r.adj) ppl.push({ name: nm(id), scheduled_by_day: sc ? dayArr(sc) : undefined, commission: r2(r.comm) || undefined, adjustment: r2(r.adj) || undefined, hours: all, by_kind: tot, overtime_hours: r2(Math.max(all - OT_AFTER, 0)), hours_by_day: dayArr([0, 1, 2, 3, 4, 5, 6].map(function (i) { return (+seven(r.hours)[i] || 0) + (+seven(r.khours)[i] || 0) + (+seven(r.nhours)[i] || 0); })) });
         });
         var S = rows._sales;
         return { week_start: w.week_start, status: w.status, financials: rows._summary || null, net_sales_by_day: S ? dayArr(S.net) : null, people: ppl };
@@ -1578,7 +1590,8 @@
       var punches = (res[1].error ? [] : res[1].data || []).map(function (x) { return { name: nm(x.emp), date: x.work_date, job: x.job, clock_in: x.clock_in, clock_out: x.clock_out, hours: +x.hours }; });
       var S = weekSales();
       var rep = {
-        report: 'Eden labor report', version: 1, made: new Date().toISOString(),
+        report: 'Eden labor report', version: 2, made: new Date().toISOString(),
+        range: { days: days || null, from: iso(addDays(P.week, -back)), to: end, past_weeks_found: past.length, past_weeks_expected: back / 7, note: days ? 'Last ' + days + ' days: the selected week in full plus every saved week before it in the range' : 'The selected week plus the 12 weeks before it' },
         restaurant: { name: 'Eden', open: 'Wednesday–Saturday, 5–9 pm', overtime: 'over 40 h in the Sunday–Saturday week at 1.5× the rate of the job worked after the 40th hour', card_fee: CARD_FEE },
         week: { start: wk, end: end, status: P.row.status || 'draft', notes: P.row.notes || '' },
         sales: S ? { net: S.net, gross: S.gross, tax: S.tax, from: S.src, net_by_day: dayArr(S.days) } : null,
@@ -1598,7 +1611,7 @@
         past_weeks: past
       };
       var blob = new Blob([JSON.stringify(rep, null, 1)], { type: 'application/json' }), a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'Eden labor report ' + wk + '.json';
+      a.href = URL.createObjectURL(blob); a.download = 'Eden labor report ' + (days ? days + ' days to ' : '') + wk + '.json';
       document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
       status('Labor report downloaded. Send it to Claude for a review.', 'ok');
     }, function () { status('Couldn’t reach the database. Check your connection.', 'err'); });
