@@ -227,10 +227,10 @@
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
     I.showCost = !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
-    var ncol = I.showCost ? 12 : 10;
+    var ncol = I.showCost ? 13 : 11;
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
-      h('th', { cls: 'iv-name', text: 'Item' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { text: 'Unit' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'iv-name', text: 'Item' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' })
@@ -287,8 +287,9 @@
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
     var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-name' }, [h('button', { type: 'button', cls: 'iv-namebtn', title: 'Edit item', text: it.name, on: { click: function () { editItem(it); } } }),
-        it.pack || it.order_unit ? h('small', { text: [it.pack, orderedBy(it) ? 'ordered ' + orderedBy(it) : ''].filter(Boolean).join(' · ') }) : null]),
+        it.pack ? h('small', { text: it.pack }) : null]),
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
+      h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
       h('td', { cls: 'iv-unit', text: it.unit || '' }),
       h('td', { cls: 'r', text: qty(it.par) }),
       h('td', { cls: 'r iv-last', text: qty(last) }),
@@ -462,6 +463,11 @@
   }
 
   function scanApi() { return { items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
+    var r = it.order_unit || '';
+    if (!r || r === it.unit) return r ? r : '';
+    return r + (+it.per_case && it.unit && !(r === 'bottle' && /^(case|cs)s?$/i.test(it.unit)) ? ' (' + qty(+it.per_case) + ' ' + it.unit + ')' : '');
+  }
   function orderedBy(it) {   // "by the case of 6", "by the bottle"
     if (!it.order_unit) return '';
     return 'by the ' + it.order_unit + (it.order_unit === 'case' && it.per_case ? ' of ' + qty(+it.per_case) : '');
@@ -648,13 +654,14 @@
   // what an item is counted in: a list (with 1/4 lb and any unit already in use), or Other… to type one
   var COUNT_UNITS = ['each', 'lb', '1/4 lb', '1/2 lb', 'oz', 'kg', 'g', 'case', 'bottle', 'keg', 'can', 'gal', 'qt', 'pt', 'box', 'bag', 'roll', 'sleeve', 'pack', 'bunch', 'dozen', 'flat', 'tray', 'quart container'];
   var GRAMS = { lb: 453.592, '1/4 lb': 113.398, '1/2 lb': 226.796, oz: 28.3495, kg: 1000, g: 1 };
-  function unitPicker(cur, onSwap) {
+  function unitPicker(cur, onSwap, none, label) {
     var list = COUNT_UNITS.slice();
     uniq(I.items.map(function (x) { return x.unit; })).forEach(function (u) { if (list.indexOf(u) < 0) list.push(u); });
-    var sel = h('select', { 'aria-label': 'Counted in (unit)' }, [h('option', { value: '', text: '— Pick a unit —' })].concat(list.map(function (u) { return h('option', { value: u, text: u === '1/4 lb' ? '1/4 lb (quarter pound)' : u === '1/2 lb' ? '1/2 lb (half pound)' : u }); })).concat([h('option', { value: '__other', text: 'Other…' })]));
+    var sel = h('select', { 'aria-label': label || 'Counted in (unit)' }, [h('option', { value: '', text: none || '— Pick a unit —' })].concat(list.map(function (u) { return h('option', { value: u, text: u === '1/4 lb' ? '1/4 lb (quarter pound)' : u === '1/2 lb' ? '1/2 lb (half pound)' : u }); })).concat([h('option', { value: '__other', text: 'Other…' })]));
     var other = h('input', { type: 'text', placeholder: 'Type the unit', 'aria-label': 'Other unit', hidden: true });
     if (cur && list.indexOf(cur) < 0) { other.value = cur; other.hidden = false; sel.value = '__other'; } else sel.value = cur;
     var prev = sel.value;
+    other.addEventListener('input', function () { if (onSwap) onSwap(null); });
     sel.addEventListener('change', function () { other.hidden = sel.value !== '__other'; if (!other.hidden) other.focus(); if (onSwap && GRAMS[prev] && GRAMS[sel.value]) onSwap(GRAMS[sel.value] / GRAMS[prev], sel.value); prev = sel.value; });
     var el = h('div', { cls: 'iv-unitpick' }, [sel, other]);
     return { el: el, get value() { return sel.value === '__other' ? other.value : sel.value; }, focus: function () { sel.focus(); } };
@@ -671,6 +678,8 @@
       name: h('input', { type: 'text', value: it.name || '', placeholder: I.cat === 'bev' ? 'e.g. Tito’s Vodka' : I.cat === 'paper' ? 'e.g. To-go containers, large' : 'e.g. Heavy cream' }),
       section: h('input', { type: 'text', value: it.section || '', list: 'ivSections', placeholder: (SECTIONS[I.cat] || [])[0] || '' }),
       unit: unitPicker(it.unit || '', function (k, u) {   // lb → 1/4 lb: $10 a lb becomes $2.50 a 1/4 lb, par 5 becomes 20
+        convLbl();
+        if (k == null) return;
         var c = num(f.cost.value), p = num(f.par.value), said = [];
         if (c != null) { f.cost.value = String(Math.round(c * k * 10000) / 10000); said.push('cost to ' + money(+f.cost.value) + ' per ' + u); }
         if (p != null) { f.par.value = qty(Math.round(p / k * 100) / 100); said.push('par to ' + f.par.value); }
@@ -680,10 +689,16 @@
       vendor: h('input', { type: 'text', value: it.vendor || '', list: 'ivVendors', placeholder: 'Optional' }),
       par: h('input', { type: 'text', inputmode: 'decimal', value: qty(it.par), placeholder: 'How many to keep on hand' }),
       cost: h('input', { type: 'text', inputmode: 'decimal', value: it.cost != null ? String(it.cost) : '', placeholder: 'Cost per unit, e.g. 24.50' }),
-      ord: h('select', null, [['', 'Not set'], ['bottle', 'By the bottle'], ['case', 'By the case'], ['each', 'By the each'], ['lb', 'By the pound']].map(function (o) { return h('option', { value: o[0], text: o[1] }); })),
+      ord: unitPicker(it.order_unit || '', function () { convLbl(); }, 'Same as counted in', 'Received in (unit)'),
       pc: h('input', { type: 'text', inputmode: 'decimal', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: 'e.g. 6 or 12' })
     };
-    f.ord.value = it.order_unit || '';
+    // 1 received unit = how many counted units: a case of mushrooms = 5 lb, a case of wine = 12 bottles
+    var convSpan = h('span'), convRow = lbl('', f.pc); convRow.replaceChild(convSpan, convRow.firstChild);
+    function convLbl() {
+      var r = f.ord.value.trim(), c = f.unit.value.trim();
+      convRow.hidden = !r || !c || r === c;
+      convSpan.textContent = 'How many ' + (c || 'units') + ' in 1 ' + (r || 'received unit');
+    }
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
     var m;
     var foot = [
@@ -695,10 +710,11 @@
     m = modal(isNew ? 'Add item' : 'Edit item', [
       h('p', { cls: 'sc-sub', text: catOf(I.cat).label }),
       lbl('Item', f.name),
-      h('div', { cls: 'sc-row2' }, [lbl('Section', f.section), lbl('Counted in (unit)', f.unit.el)]),
+      lbl('Section', f.section),
+      h('div', { cls: 'sc-row2' }, [lbl('Received in (on the invoice)', f.ord.el), lbl('Counted in (for inventory)', f.unit.el)]),
+      I.orderCols ? convRow : h('p', { cls: 'sc-sub', text: 'To save Received in, run supabase/invoice-vendors.sql in Supabase once.' }),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
       h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), lbl('Cost per unit ($)', f.cost)]),
-      I.orderCols ? h('div', { cls: 'sc-row2' }, [lbl('Ordered from the vendor', f.ord), lbl('How many in a case', f.pc)]) : null,
       datalist('ivSections', uniq((SECTIONS[I.cat] || []).concat(catItemsAll.map(function (x) { return x.section; })))),
       datalist('ivUnits', UNITS), datalist('ivVendors', uniq(I.items.map(function (x) { return x.vendor; }))),
       msg
@@ -712,6 +728,7 @@
         return h('li', null, [h('span', { text: dayLabel(p.price_date) + ' · ' + (p.vendor || '') }), h('span', { text: money(p.unit_cost) + (it.unit ? ' / ' + it.unit : '') + (p.per_unit && +p.per_unit !== 1 ? ' (' + money(p.invoice_price) + ' / ' + (p.invoice_unit || 'unit') + ' ÷ ' + (+p.per_unit) + ')' : '') })]);
       }))]), msg);
     });
+    convLbl();
     setTimeout(function () { f.name.focus(); }, 30);
     function save() {
       var name = f.name.value.trim();
@@ -722,7 +739,7 @@
       var dup = I.items.filter(function (x) { return x.category === I.cat && x.id !== it.id && keyOf(x.name) === keyOf(name); })[0];
       if (dup && !confirm('“' + dup.name + '” is already on this list. Add another with the same name?')) return;
       var next = Object.assign({}, it, { name: name, section: f.section.value.trim(), unit: f.unit.value.trim(), pack: f.pack.value.trim(), vendor: f.vendor.value.trim(), par: par, cost: cost });
-      if (I.orderCols) { next.order_unit = f.ord.value; next.per_case = num(f.pc.value); }
+      if (I.orderCols) { next.order_unit = f.ord.value.trim(); next.per_case = num(f.pc.value); }
       if (I.costCols) next.menu_refs = draft.menu_refs;
       status('Saving…', 'dirty');
       saveItems([next]).then(function () {
@@ -744,6 +761,7 @@
     var u = String(it.unit || '').toLowerCase(), pc = +it.per_case || 0, plural = function (n, w) { return qty(n) + ' ' + w + (n === 1 ? '' : (/s$/.test(w) ? '' : 's')); };
     if (it.order_unit === 'case' && pc > 1 && !/^(case|cs)s?$/.test(u)) { var c = Math.ceil(need / pc - 1e-9); return { text: plural(c, 'case'), note: 'short ' + plural(need, u || 'unit') + ', ' + qty(pc) + ' per case' }; }
     if (it.order_unit === 'bottle' && pc > 1 && /^(case|cs)s?$/.test(u)) { var b = Math.ceil(need * pc - 1e-9); return { text: plural(b, 'bottle'), note: 'by the bottle' }; }
+    if (it.order_unit && it.order_unit !== it.unit && pc > 0 && it.order_unit !== 'bottle') { var n = Math.ceil(need / pc - 1e-9); return { text: plural(n, it.order_unit), note: 'short ' + plural(need, u || 'unit') + ', ' + qty(pc) + ' ' + (it.unit || '') + ' each' }; }
     return { text: qty(need) + ' ' + (it.unit || ''), note: it.order_unit ? 'by the ' + it.order_unit : '' };
   }
   /* ---------- printable count sheet: every item by section, with boxes to write the count in ---------- */

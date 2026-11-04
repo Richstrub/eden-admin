@@ -81,7 +81,7 @@
     if (!A.orderCols) return {};
     var u = canon(L.unit), o = {};
     if (L.cases && !L.bottles) o.order_unit = 'case'; else if (L.bottles && !L.cases) o.order_unit = 'bottle';
-    else if (u === 'case' || u === 'bottle') o.order_unit = u;
+    else if (u) o.order_unit = u;   // how it came in on the invoice: case, bottle, lb, keg…
     var pc = L.bottles_per_case || packCount(L.pack) || (it && (it.per_case || packCount(it.pack)));
     if (pc && pc > 1) o.per_case = pc;
     return o;

@@ -3295,3 +3295,4 @@ tr.mc-none th b{color:#6b665e}
 @media (max-width:760px){.is-combo{max-width:none}}
 .is-setu{color:#2f5e45 !important}
 .iv-unitpick{display:grid;gap:6px}
+.iv-rcv{white-space:nowrap}
