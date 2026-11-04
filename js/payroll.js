@@ -946,10 +946,15 @@
       sb().from('payroll_weeks').select('week_start,status,finalized_at,rows').order('week_start', { ascending: false }).limit(104),
       sb().from('employees').select('*').order('name'),
       sb().from('pay_rates').select('*'),
-      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle()
+      sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle(),
+      sb().from('inventory_invoices').select('*').gte('invoice_date', iso(addDays(new Date(), -400))).order('invoice_date', { ascending: false }).limit(3000),
+      sb().from('inventory_items').select('id,category')
     ]).then(function (all) {
       var r = all[0];
       if (my !== P.seq) return;
+      // invoices put into the inventory (Inventory → Scan invoice): their date puts them in a week; not there yet (or no access) = none
+      OV.invoices = all[4].error ? [] : (all[4].data || []); OV.invErr = !!all[4].error;
+      OV.itemCat = {}; if (!all[5].error) (all[5].data || []).forEach(function (x) { OV.itemCat[x.id] = x.category; });
       if (!all[1].error) P.emps = (all[1].data || []).filter(function (e) { return String(e.name || '').trim(); });
       if (!all[2].error) { P.rates = {}; (all[2].data || []).forEach(function (x) { P.rates[x.emp] = x; }); }
       setInvoice(all[3]);
@@ -1139,6 +1144,38 @@
      everything else. Built from a plain list of nodes and flows, so invoices by vendor and a chart of accounts can
      later split "Left after payroll" into food, beverage, rent and so on. */
   var CF = { teal: '#4f8f86', grey: '#9d9a94', sand: '#c9a24b', blue: '#5b8fc9', ember: '#b0703f', red: '#c9645a', green: '#5d7a64', plum: '#8a6fa8' };
+  /* Invoices dated inside the weeks shown, sorted into food, beverage and paper by the inventory item each line went to.
+     Lines not linked to an item go with the rest of their invoice; delivery and other charges are their own group;
+     anything else on the total (tax, deposits not read as charges) is spread over the invoice's groups. */
+  var BUY = [['bfood', 'Food purchases', '#3f7d74'], ['bbev', 'Beverage purchases', '#7a5f98'], ['bpaper', 'Paper goods', '#b5a27a'], ['bother', 'Other purchases', '#8f8a82'], ['bfees', 'Delivery & charges', '#a37f6a']];
+  function purchases(ws) {
+    var out = { bfood: 0, bbev: 0, bpaper: 0, bother: 0, bfees: 0, total: 0, list: [] };
+    if (!ws.length || !OV.invoices) return out;
+    var from = ws[ws.length - 1].week, to = iso(addDays(new Date(ws[0].week + 'T12:00:00'), 6));
+    var key = { food: 'bfood', bev: 'bbev', paper: 'bpaper' };
+    OV.invoices.forEach(function (v) {
+      var dt = v.invoice_date; if (!dt || dt < from || dt > to) return;
+      var lines = Array.isArray(v.lines) ? v.lines : [], g = { bfood: 0, bbev: 0, bpaper: 0, bother: 0 }, loose = 0;
+      lines.forEach(function (L) {
+        var amt = +L.extended; if (!isFinite(amt) || !amt) { amt = (+L.unit_price || 0) * (+L.qty || 0); } if (!amt) return;
+        var k = L.item_id && key[OV.itemCat[L.item_id]];
+        if (k) g[k] += amt; else loose += amt;
+      });
+      var top = Object.keys(g).sort(function (a, b) { return g[b] - g[a]; })[0];
+      if (!g[top]) top = 'bother';
+      g[top] += loose;
+      var fees = +v.fees_total || 0, lsum = g.bfood + g.bbev + g.bpaper + g.bother;
+      var total = v.total != null && isFinite(+v.total) && +v.total > 0 ? +v.total : lsum + fees;
+      var rest = total - fees;   // what the goods come to on the invoice's total
+      if (lsum > 0 && rest > 0) Object.keys(g).forEach(function (k) { g[k] = g[k] * rest / lsum; });
+      else if (rest > 0) g.bother = rest;
+      Object.keys(g).forEach(function (k) { out[k] += g[k]; }); out.bfees += Math.max(0, fees); out.total += total;
+      out.list.push({ vendor: v.vendor || 'Unknown vendor', date: dt, no: v.invoice_no || '', total: total, top: top });
+    });
+    Object.keys(out).forEach(function (k) { if (typeof out[k] === 'number') out[k] = r2(out[k]); });
+    out.list.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    return out;
+  }
   function cashFlowData(ws) {
     var t = { loan: 0, exact: 0, net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
     ws.forEach(function (w) {
@@ -1166,24 +1203,26 @@
       t.mgmt += wb.mgmt || 0; t.boh += wb.boh || 0; t.foh += wb.foh || 0;
     });
     Object.keys(t).forEach(function (k) { t[k] = r2(t[k]); });
-    var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), left = r2(inT - t.tax - t.tips - t.fees - t.loan - payOut);
+    var buy = purchases(ws);
+    var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), afterPay = r2(inT - t.tax - t.tips - t.fees - t.loan - payOut), left = r2(afterPay - buy.total);
     var nodes = [
       { id: 'food', label: 'Food sales', col: 0, color: CF.teal }, { id: 'bev', label: 'Beverage sales', col: 0, color: CF.plum }, { id: 'sales', label: 'Net sales (not split)', col: 0, color: '#7fb0a8' },
       { id: 'tax', label: 'Sales tax collected', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
       { id: 'taxout', label: 'Sales tax (to NYS)', col: 2, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 2, color: CF.sand }, { id: 'square', label: 'Square', col: 2, color: '#6f6a8f' },
-      { id: 'pay', label: 'Payroll', col: 2, color: CF.ember }, { id: 'left', label: left >= 0 ? 'Left after payroll' : 'Payroll over sales', col: 2, color: left >= 0 ? CF.green : CF.red },
+      { id: 'pay', label: 'Payroll', col: 2, color: CF.ember }, { id: 'buy', label: 'Invoices', col: 2, color: '#5f7f6e' },
+      { id: 'left', label: left >= 0 ? (buy.total ? 'Left after payroll & invoices' : 'Left after payroll') : (buy.total ? 'Payroll & invoices over sales' : 'Payroll over sales'), col: 2, color: left >= 0 ? CF.green : CF.red },
       { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'boh', label: 'Back of house', col: 3, color: CF.ember }, { id: 'foh', label: 'Servers & bartenders', col: 3, color: '#d39a6a' },
       { id: 'comm', label: 'Commission', col: 3, color: '#d39a6a' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red },
       { id: 'feesout', label: 'Card processing fees', col: 3, color: '#a8a39a' }, { id: 'loanout', label: 'Loan repayment', col: 3, color: '#8a6fa8' },
-      { id: 'later', label: 'Everything else', col: 3, color: CF.green, note: 'food, beverage, rent… (with invoices)' }
-    ];
+    ].concat(BUY.map(function (b) { return { id: b[0], label: b[1], col: 3, color: b[2] }; }), [
+      { id: 'later', label: 'Everything else', col: 3, color: CF.green, note: buy.total ? 'rent, utilities… (with the chart of accounts)' : 'food, beverage, rent… (with invoices)' }]);
     var links = [
       ['food', 'in', t.food], ['bev', 'in', t.bev], ['sales', 'in', t.unsplit], ['tax', 'in', t.tax], ['tips', 'in', t.tipsIn],
-      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'square', r2(t.fees + t.loan)], ['in', 'pay', payOut], ['in', 'left', Math.max(0, left)],
+      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'square', r2(t.fees + t.loan)], ['in', 'pay', payOut], ['in', 'buy', Math.min(buy.total, Math.max(0, afterPay))], ['in', 'left', Math.max(0, left)],
       ['square', 'feesout', t.fees], ['square', 'loanout', t.loan], ['pay', 'mgmt', t.mgmt], ['pay', 'boh', t.boh], ['pay', 'foh', t.foh], ['pay', 'comm', t.comm], ['pay', 'ptax', t.ptax], ['left', 'later', Math.max(0, left)]
-    ].map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
-    return { nodes: nodes, links: links, t: t, left: left, total: inT };
+    ].concat(BUY.map(function (b) { return ['buy', b[0], buy.total > Math.max(0, afterPay) && buy.total ? buy[b[0]] * Math.max(0, afterPay) / buy.total : buy[b[0]]]; })).map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
+    return { nodes: nodes, links: links, t: t, left: left, total: inT, buy: buy };
   }
   function sankey(cb, nodes, links, W, H) {
     var byId = {}; nodes.forEach(function (n) { n.inV = 0; n.outV = 0; n.ins = []; n.outs = []; byId[n.id] = n; });
@@ -1393,12 +1432,23 @@
     void pick;   // the period is picked at the top of the page
     var d = cashFlowData(ws);
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
-    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips) · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
-    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, 420)); cb.box.appendChild(wrap);
+    var bt = d.buy.total, what = bt ? 'payroll & invoices' : 'payroll';
+    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips)' + (bt ? ' · invoices ' + money(bt) + ' (' + pctTxt(bt / d.t.net) + ')' : '') + ' · ' + (d.left >= 0 ? money(d.left) + ' left after ' + what : what + ' came to ' + money(-d.left) + ' more than came in') }));
+    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 520 : 420)); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
+    if (d.buy.list.length) {
+      var gname = {}; BUY.forEach(function (b) { gname[b[0]] = b[1]; });
+      var byV = {}; d.buy.list.forEach(function (x) { (byV[x.vendor] = byV[x.vendor] || []).push(x); });
+      cb.box.appendChild(h('details', { cls: 'fn-who' }, [h('summary', { text: 'Invoices in this period · ' + d.buy.list.length + ' from ' + Object.keys(byV).length + (Object.keys(byV).length === 1 ? ' vendor' : ' vendors') }),
+        h('div', { cls: 'fn-whog' }, Object.keys(byV).sort(function (a, b) { return byV[b].reduce(function (s, x) { return s + x.total; }, 0) - byV[a].reduce(function (s, x) { return s + x.total; }, 0); }).map(function (vn) {
+          var xs = byV[vn], tot = xs.reduce(function (s, x) { return s + x.total; }, 0);
+          return h('div', null, [h('b', { text: vn + ' · ' + money(tot) }), h('ul', null, xs.map(function (x) { return h('li', null, [h('span', { text: wkLabel(x.date) + (x.no ? ' · #' + x.no : '') + ' · ' + gname[x.top].replace(' purchases', '') }), h('span', { text: money(x.total) })]); }))]);
+        })),
+        h('p', { cls: 'fn-note', text: 'Each invoice counts on its invoice date. Lines go to food, beverage or paper by the inventory item they were matched to when the invoice was scanned; delivery and fuel charges are their own group.' })]));
+    }
     cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
-      '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + '. Food, beverage, rent and other costs will split “Left after payroll” once invoices and the chart of accounts are added.' }));
+      '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + (d.buy.total ? '. Invoices are the ones scanned in Inventory, by invoice date; rent, utilities and other costs will split what’s left once the chart of accounts is added.' : OV.invErr ? '. Invoices couldn’t be loaded (run supabase/invoices.sql, or sign in as someone with inventory access).' : '. No scanned invoices are dated in this period yet: invoices scanned in Inventory will show here by their date. Rent and other costs come with the chart of accounts.') }));
     return cb.box;
   }
   // revenue and payroll cost per week, side by side, on one dollar axis
