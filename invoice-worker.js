@@ -333,6 +333,8 @@ export async function drivePoll(env, key, max) {
       await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: 'waiting', p_invoice: { pending: 'heic', mime: f.mimeType, lines: [] }, p_error: '' });
       added++; continue;
     }
+    // mark it seen before reading, so a read that's cut off partway isn't retried (and paid for) every 5 minutes; "Read again" on the site retries it
+    await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: 'error', p_invoice: null, p_error: 'Reading stopped partway (a large stack can take a minute or two). Press Read again.' });
     if (+f.size > MAX_DRIVE_BYTES) err = 'This scan is over 18 MB. Scan at 300 dpi or less, in color or grayscale, and save as PDF.';
     else {
       const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(f.id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });

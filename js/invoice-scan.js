@@ -459,7 +459,8 @@
       return h('li', { cls: x.status === 'error' ? 'is-bad' : '' }, [
         h('div', null, [h('b', { text: x.status === 'error' ? x.file_name : (inv.vendor || 'Unknown vendor') + (inv.invoice_no ? ' · #' + inv.invoice_no : '') }),
           h('span', { text: x.status === 'error' ? 'Couldn’t read it: ' + (x.error || 'unknown problem') : [inv.date, n + ' line' + (n === 1 ? '' : 's'), inv.total != null ? money(inv.total) : '', inv.filed && inv.filed.folder ? 'filed in ' + inv.filed.folder + (inv.filed.made ? ' (new folder)' : '') : x.file_name].filter(Boolean).join(' · ') })]),
-        h('div', { cls: 'is-bar-t' }, [inv.filed && inv.filed.link ? h('a', { cls: 'ed-btn small', href: inv.filed.link, target: '_blank', rel: 'noopener', text: 'PDF', title: 'Open the filed PDF in Google Drive' }) : null,
+        h('div', { cls: 'is-bar-t' }, [!(inv.filed && inv.filed.link) && !/#\d+$/.test(x.file_id || '') && !inv.pending ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Read again', title: 'Read this scan again (and file it in its vendor folder, if Google Drive allows it). A few cents.', on: { click: function () { readAgain(x, again); } } }) : null,
+          inv.filed && inv.filed.link ? h('a', { cls: 'ed-btn small', href: inv.filed.link, target: '_blank', rel: 'noopener', text: 'PDF', title: 'Open the filed PDF in Google Drive' }) : null,
           x.status === 'waiting' ? h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Check lines', on: { click: function () { openWaiting(x, again); } } }) : null, dismiss])
       ]);
     })));
@@ -480,6 +481,20 @@
       x.invoice = inv; A.status('', '');
       A.sb.from('inventory_inbox').update({ invoice: inv }).eq('id', x.id).then(function () {});
       return inv;
+    });
+  }
+  // forget this scan (and the other invoices split from it) so the next check reads and files it again
+  function readAgain(x, again) {
+    var base = String(x.file_id || '').replace(/#\d+$/, '');
+    if (!base) return;
+    A.status('Reading the scan again… a large stack can take a minute or two.', 'dirty');
+    A.sb.from('inventory_inbox').delete().or('file_id.eq.' + base + ',file_id.like.' + base + '#*').then(function (r) {
+      if (r.error) { A.status('Couldn’t reset it. Try again.', 'err'); return; }
+      D.inbox = D.inbox.filter(function (y) { return String(y.file_id || '').replace(/#\d+$/, '') !== base; }); again();
+      return post('drive/check').then(function (j) {
+        A.status(!j._ok ? (j.message || 'Couldn’t check the folder.') : j.added ? j.added + ' invoice' + (j.added === 1 ? '' : 's') + ' ready to check.' : 'Nothing new found. If the scan was already filed, it’s in Filed now.', j._ok ? 'ok' : 'err');
+        return loadBar();
+      }).then(again);
     });
   }
   function openWaiting(x, again) {
