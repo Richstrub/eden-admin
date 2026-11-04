@@ -1235,8 +1235,8 @@
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
       { id: 'gfood', label: 'Food costs', col: 2, color: CF.teal }, { id: 'gbev', label: 'Beverage & service', col: 2, color: CF.plum },
       { id: 'gover', label: 'Overhead', col: 2, color: '#4d6a8a' }, { id: 'square', label: 'Square', col: 2, color: '#6f6a8f' },
-      { id: 'bfood', label: 'Food purchases', col: 3, color: '#3f7d74' }, { id: 'boh', label: 'Back of house', col: 3, color: CF.ember },
-      { id: 'bbev', label: 'Beverage purchases', col: 3, color: '#7a5f98' }, { id: 'foh', label: 'Servers & bartenders', col: 3, color: '#d39a6a' },
+      { id: 'boh', label: 'Back of house labor', col: 3, color: CF.ember }, { id: 'bfood', label: 'Food purchases (invoices)', col: 3, color: '#3f7d74', keep: true, zero: 'none scanned yet' },
+      { id: 'foh', label: 'Servers & bartenders labor', col: 3, color: '#d39a6a' }, { id: 'bbev', label: 'Beverage purchases (invoices)', col: 3, color: '#7a5f98', keep: true, zero: 'none scanned yet' },
       { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red }, { id: 'comm', label: 'Commission', col: 3, color: '#d39a6a' },
       { id: 'bpaper', label: 'Paper goods', col: 3, color: '#b5a27a' }, { id: 'bother', label: 'Other', col: 3, color: '#8f8a82' },
       { id: 'bfixed', label: 'Fixed costs', col: 3, color: '#4d6a8a', note: buy.fixed.length ? buy.fixed.map(function (f) { return f.vendor + ' ' + wkLabel(f.date); }).join(', ') : '' },
@@ -1259,7 +1259,7 @@
     opt = opt || {};   // opt.base: show each last-column node (and opt.pctAlso ids) as a % of it, with a total under the column
     var byId = {}; nodes.forEach(function (n) { n.inV = 0; n.outV = 0; n.ins = []; n.outs = []; byId[n.id] = n; });
     links.forEach(function (l) { var a = byId[l.s], b = byId[l.t]; a.outV += l.v; b.inV += l.v; a.outs.push(l); b.ins.push(l); });
-    nodes = nodes.filter(function (n) { n.v = Math.max(n.inV, n.outV); return n.v > 0; });
+    nodes = nodes.filter(function (n) { n.v = Math.max(n.inV, n.outV); return n.v > 0 || n.keep; });   // keep: shown even at $0
     var cols = []; nodes.forEach(function (n) { (cols[n.col] = cols[n.col] || []).push(n); });
     var nw = 10, pad = 16, T = 8, foot = opt.base ? 34 : 0, usable = H - T * 2 - foot, L = 6, R = opt.base ? 280 : 230;   // the last column's labels sit to its right
     var maxTot = 0, maxN = 0; cols.forEach(function (c) { if (!c) return; maxTot = Math.max(maxTot, c.reduce(function (a, n) { return a + n.v; }, 0)); maxN = Math.max(maxN, c.length); });
@@ -1308,7 +1308,8 @@
       svg.appendChild(svgEl('rect', { x: n.x, y: n.y, width: nw, height: n.h, rx: 2, fill: n.color }));
       var tx = n.x + nw + 8, anchor = 'start', cy = n.y + n.h / 2, pc = showPct(n) ? pctOf(n.v) : '';
       var t1 = svgEl('text', { x: tx, y: cy - (n.h >= 26 ? 3 : 0) + (n.h >= 26 ? 0 : 4), class: 'fn-sk-l', 'text-anchor': anchor });
-      t1.textContent = n.h >= 26 ? n.label : n.label + ' · ' + money(n.v) + pc;
+      t1.textContent = !n.v && n.zero ? n.label + ' · ' + n.zero : n.h >= 26 ? n.label : n.label + ' · ' + money(n.v) + pc;
+      if (!n.v && n.zero) t1.setAttribute('class', 'fn-sk-l fn-sk-zero');
       svg.appendChild(t1);
       if (n.h >= 26) { var t2 = svgEl('text', { x: tx, y: cy + 13, class: 'fn-sk-v', 'text-anchor': anchor }); t2.textContent = money(n.v) + pc; svg.appendChild(t2); }
       if (n.note && n.h >= 40) { var t3 = svgEl('text', { x: tx, y: cy + 28, class: 'fn-sk-n', 'text-anchor': anchor }); t3.textContent = n.note; svg.appendChild(t3); }
