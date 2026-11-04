@@ -8,3 +8,4 @@ wrangler.jsonc
 worker.js
 scripts
 inquiry-key.generated.js
+lib

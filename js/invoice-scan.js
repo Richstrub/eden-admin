@@ -136,8 +136,10 @@
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (!r.ok || !j.ok) throw new Error(j.message || 'The invoice couldn’t be read. Try again.');
-        var inv = j.invoice; inv.source = (files.some(function (f) { return /pdf/i.test(f.type); }) ? 'pdf: ' : 'photo: ') + files.map(function (f) { return f.name; }).join(', ');
-        return inv;
+        var list = j.invoices && j.invoices.length ? j.invoices : [j.invoice];   // a stack of several invoices comes back as several
+        var src = (files.some(function (f) { return /pdf/i.test(f.type); }) ? 'pdf: ' : 'photo: ') + files.map(function (f) { return f.name; }).join(', ');
+        list.forEach(function (inv, i) { inv.source = src + (list.length > 1 ? ' (invoice ' + (i + 1) + ' of ' + list.length + ')' : ''); });
+        return list;
       });
     }, function (e) { throw e instanceof TypeError ? new Error('Couldn’t reach the staff site. Check your connection.') : e; });
   }
@@ -214,8 +216,8 @@
       var sheet = files.filter(function (f) { return /\.(csv|xlsx|xls)$/i.test(f.name); })[0];
       msg.className = 'sc-msg is-info'; msg.textContent = sheet ? 'Reading ' + sheet.name + '…' : 'Reading the invoice… this takes about 20–40 seconds.';
       m.el.querySelector('.is-scan-pick').classList.add('is-busy');
-      Promise.all([sheet ? readSheet(sheet) : readAI(files), loadLinks()]).then(function (res) {
-        m.close(); review(res[0], res[1]);
+      Promise.all([sheet ? readSheet(sheet).then(function (x) { return [x]; }) : readAI(files), loadLinks()]).then(function (res) {
+        m.close(); reviewAll(res[0], res[1]);
       }, function (e) {
         m.el.querySelector('.is-scan-pick').classList.remove('is-busy');
         msg.className = 'sc-msg err'; msg.textContent = e.message || 'Something went wrong. Try again.';
@@ -244,6 +246,15 @@
     sel.value = L.item || '';
     sel.addEventListener('change', function () { onChange(sel.value); });
     return sel;
+  }
+  // several invoices from one upload: check them one after another
+  function reviewAll(list, links) {
+    var i = 0;
+    (function next() {
+      if (i >= list.length) return;
+      var inv = list[i++];
+      review(inv, links, { step: list.length > 1 ? i + ' of ' + list.length : '', after: function () { setTimeout(next, 300); }, onCancel: list.length > 1 && i < list.length ? function () { setTimeout(next, 300); } : null });
+    })();
   }
   function review(inv, links, opts) {
     opts = opts || {}; var savedId = null;
@@ -307,13 +318,14 @@
     var sugg = inv.lines.filter(function (L) { return L.how === 'suggested'; }).length;
     var tickAll = sugg ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Tick all suggested (' + sugg + ')', on: { click: function () { inv.lines.forEach(function (L) { if (L.how === 'suggested') { L.use = true; paintRow(L); } }); count(); } } }) : null;
 
-    var m = A.modal('Check the invoice lines', [
+    var m = A.modal('Check the invoice lines' + (opts.step ? ' · invoice ' + opts.step : ''), [
+      inv.filed && inv.filed.link ? h('p', { cls: 'sc-small is-filed' }, ['Filed in Google Drive: Eden Invoices → Filed → ' + inv.filed.folder + (inv.filed.made ? ' (new folder)' : '') + ' → ', h('a', { href: inv.filed.link, target: '_blank', rel: 'noopener', text: inv.filed.name })]) : inv.filed && inv.filed.note ? h('p', { cls: 'sc-small', text: inv.filed.note + '.' }) : null,
       h('div', { cls: 'sc-row3 is-head' }, [lbl('Vendor', f.vendor), lbl('Invoice #', f.no), lbl('Date', f.date)]),
       h('p', { cls: 'sc-small', text: 'Tick each line that’s matched to the right inventory item. Check the units: the new cost is the invoice price ÷ how many of the item’s counting units come in one invoice unit. Lines you tick are remembered for next time.' }),
       sumNote,
       h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
       msg
-    ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }), applyBtn], true);
+    ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: opts.onCancel ? 'Skip to the next invoice' : 'Cancel', on: { click: function () { m.close(); if (opts.onCancel) opts.onCancel(); } } }), applyBtn], true);
     m.el.classList.add('is-scan');
     count();
 
@@ -446,8 +458,9 @@
         h('div', { cls: 'is-bar-t' }, [h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Read & check', on: { click: function () { openWaiting(x, again); } } }), dismiss])]);
       return h('li', { cls: x.status === 'error' ? 'is-bad' : '' }, [
         h('div', null, [h('b', { text: x.status === 'error' ? x.file_name : (inv.vendor || 'Unknown vendor') + (inv.invoice_no ? ' · #' + inv.invoice_no : '') }),
-          h('span', { text: x.status === 'error' ? 'Couldn’t read it: ' + (x.error || 'unknown problem') : [inv.date, n + ' line' + (n === 1 ? '' : 's'), inv.total != null ? money(inv.total) : '', x.file_name].filter(Boolean).join(' · ') })]),
-        h('div', { cls: 'is-bar-t' }, [x.status === 'waiting' ? h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Check lines', on: { click: function () { openWaiting(x, again); } } }) : null, dismiss])
+          h('span', { text: x.status === 'error' ? 'Couldn’t read it: ' + (x.error || 'unknown problem') : [inv.date, n + ' line' + (n === 1 ? '' : 's'), inv.total != null ? money(inv.total) : '', inv.filed && inv.filed.folder ? 'filed in ' + inv.filed.folder + (inv.filed.made ? ' (new folder)' : '') : x.file_name].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'is-bar-t' }, [inv.filed && inv.filed.link ? h('a', { cls: 'ed-btn small', href: inv.filed.link, target: '_blank', rel: 'noopener', text: 'PDF', title: 'Open the filed PDF in Google Drive' }) : null,
+          x.status === 'waiting' ? h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Check lines', on: { click: function () { openWaiting(x, again); } } }) : null, dismiss])
       ]);
     })));
   }
@@ -462,7 +475,8 @@
     }).then(function (blob) {
       var f = new File([blob], x.file_name || 'photo.heic', { type: (x.invoice && x.invoice.mime) || 'image/heic' });
       return shrink(f);
-    }).then(function (part) { return readAI([{ name: x.file_name, type: 'image/jpeg' }], [part]); }).then(function (inv) {
+    }).then(function (part) { return readAI([{ name: x.file_name, type: 'image/jpeg' }], [part]); }).then(function (list) {
+      var inv = list[0];
       x.invoice = inv; A.status('', '');
       A.sb.from('inventory_inbox').update({ invoice: inv }).eq('id', x.id).then(function () {});
       return inv;
@@ -485,7 +499,7 @@
   function folderDialog() {
     var name = h('input', { type: 'text', value: (D.st && D.st.folder) || 'Eden Invoices' }), msg = h('p', { cls: 'sc-msg', role: 'status' });
     var m = A.modal('Scanner folder', [
-      h('p', { cls: 'sc-sub', text: 'The Google Drive folder your scanner saves into (connected as ' + D.st.address + '). Only new scans from the last 30 days are read; nothing in the folder is changed.' }),
+      h('p', { cls: 'sc-sub', text: 'The Google Drive folder your scanner saves into (connected as ' + D.st.address + '). New scans from the last 30 days are read, then each invoice is filed into Filed → its vendor’s folder (a stack is split into one PDF per invoice). Nothing is deleted.' }),
       lbl('Folder name in Google Drive', name), msg
     ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Disconnect', on: { click: function () {
       if (!confirm('Disconnect Google Drive? Scans waiting here stay; new scans won’t come in until you connect again.')) return;
@@ -504,7 +518,7 @@
     A = api;
     var q = new URLSearchParams(String(arg || '').replace(/^drive\??/, ''));
     var err = q.get('err');
-    if (err) { A.status({ denied: 'Google Drive wasn’t connected (permission not given).', scope: 'Tick “See and download all your Google Drive files” when Google asks, then connect again.', norefresh: 'Google didn’t give a lasting permission. Connect again.', driveapi: 'Turn on the Google Drive API in Google Cloud (APIs & Services → Library → Google Drive API → Enable), then connect again.', expired: 'That sign-in took too long. Connect again.' }[err] || 'Google sign-in didn’t work. Try again.', 'err'); return; }
+    if (err) { A.status({ denied: 'Google Drive wasn’t connected (permission not given).', scope: 'Allow access to your Google Drive files when Google asks, then connect again.', norefresh: 'Google didn’t give a lasting permission. Connect again.', driveapi: 'Turn on the Google Drive API in Google Cloud (APIs & Services → Library → Google Drive API → Enable), then connect again.', expired: 'That sign-in took too long. Connect again.' }[err] || 'Google sign-in didn’t work. Try again.', 'err'); return; }
     var k = q.get('k'); if (!k) return;
     A.status('Connecting Google Drive…', 'dirty');
     post('drive/finish', { k: k }).then(function (j) {

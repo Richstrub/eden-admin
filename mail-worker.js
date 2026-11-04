@@ -336,7 +336,8 @@ export async function mailRoute(req, env, path) {
 }
 
 /* ---- Inventory: the scanner's Google Drive folder (read-only), connected with the same Google client ---- */
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';   // read the scanner folder, and file each invoice into a vendor folder
+const DRIVE_READ = 'https://www.googleapis.com/auth/drive.readonly';
 async function driveCallback(req, env, url, st) {
   const go = q => Response.redirect(staffUrl(env, req) + '#inventory/drive?' + q, 302);
   if (url.searchParams.get('error')) return go('err=' + (url.searchParams.get('error') === 'access_denied' ? 'denied' : 'google'));
@@ -345,11 +346,12 @@ async function driveCallback(req, env, url, st) {
   const t = await googleToken(env, { grant_type: 'authorization_code', code, redirect_uri: redirectUri(env, req) });
   if (!t.ok) return go('err=google');
   if (!t.j.refresh_token) return go('err=norefresh');
-  if (String(t.j.scope || '').split(' ').indexOf(DRIVE_SCOPE) === -1) return go('err=scope');
+  const scopes = String(t.j.scope || '').split(' '), w = scopes.indexOf(DRIVE_SCOPE) !== -1;
+  if (!w && scopes.indexOf(DRIVE_READ) === -1) return go('err=scope');
   let address = '';
   try { const a = await (await fetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', { headers: { Authorization: 'Bearer ' + t.j.access_token } })).json(); address = String((a.user && a.user.emailAddress) || ''); } catch (e) {}
   if (!address) return go('err=driveapi');
-  const k = await seal(env, { u: st.u, t: t.j.refresh_token, a: address, exp: Date.now() + 20 * 60000 }, 'drive-connect');
+  const k = await seal(env, { u: st.u, t: t.j.refresh_token, a: address, w, exp: Date.now() + 20 * 60000 }, 'drive-connect');
   return go('k=' + encodeURIComponent(k));
 }
 async function driveStartUrl(env, req, userId) {

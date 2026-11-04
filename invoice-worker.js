@@ -6,18 +6,17 @@
 // Only people who can use the inventory (Owner, Managers, Kitchen) can call it.
 
 import { mailInternals } from './mail-worker.js';
+import { PDFDocument } from './lib/pdf-lib-1.17.1.esm.min.js';   // MIT, github.com/Hopding/pdf-lib: splits a scanned stack into one PDF per invoice
 
 const MODEL = 'claude-sonnet-5-5';
 const MAX_FILES = 8, MAX_BYTES = 20 * 1024 * 1024;
 
 function json(obj, status) { return new Response(JSON.stringify(obj), { status: status || 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
 
-const TOOL = {
-  name: 'invoice',
-  description: 'The invoice, read line by line.',
-  input_schema: {
+const ONE = {
     type: 'object',
     properties: {
+      pages: { type: 'array', items: { type: 'integer' }, description: 'The page numbers (1 = first page or photo) this invoice is on, in order' },
       vendor: { type: 'string', description: 'Who the invoice is from (the seller), as printed. Not Eden.' },
       invoice_no: { type: 'string' },
       date: { type: 'string', description: 'Invoice date as YYYY-MM-DD, or empty' },
@@ -45,11 +44,18 @@ const TOOL = {
       }
     },
     required: ['vendor', 'lines']
-  }
+};
+const TOOL = {
+  name: 'invoices',
+  description: 'Every invoice in the file, each read line by line.',
+  input_schema: { type: 'object', properties: { invoices: { type: 'array', items: ONE, description: 'One entry per invoice, in the order they appear' } }, required: ['invoices'] }
 };
 
-const PROMPT = 'This is a vendor invoice for Eden, a restaurant in Syracuse, NY. It may be a printed distributor invoice, a farm\'s handwritten slip, ' +
-  'a wine/spirits distributor invoice or a supply invoice, possibly over several photos (pages, in order). Read every product line. ' +
+const PROMPT = 'These are vendor invoices for Eden, a restaurant in Syracuse, NY: printed distributor invoices, farms\' handwritten slips, ' +
+  'wine/spirits distributor invoices or supply invoices, as photos or scanned pages in order. ' +
+  'The file may be ONE invoice over one or more pages, or a STACK of several different invoices scanned together, possibly from different vendors. ' +
+  'Return one entry per invoice, in order, with the page numbers it is on (a second page of the same invoice, e.g. "Page 2 of 2" or the same invoice number, belongs to the same entry). ' +
+  'Skip pages that are not invoices (blank pages, statements, delivery notes with no prices). Read every product line. ' +
   'Put delivery charges, fuel surcharges, freight, deposits and service fees in fees (not lines). Skip taxes and subtotals. Keep credits as lines with negative amounts. ' +
   'If only a line total and quantity are printed, work out unit_price = extended / qty. Use the shipped quantity. ' +
   'Wine, beer and spirits invoices often have separate Cases and Bottles (Btls) columns: put full cases in cases and loose bottles in bottles, exactly as printed. ' +
@@ -57,7 +63,7 @@ const PROMPT = 'This is a vendor invoice for Eden, a restaurant in Syracuse, NY.
   'and qty to the quantity in that same unit (a per-bottle price with 1 case of 12 plus 3 bottles is qty 15; a per-case price with 2 cases is qty 2). ' +
   'Use the net price after discounts; if the printed price times qty is a cent or two off the line total, keep the printed price. ' +
   'Skip lines where nothing was shipped (backordered, out of stock, zero quantity and zero total). ' +
-  'Copy descriptions as printed; do not invent codes or packs. Put anything you are unsure of in note. You must answer by calling the invoice tool once with every line; do not reply with text.';
+  'Copy descriptions as printed; do not invent codes or packs. Put anything you are unsure of in note. You must answer by calling the invoices tool once with every invoice and every line; do not reply with text.';
 
 export async function invoiceRoute(req, env, rpc) {
   if (req.method !== 'POST') return json({ error: 'bad' }, 405);
@@ -84,7 +90,7 @@ export async function invoiceRoute(req, env, rpc) {
   if (bytes > MAX_BYTES) return json({ error: 'size', message: 'That invoice is too large. Try fewer pages or a smaller PDF.' }, 413);
   const out = await readInvoice(env, content);
   if (!out.ok) return json({ error: out.error, message: out.message }, out.status || 502);
-  return json({ ok: true, invoice: out.invoice, usage: out.usage });
+  return json({ ok: true, invoice: out.invoice, invoices: out.invoices, usage: out.usage });
 }
 
 // content: Claude content blocks (images / a PDF). Returns { ok, invoice } or { ok: false, error, message, status }
@@ -108,28 +114,34 @@ export async function readInvoice(env, content) {
   if (!use) {   // no tool call: take the JSON from the reply's text, if it wrote it out instead
     const txt = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
     const m = txt.match(/\{[\s\S]*\}/);
-    if (m) { try { const o = JSON.parse(m[0]); if (o && Array.isArray(o.lines)) use = { input: o }; } catch (e) {} }
+    if (m) { try { use = { input: JSON.parse(m[0]) }; } catch (e) {} }
   }
-  if (!use || !use.input || !Array.isArray(use.input.lines)) return { ok: false, error: 'read', status: 422, message: 'Couldn’t read any lines on that invoice. Try a sharper, flatter photo.' };
-  const inv = use.input;
+  const got = use && use.input ? (Array.isArray(use.input.invoices) ? use.input.invoices : Array.isArray(use.input.lines) ? [use.input] : []) : [];
   const n = v => typeof v === 'number' && isFinite(v) ? v : null;
-  inv.lines = inv.lines.filter(l => l && String(l.description || '').trim())
-    .filter(l => !(!n(l.extended) && !n(l.qty) && !n(l.cases) && !n(l.bottles)))   // nothing shipped (backordered, out of stock)
-    .map(l => ({
-    cases: n(l.cases), bottles: n(l.bottles), bottles_per_case: n(l.bottles_per_case),
-    code: String(l.code || '').trim(), description: String(l.description || '').trim(), pack: String(l.pack || '').trim(),
-    qty: typeof l.qty === 'number' ? l.qty : null, unit: String(l.unit || '').trim(), unit_price: typeof l.unit_price === 'number' ? l.unit_price : null,
-    extended: typeof l.extended === 'number' ? l.extended : null, note: String(l.note || '').trim()
-  }));
-  inv.fees = (Array.isArray(inv.fees) ? inv.fees : []).filter(f => f && String(f.description || '').trim() && n(f.amount)).map(f => ({ description: String(f.description).trim(), amount: n(f.amount) }));
-  return { ok: true, invoice: inv, usage: j.usage || null };
+  const invoices = got.filter(inv => inv && Array.isArray(inv.lines)).map(inv => {
+    inv.lines = inv.lines.filter(l => l && String(l.description || '').trim())
+      .filter(l => !(!n(l.extended) && !n(l.qty) && !n(l.cases) && !n(l.bottles)))   // nothing shipped (backordered, out of stock)
+      .map(l => ({
+        cases: n(l.cases), bottles: n(l.bottles), bottles_per_case: n(l.bottles_per_case),
+        code: String(l.code || '').trim(), description: String(l.description || '').trim(), pack: String(l.pack || '').trim(),
+        qty: n(l.qty), unit: String(l.unit || '').trim(), unit_price: n(l.unit_price), extended: n(l.extended), note: String(l.note || '').trim()
+      }));
+    inv.fees = (Array.isArray(inv.fees) ? inv.fees : []).filter(f => f && String(f.description || '').trim() && n(f.amount)).map(f => ({ description: String(f.description).trim(), amount: n(f.amount) }));
+    inv.pages = (Array.isArray(inv.pages) ? inv.pages : []).map(x => Math.round(+x)).filter(x => x >= 1);
+    inv.vendor = String(inv.vendor || '').trim();
+    return inv;
+  }).filter(inv => inv.lines.length || inv.fees.length);
+  if (!invoices.length) return { ok: false, error: 'read', status: 422, message: 'Couldn’t read any lines on that invoice. Try a sharper, flatter photo.' };
+  return { ok: true, invoice: invoices[0], invoices, usage: j.usage || null };
 }
 
 /* ---------- the scanner's Google Drive folder ----------
  * The office Mac's scanner saves each scan into a Google Drive folder. Every 5 minutes (and on "Check now")
  * drivePoll looks for new PDFs or images there, reads each with Claude and adds it to inventory_inbox as waiting.
- * The folder is only read: nothing in Drive is changed, moved or deleted.
- *   /drive/start   Owner or manager: Google's sign-in page (read-only Drive)
+ * Each invoice is then filed: Eden Invoices → Filed → <vendor> → "<vendor> <date> #<number>.pdf" (the vendor's folder is made the
+ * first time), and a stack of several invoices scanned together is split into one PDF per invoice, with the original stack
+ * moved to Filed → Original scans. Nothing is deleted. (Connections made before filing existed are read-only: reconnect.)
+ *   /drive/start   Owner or manager: Google's sign-in page (Google Drive, to read scans and file them)
  *   /drive/finish  saves the locked permission, then looks for the folder (default "Eden Invoices")
  *   /drive/folder  picks the folder by name
  *   /drive/check   anyone who can use the inventory: check the folder now
@@ -143,6 +155,81 @@ async function driveAccess(env, tokenEnc, address) {
   const x = await mailInternals.unseal(env, tokenEnc, 'drive-token:' + String(address || '').toLowerCase());
   if (!x || !x.t) return null;
   return mailInternals.accessFor(env, 'drive:' + String(tokenEnc).slice(-24), x.t);
+}
+async function canFile(env, tokenEnc, address) {
+  const x = await mailInternals.unseal(env, tokenEnc, 'drive-token:' + String(address || '').toLowerCase());
+  return !!(x && x.w);
+}
+const gq = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120); }
+function vkey(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(llc|inc|co|corp|company|ltd)\b/g, '').replace(/\s+/g, ' ').trim(); }
+async function gd(at, url, opts) {
+  const r = await fetch(url, Object.assign({}, opts || {}, { headers: Object.assign({ Authorization: 'Bearer ' + at }, (opts && opts.headers) || {}) }));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error('drive ' + r.status), { status: r.status, j });
+  return j;
+}
+async function folderIn(at, parent, name, create) {
+  const q = "'" + parent + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false and name='" + gq(name) + "'";
+  const j = await gd(at, DRIVE + 'files?' + new URLSearchParams({ q, fields: 'files(id,name)', pageSize: '5', includeItemsFromAllDrives: 'true', supportsAllDrives: 'true' }));
+  if (j.files && j.files[0]) return j.files[0].id;
+  if (!create) return null;
+  const c = await gd(at, DRIVE + 'files?supportsAllDrives=true&fields=id', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }) });
+  return c.id;
+}
+// Filed → one folder per vendor, matched loosely ("Empire Merchants North, LLC" = "Empire Merchants North"), made when new
+async function filing(at, rootId) {
+  const filed = await folderIn(at, rootId, 'Filed', true);
+  const j = await gd(at, DRIVE + 'files?' + new URLSearchParams({ q: "'" + filed + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false", fields: 'files(id,name)', pageSize: '1000', includeItemsFromAllDrives: 'true', supportsAllDrives: 'true' }));
+  const byKey = new Map(); (j.files || []).forEach(f => byKey.set(vkey(f.name), f));
+  let originals = null;
+  return {
+    async vendor(name) {
+      const nm = safeName(name) || 'Unknown vendor', k = vkey(nm);
+      if (byKey.has(k)) return byKey.get(k);
+      const id = await folderIn(at, filed, nm, true); const f = { id, name: nm, made: true }; byKey.set(k, f); return f;
+    },
+    async originals() { return originals || (originals = await folderIn(at, filed, 'Original scans', true)); }
+  };
+}
+async function uploadPdf(at, parent, name, bytes) {
+  const b = 'eden' + Math.random().toString(36).slice(2);
+  const meta = JSON.stringify({ name, parents: [parent], mimeType: 'application/pdf' });
+  const body = new Blob(['--' + b + '\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n--' + b + '\r\ncontent-type: application/pdf\r\n\r\n', bytes, '\r\n--' + b + '--']);
+  return gd(at, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink', { method: 'POST', headers: { 'content-type': 'multipart/related; boundary=' + b }, body });
+}
+async function moveFile(at, id, from, to, name) {
+  const q = new URLSearchParams({ addParents: to, removeParents: from, supportsAllDrives: 'true', fields: 'id,webViewLink' });
+  return gd(at, DRIVE + 'files/' + encodeURIComponent(id) + '?' + q, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(name ? { name } : {}) });
+}
+function label(inv, f) {
+  const d = /^\d{4}-\d\d-\d\d$/.test(inv.date || '') ? inv.date : String(f.createdTime || '').slice(0, 10);
+  return safeName([inv.vendor || 'Unknown vendor', d, inv.invoice_no ? '#' + inv.invoice_no : ''].filter(Boolean).join(' '));
+}
+// put each invoice from one scanned file into its vendor's folder; returns a note per invoice
+async function fileScan(at, F, rootId, f, bytes, invoices) {
+  const ext = f.mimeType === 'application/pdf' ? '.pdf' : f.mimeType === 'image/png' ? '.png' : '.jpg';
+  const used = new Set();
+  const nameFor = (inv, v) => { let n = label(Object.assign({}, inv, { vendor: v.name }), f), k = n, i = 2; while (used.has(k)) k = n + ' (' + i++ + ')'; used.add(k); return k + ext; };
+  if (invoices.length === 1 || ext !== '.pdf') {   // one invoice: move the scan itself into the vendor's folder, renamed
+    const inv = invoices[0], v = await F.vendor(inv.vendor), nm = nameFor(inv, v);
+    const m = await moveFile(at, f.id, rootId, v.id, nm);
+    return invoices.map((x, i) => i === 0 ? { name: nm, folder: v.name, id: m.id, link: m.webViewLink, made: v.made } : { folder: v.name, note: 'Filed with the first invoice in this scan' });
+  }
+  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const total = src.getPageCount(), out = [];
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    let pages = (inv.pages || []).filter(p => p <= total).map(p => p - 1);
+    if (!pages.length) { out.push({ note: 'Its pages couldn’t be told apart, so it stays in the original scan' }); continue; }
+    const doc = await PDFDocument.create();
+    (await doc.copyPages(src, pages)).forEach(p => doc.addPage(p));
+    const v = await F.vendor(inv.vendor), nm = nameFor(inv, v);
+    const up = await uploadPdf(at, v.id, nm, await doc.save());
+    out.push({ name: nm, folder: v.name, id: up.id, link: up.webViewLink, made: v.made, pages: inv.pages });
+  }
+  await moveFile(at, f.id, rootId, await F.originals());   // the whole stack, kept as scanned
+  return out;
 }
 async function findFolder(at, name) {
   const q = "mimeType='application/vnd.google-apps.folder' and trashed=false and name='" + String(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
@@ -194,7 +281,7 @@ export async function driveRoute(req, env, path, rpc, key) {
     const u = await mailInternals.userOf(env, jwt);
     const c = await mailInternals.unseal(env, b.k, 'drive-connect');
     if (!u || !c || !(c.exp > Date.now()) || c.u !== u.id) return json({ error: 'expired', message: 'That Google sign-in has expired. Connect the folder again.' }, 400);
-    const address = String(c.a).toLowerCase(), tok = await mailInternals.seal(env, { t: c.t }, 'drive-token:' + address);
+    const address = String(c.a).toLowerCase(), tok = await mailInternals.seal(env, { t: c.t, w: !!c.w }, 'drive-token:' + address);
     const s = await rpc(env, 'inv_drive_save', { p_address: address, p_token: tok }, jwt).catch(() => null);
     if (!s || !s.ok) return json({ error: 'db', message: s && s.error === 'denied' ? 'Only the Owner or a manager can connect the scanner folder.' : 'Couldn’t save it. Has supabase/invoice-scanner.sql been run?' }, 502);
     return pickFolder(env, rpc, jwt, DEFAULT_FOLDER, address);
@@ -238,9 +325,10 @@ export async function drivePoll(env, key, max) {
   if (!lr.ok) { const m = lr.status === 403 ? 'Google Drive answered “not allowed”: turn on the Google Drive API in Google Cloud.' : lr.status === 404 ? 'The scanner folder was moved or deleted: pick it again.' : 'Couldn’t list the folder.'; await done(m, lr.status === 404 ? 'nofolder' : ''); return { error: 'google', message: m }; }
   const seen = new Set(d.seen || []);
   const fresh = ((await lr.json()).files || []).filter(f => !seen.has(f.id));
-  let added = 0, failed = 0;
+  let added = 0, failed = 0, noFile = false, F = null;
+  const writable = fresh.length ? await canFile(env, d.token, d.address) : false;
   for (const f of fresh.slice(0, max || 3)) {
-    let inv = null, err = '';
+    let inv = null, err = '', invs = null, buf = null;
     if (/hei[cf]/i.test(f.mimeType)) {   // iPhone photo: the staff site converts it to JPEG and reads it when it's opened
       await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: 'waiting', p_invoice: { pending: 'heic', mime: f.mimeType, lines: [] }, p_error: '' });
       added++; continue;
@@ -250,18 +338,31 @@ export async function drivePoll(env, key, max) {
       const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(f.id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });
       if (!fr.ok) err = 'Couldn’t download it from Google Drive.';
       else {
-        const data = b64(await fr.arrayBuffer());
+        buf = await fr.arrayBuffer();
+        const data = b64(buf);
         if (f.mimeType !== 'application/pdf' && data.length * 0.75 > 5 * 1024 * 1024) err = 'This image is over 5 MB. Save scans as PDF instead.';
         else {
           const block = f.mimeType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } : { type: 'image', source: { type: 'base64', media_type: f.mimeType, data } };
           const out = await readInvoice(env, [block]);
-          if (out.ok) { inv = out.invoice; inv.source = 'scan: ' + f.name; } else { err = out.message; if (out.error === 'off' || out.error === 'ai') { await done(out.message); return { error: out.error, message: out.message, added }; } }
+          if (out.ok) { invs = out.invoices; inv = invs[0]; } else { err = out.message; if (out.error === 'off' || out.error === 'ai') { await done(out.message); return { error: out.error, message: out.message, added }; } }
         }
       }
     }
-    await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: inv ? 'waiting' : 'error', p_invoice: inv, p_error: err });
-    if (inv) added++; else failed++;
+    if (!invs) { await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: 'error', p_invoice: null, p_error: err }); failed++; continue; }
+    // file each invoice in its vendor's folder (and split a stack into one PDF per invoice)
+    let filed = [];
+    if (writable) {
+      try { F = F || await filing(at, d.folder_id); filed = await fileScan(at, F, d.folder_id, f, buf, invs); }
+      catch (e) { filed = invs.map(() => ({ note: 'Couldn’t file it in Google Drive (' + (e.status || 'error') + '); it’s still in Eden Invoices' })); }
+    } else noFile = true;
+    for (let i = 0; i < invs.length; i++) {
+      const x = invs[i], fl = filed[i] || null;
+      x.source = 'scan: ' + f.name + (invs.length > 1 ? ' (invoice ' + (i + 1) + ' of ' + invs.length + ')' : '');
+      if (fl) x.filed = fl;
+      await sb('inv_inbox_add_server', { p_key: key, p_file_id: i ? f.id + '#' + (i + 1) : f.id, p_name: fl && fl.name ? fl.name : f.name + (invs.length > 1 ? ' · ' + (i + 1) + ' of ' + invs.length : ''), p_created: f.createdTime, p_status: 'waiting', p_invoice: x, p_error: '' });
+      added++;
+    }
   }
-  await done('');
+  await done(noFile ? 'To file scans into vendor folders, reconnect Google Drive (Change folder → Disconnect, then Connect Google Drive).' : '');
   return { ok: true, added, failed, more: Math.max(0, fresh.length - (max || 3)) };
 }

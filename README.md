@@ -116,7 +116,7 @@ itself. Each item's edit window shows its price history.
 
 **Scanner folder**: the office scanner saves each scan as a PDF into a Google Drive folder (default name "Eden Invoices").
 Every 5 minutes the worker reads new scans with Claude and lists them on the Inventory page under "scanned invoices waiting";
-Check now looks right away. The folder is only read, never changed. Setup: run `supabase/invoice-scanner.sql`, turn on the
+Check now looks right away. Each invoice is filed into Eden Invoices → Filed → <vendor> (made the first time), named "<vendor> <date> #<number>.pdf"; a stack of several invoices is split into one PDF per invoice and the original moved to Filed → Original scans. Setup: run `supabase/invoice-scanner.sql`, turn on the
 Google Drive API in the same Google Cloud project as Business email, then Inventory → Connect Google Drive (Owner or a manager).
 
 Setup: run `supabase/invoices.sql` (after `inventory.sql`). Photos and PDFs are read by Claude (`invoice-worker.js`): create an
