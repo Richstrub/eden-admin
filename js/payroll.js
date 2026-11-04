@@ -252,7 +252,7 @@
       return { net: net, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
         pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, invEst: iv.total, invActual: act, extra: r2(inv - iv.gross), extraPct: iv.gross ? (inv - iv.gross) / iv.gross : null,
         trueCost: trueCost, truePct: net ? trueCost / net : null, emp: emp, wagesBy: wb,
-        food: lb.sales ? lb.sales.food : null, bev: lb.sales ? lb.sales.bev : null, salesExact: !!(lb.sales && lb.sales.exact), bevBy: P.row.rows._items ? P.row.rows._items.bevBy : null, tipsIn: lb.sales ? lb.sales.tipsIn : null, cardFees: lb.sales ? lb.sales.fees : null, at: new Date().toISOString() };
+        food: lb.sales ? lb.sales.food : null, bev: lb.sales ? lb.sales.bev : null, salesExact: !!(lb.sales && lb.sales.exact), bevBy: P.row.rows._items ? P.row.rows._items.bevBy : null, tipsIn: lb.sales ? lb.sales.tipsIn : null, cardFees: lb.sales ? lb.sales.fees : null, loan: P.row.rows._loan ? P.row.rows._loan.total : null, at: new Date().toISOString() };
     } catch (e) { return null; }
   }
   // wages (not tips or commission) by part of the house, in total and per person
@@ -972,6 +972,7 @@
       else OV.weeks = (r.data || []).map(function (w) {
         var rows = w.rows && typeof w.rows === 'object' ? w.rows : null, sm = w.summary || (rows && rows._summary);
         var s0 = sm && typeof sm === 'object' ? sm : null;
+        if (s0 && rows && rows._loan && rows._loan.total != null) s0.loan = rows._loan.total;   // kept with the week even when its summary is saved again
         if (s0 && rows) { var sp = splitForRow({ week_start: w.week_start, status: w.status, rows: JSON.parse(JSON.stringify(rows)) }, w.week_start); if (sp) { s0.wagesBy = sp.wb; s0.people = sp.people; } }
         return { week: w.week_start, status: w.status, s: s0 };
       });
