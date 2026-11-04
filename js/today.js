@@ -49,6 +49,7 @@
     P.rplan = mgr ? q(sb.from('review_plan').select('emp,next_due,skip')) : null;
     P.items = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,par,active')) : null;
     P.counts = ctx.canPrep ? q(sb.from('inventory_counts').select('category,count_date,counts')) : null;
+    P.prices = ctx.canPrep ? q(sb.from('inventory_prices').select('item_id,unit_cost,old_cost').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', iso(addDays(now, -90))).limit(500)) : null;   // supabase/inventory-costing.sql
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
     P.payReady = ctx.isOwner ? q(sb.from('pay_rates').select('emp').limit(1)) : null;
     P.events = q(sb.from('events').select('id,title,type,date,start,end,room,guests,all_day').gte('date', today).lte('date', iso(addDays(now, 7))));
@@ -107,6 +108,12 @@
         if (+v < +it.par) low++;
       });
       if (low) { items.push({ area: 'Inventory', title: plural(low, 'item') + ' below par', sub: 'From the latest counts — see what to order', href: '#inventory', cta: 'Order list' }); counts.inventory = low; }
+    }
+    // prices that changed on an invoice and nobody has looked at yet
+    if (ctx.canPrep && d.prices && d.prices.length) {
+      var ch = {}; d.prices.forEach(function (p) { if (+p.old_cost && Math.abs(+p.unit_cost - +p.old_cost) / +p.old_cost >= 0.005) ch[p.item_id] = 1; });
+      var nch = Object.keys(ch).length;
+      if (nch) items.push({ area: 'Inventory', title: plural(nch, 'price') + ' changed on invoices', sub: 'See what went up or down, and the new cost %', href: '#inventory', cta: 'Price changes' });
     }
     // payroll for the week that just ended
     if (ctx.isOwner && d.payReady && d.payReady.length && !(d.pay && d.pay.status === 'final')) {
