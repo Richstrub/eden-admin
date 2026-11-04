@@ -3100,3 +3100,5 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-sk-link{opacity:.32;transition:opacity .15s}.fn-sk-link:hover{opacity:.6}
 .fn-sk-l{font-size:11.5px;fill:#3b3f44}.fn-sk-v{font-size:13px;font-weight:600;fill:#14171a}.fn-sk-n{font-size:10.5px;fill:#7f7a71;font-style:italic}
 .fn-chart figcaption .fn-range{margin-left:auto}
+.fn-zone{margin:4px 0 18px}
+.fn-zone .pr-slots{grid-template-columns:1fr;max-width:640px;margin-left:auto;margin-right:auto}

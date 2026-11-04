@@ -161,6 +161,8 @@
   // The week's sales: from the Transactions CSV (or, without one, the End of day reports)
   function weekSales() {
     var x = P.row && P.row.rows._sales;
+    var it = P.row && P.row.rows._items;   // Square Item sales detail (exact food / beverage), dropped on Financials
+    if (x && it && it.food) return { net: sum(x.net), gross: sum(x.gross), tax: sum(x.tax), food: sum(it.food), bev: sum(it.bev), exact: true, tipsIn: x.tips ? sum(x.tips) : null, fees: x.fees ? sum(x.fees) : null, days: x.net, src: 'Transactions CSV' };
     if (x) return { net: sum(x.net), gross: sum(x.gross), tax: sum(x.tax), food: x.food ? sum(x.food) : null, bev: x.bev ? sum(x.bev) : null, tipsIn: x.tips ? sum(x.tips) : null, fees: x.fees ? sum(x.fees) : null, days: x.net, src: 'Transactions CSV' };
     var e = P.eod; if (e && sum(e.sales)) return { net: sum(e.sales), gross: 0, tax: 0, days: e.sales, src: 'End of day reports' };
     return null;
@@ -256,7 +258,7 @@
       return { net: net, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
         pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, invEst: iv.total, invActual: act, extra: r2(inv - iv.gross), extraPct: iv.gross ? (inv - iv.gross) / iv.gross : null,
         trueCost: trueCost, truePct: net ? trueCost / net : null, emp: emp, wagesBy: wb,
-        food: lb.sales ? lb.sales.food : null, bev: lb.sales ? lb.sales.bev : null, tipsIn: lb.sales ? lb.sales.tipsIn : null, cardFees: lb.sales ? lb.sales.fees : null, at: new Date().toISOString() };
+        food: lb.sales ? lb.sales.food : null, bev: lb.sales ? lb.sales.bev : null, salesExact: !!(lb.sales && lb.sales.exact), bevBy: P.row.rows._items ? P.row.rows._items.bevBy : null, tipsIn: lb.sales ? lb.sales.tipsIn : null, cardFees: lb.sales ? lb.sales.fees : null, at: new Date().toISOString() };
     } catch (e) { return null; }
   }
   function posClass(info) {   // management / back of house / front of house, from the position
@@ -954,6 +956,7 @@
       return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === n ? 'true' : 'false', text: n === 13 ? 'Quarter' : n === 52 ? 'Year' : n + ' weeks', on: { click: function () { OV.range = n; try { localStorage.setItem('eden-fin-range', n); } catch (e) {} paint(false); } } });
     }));
     el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Each week’s revenue (net sales), payroll cost and payroll percentage, from the weekly payroll. A week appears here once its Square files are in.' }), ranges]));
+    el.appendChild(salesZone());
     if (!all.length) {
       el.appendChild(h('div', { cls: 'pr-setup' }, [h('h2', { cls: 'an-h2', text: 'No weeks yet' }), h('p', { text: 'Open Weekly payroll, drop in the week’s two Square files, and it will show up here.' }), h('a', { cls: 'ed-btn small', href: '#payroll', text: 'Go to Weekly payroll' })]));
       return;
@@ -1092,11 +1095,15 @@
      later split "Left after payroll" into food, beverage, rent and so on. */
   var CF = { teal: '#4f8f86', grey: '#9d9a94', sand: '#c9a24b', blue: '#5b8fc9', ember: '#b0703f', red: '#c9645a', green: '#5d7a64', plum: '#8a6fa8' };
   function cashFlowData(ws) {
-    var t = { net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
+    var t = { exact: 0, net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
     ws.forEach(function (w) {
       var x = w.s, net = x.net || 0;
       t.net += net; t.tax += x.tax || 0; t.tips += x.tips || 0; t.tipsIn += x.tipsIn != null ? x.tipsIn : (x.tips || 0); t.fees += x.cardFees || 0; t.comm += x.comm || 0;
-      if (x.food != null && x.bev != null) { t.food += x.food; t.bev += x.bev; } else { t.unsplit += net; if (net) t.noSplit++; }
+      if (x.food != null && x.bev != null) {
+        // item sales are net of discounts the same way, but may differ from the Transactions CSV by refunds or timing: scale to its net sales
+        var fb = x.food + x.bev, f = fb && net ? x.food * net / fb : x.food;
+        t.food += f; t.bev += fb && net ? net - f : x.bev; if (x.salesExact) t.exact++;
+      } else { t.unsplit += net; if (net) t.noSplit++; }
       var tc = x.trueCost != null ? x.trueCost : (x.cost || 0);   // invoice less tips; without an invoice, pay alone
       t.cost += tc; t.ptax += Math.max(0, tc - (x.wages || 0) - (x.comm || 0)); if (x.invEst != null) t.inv++; if (x.invEst != null && !x.invActual) t.est++;
       // wages by part of the house (weeks saved before the split: from each person's pay and position)
@@ -1179,6 +1186,85 @@
     });
     return svg;
   }
+  /* ----- Financials: drop Square's Item sales detail for the exact food / beverage split ----- */
+  var BEVCAT = /cocktail|wine|beer|draught|draft|vodka|whisk|bourbon|\brye\b|scotch|\brum\b|\bgin\b|agave|tequila|mezcal|brandy|cognac|amaro|digestif|aperitif|liqueur|spirit|liquor|sake|cider|non.?alcoholic|n\/a|soda|coffee|\btea\b|juice|beverage|drink|bottle|\bbar\b|\bcan(s)?\b/i;
+  function bevKind(cat, item) {
+    var t = (cat || '') + ' ' + (item || '');
+    if (/non.?alcoholic|n\/a|soda|coffee|espresso|\btea\b|juice|lemonade|mocktail/i.test(t)) return 'na';
+    if (/beer|draught|draft|cider|\bcans?\b/i.test(t)) return 'beer';
+    if (/wine|champagne|sparkling|ros[eé]|\bbottle\b|\bbtl\b/i.test(t)) return 'wine';
+    return 'spirits';
+  }
+  function itemsFile(text, fname) {
+    var rows = parseCSV(text), hi = -1, H = [];
+    for (var i = 0; i < Math.min(rows.length, 15); i++) { var r = rows[i].map(function (x) { return String(x).trim().toLowerCase(); }); if (r.indexOf('category') >= 0 && (r.indexOf('net sales') >= 0 || r.indexOf('gross sales') >= 0)) { hi = i; H = r; break; } }
+    if (hi < 0) return Promise.reject(new Error(fname + ': this isn’t an Item sales file (no Category and Net sales columns).'));
+    var di = H.indexOf('date'), ci = H.indexOf('category'), ii = H.indexOf('item'), qi = H.indexOf('qty'); if (qi < 0) qi = H.indexOf('quantity'); if (qi < 0) qi = H.indexOf('items sold');
+    var ni = H.indexOf('net sales'); if (ni < 0) ni = H.indexOf('gross sales');
+    var ei = H.indexOf('event type'), ppi = H.indexOf('price point name');
+    if (di < 0) return Promise.reject(new Error(fname + ': this is a summary without dates. Export “Item sales detail” instead (it lists each sale with its date).'));
+    var m0 = function (v) { v = String(v || '').trim(); var neg = /^\(.*\)$/.test(v) || /^-/.test(v); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : (neg ? -n : n); };
+    var weeks = {}, n = 0;
+    rows.slice(hi + 1).forEach(function (r) {
+      var d = parseDate(r[di]); if (!d) return;
+      var net = m0(r[ni]); if (!net) return;
+      var wk = iso(sunday(d)), day = d.getDay(), cat = ci >= 0 ? String(r[ci] || '').trim() : '', item = ii >= 0 ? String(r[ii] || '').trim() : '';
+      var w = weeks[wk] = weeks[wk] || { food: [0, 0, 0, 0, 0, 0, 0], bev: [0, 0, 0, 0, 0, 0, 0], bevBy: { beer: 0, wine: 0, spirits: 0, na: 0 }, byCat: {}, cocktails: {}, rows: 0 };
+      var isBev = cat && !/uncategori[sz]ed/i.test(cat) ? BEVCAT.test(cat) : (BEV_RE.test(item) || BEVCAT.test(item));
+      if (isBev) { w.bev[day] = r2(w.bev[day] + net); var k = bevKind(cat, item); w.bevBy[k] = r2(w.bevBy[k] + net); } else w.food[day] = r2(w.food[day] + net);
+      w.byCat[cat || 'Uncategorized'] = r2((w.byCat[cat || 'Uncategorized'] || 0) + net);
+      if (/cocktail/i.test(cat) && qi >= 0 && !(ei >= 0 && /refund/i.test(r[ei] || ''))) { var nm = (ppi >= 0 && r[ppi] && !/regular/i.test(r[ppi]) ? r[ppi] : item) || item; w.cocktails[nm] = (w.cocktails[nm] || 0) + (m0(r[qi]) || 1); }
+      w.rows++; n++;
+    });
+    var keys = Object.keys(weeks).sort();
+    if (!keys.length) return Promise.reject(new Error(fname + ': no sales found.'));
+    // each week goes into that week's payroll (the Financials overview reads it from there)
+    return sb().from('payroll_weeks').select('week_start,rows').in('week_start', keys).then(function (res) {
+      if (res.error) throw new Error('Couldn’t read the payroll weeks.');
+      var have = {}; (res.data || []).forEach(function (x) { have[x.week_start] = x; });
+      var ups = [], skipped = [];
+      keys.forEach(function (k) {
+        var x = have[k]; if (!x) { skipped.push(k); return; }
+        var rows2 = x.rows || {}, w = weeks[k];
+        rows2._items = { food: w.food, bev: w.bev, bevBy: w.bevBy, byCat: w.byCat, cocktails: w.cocktails, file: fname, at: new Date().toISOString() };
+        if (rows2._summary) { rows2._summary.food = sum(w.food); rows2._summary.bev = sum(w.bev); rows2._summary.salesExact = true; rows2._summary.bevBy = w.bevBy; }
+        ups.push({ week_start: k, rows: rows2 });
+      });
+      return (ups.length ? sb().from('payroll_weeks').upsert(ups, { onConflict: 'week_start' }) : Promise.resolve({})).then(function (u) {
+        if (u && u.error) throw new Error('Couldn’t save the sales to the payroll weeks.');
+        var lab = function (k) { return 'week of ' + wkLabel(k); };
+        return fname + ': food and beverage sales for ' + (ups.length ? ups.length + (ups.length === 1 ? ' week' : ' weeks') + ' (' + ups.map(function (u) { return wkLabel(u.week_start); }).join(', ') + ')' : 'no weeks') +
+          (skipped.length ? '. Not saved for ' + skipped.map(lab).join(', ') + ': that week isn’t in Weekly payroll yet. Drop its Square files there first, then this file again.' : '.');
+      });
+    });
+  }
+  function salesZone() {
+    var file = h('input', { type: 'file', accept: '.csv,text/csv', multiple: true, hidden: true });
+    var last = (OV.weeks || []).filter(function (w) { return w.s && w.s.salesExact; }).length;
+    var zone = h('div', { cls: 'pr-zone fn-zone', tabindex: '0', role: 'button', 'aria-label': 'Drop Square’s Item sales detail here, or press to choose it' }, [
+      h('p', { cls: 'pr-zoneh', text: 'Drag Square’s Item sales report here' }),
+      h('div', { cls: 'pr-slots' }, [h('div', { cls: 'pr-slot' + (last ? ' done' : '') }, [h('span', { cls: 'pr-slotn', text: last ? '✓' : '1' }),
+        h('div', null, [h('b', { text: 'Item sales detail: exact food & beverage sales' }), h('small', { text: last ? last + (last === 1 ? ' week has' : ' weeks have') + ' the exact split. Drop another to add more weeks.' : 'Reports → Item sales → pick the dates (any number of weeks) → Export → Item sales detail' })])])]),
+      h('p', { cls: 'pr-zonef', text: 'or click here to choose the file. Each week goes into that week’s payroll; dropping it again replaces it.' })
+    ]);
+    function take(files) {
+      files = [].slice.call(files || []).filter(function (f) { return /\.csv$/i.test(f.name) || /csv|text/.test(f.type); });
+      if (!files.length) return;
+      status('Reading ' + files.map(function (f) { return f.name; }).join(', ') + '…', 'dirty');
+      Promise.all(files.map(function (f) { return f.text().then(function (t) { return itemsFile(t, f.name); }).catch(function (e) { return e.message; }); })).then(function (msgs) {
+        status(msgs.join(' '), /couldn|isn’t|not saved|no sales|instead/i.test(msgs.join(' ')) ? 'err' : 'ok');
+        loadOverview();
+      });
+    }
+    file.addEventListener('change', function () { take(file.files); file.value = ''; });
+    zone.addEventListener('click', function () { file.click(); });
+    zone.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); file.click(); } });
+    zone.addEventListener('dragenter', function (ev) { if (hasFiles(ev)) zone.classList.add('over'); });
+    zone.addEventListener('dragover', function (ev) { if (hasFiles(ev)) { ev.preventDefault(); zone.classList.add('over'); } });
+    zone.addEventListener('dragleave', function (ev) { if (!zone.contains(ev.relatedTarget)) zone.classList.remove('over'); });
+    zone.addEventListener('drop', function (ev) { ev.preventDefault(); ev.stopPropagation(); zone.classList.remove('over'); take(ev.dataTransfer.files); });
+    return h('div', null, [file, zone]);
+  }
   function cashFlow(all) {
     var n = OV.cfRange || 1, ws = all.slice(0, n);
     var cb = chartBox('Cash flow', null);
@@ -1191,7 +1277,7 @@
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
     cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · payroll ' + pctTxt(d.t.cost / d.t.net) + ' of net sales · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, 420)); cb.box.appendChild(wrap);
-    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees) and payroll. Food and beverage sales are estimated from the items on each check (the CSV has no price per item)' + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
+    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees) and payroll. Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + '. Food, beverage, rent and other costs will split “Left after payroll” once invoices and the chart of accounts are added.' }));
     return cb.box;
