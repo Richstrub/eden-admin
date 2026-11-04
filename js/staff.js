@@ -582,7 +582,7 @@
     var box = document.createElement('div'); box.className = 'ed-cuts';
     var hd = document.createElement('div'); hd.className = 'ed-cuts-h';
     var h = document.createElement('h4'); h.textContent = 'Tonight’s cuts'; hd.appendChild(h);
-    var p = document.createElement('p'); p.textContent = 'Tick each cut you’re serving tonight and where the beef is from. Each tick adds it to this section' + (g.items.some(isCutsAnchor) ? ', under Specialty Cuts,' : '') + ' below, where you can set its price and an optional note (weight, days aged). Untick it to take it off; its price is kept for next time. Guests get an “About tonight’s cuts of beef” link on the website and iPad menu.'; hd.appendChild(p);
+    var p = document.createElement('p'); p.textContent = 'Tick each cut you’re serving tonight and where the beef is from. Each tick adds it to this section' + (g.items.some(isCutsAnchor) ? ', under Specialty Cuts,' : '') + ' below, where you can set its price per ounce and an optional note (weight, days aged). Untick it to take it off; its price is kept for next time. Guests get an “About tonight’s cuts of beef” link on the website and iPad menu.'; hd.appendChild(p);
     box.appendChild(hd);
     var tb = document.createElement('table'); tb.className = 'ed-cuts-t';
     var th = document.createElement('tr'); th.innerHTML = '<th scope="col">Cut</th>' + BEEF.map(function (b) { return '<th scope="col">' + b[1] + '</th>'; }).join('');
@@ -894,7 +894,7 @@
       var box = document.createElement('section'); box.className = 'ed-group';
       var head = document.createElement('div'); head.className = 'ed-ghead';
       head.appendChild(field('Section', g.title, function (v) { g.title = v; }));
-      var nh = g.items.filter(function (x) { return x.hidden; }).length;
+      var nh = g.items.filter(function (x) { return x.hidden && !(x.cut && isKitchen(t)); }).length;   // unticked steak cuts aren't counted: they're off tonight
       var gb = document.createElement('div'); gb.className = 'ed-gbtns';
       gb.appendChild(btn('↑', 'Move section up', function () { if (gi > 0) { t.groups.splice(gi - 1, 0, t.groups.splice(gi, 1)[0]); markDirty(); edRender(); } }));
       gb.appendChild(btn('↓', 'Move section down', function () { if (gi < t.groups.length - 1) { t.groups.splice(gi + 1, 0, t.groups.splice(gi, 1)[0]); markDirty(); edRender(); } }));
@@ -908,6 +908,7 @@
       if (isKitchen(t) && isCutsGroup(g)) box.appendChild(cutsPanel(t, g));
       var list = document.createElement('div');
       g.items.forEach(function (it, ii) {
+        if (it.cut && it.hidden && isKitchen(t)) return;   // a cut that isn't ticked in Tonight's cuts stays out of the editor (its price is kept for next time)
         var row = document.createElement('div'); row.className = 'ed-item' + (it.hidden ? ' is-hidden' : ''); row.setAttribute('data-gi', gi); row.setAttribute('data-ii', ii);
         if (isWine(it)) {
           row.classList.add('ed-wine');
@@ -926,7 +927,11 @@
           if (kind) invCombo(dn, it, t, g, row, kind);
           var sf = field('Farm or producer', it.src, function (v) { it.src = v; }); row.appendChild(sf); srcCombo(sf, isKitchen(t));
           var dsc = field('Description', it.desc, function (v) { it.desc = v; }); dsc.classList.add('desc'); row.appendChild(dsc);
-          row.appendChild(field('Price', it.price, function (v) { it.price = v; }));
+          if (it.cut) {   // steak cuts are priced by the ounce: the number only, the website and menus add "/oz"
+            var pf = field('Price per oz', String(it.price || '').replace(/\s*\/\s*oz$/i, ''), function (v) { it.price = String(v || '').replace(/\s*(\/|per)\s*oz\.?$/i, '').trim(); });
+            var pin = pf.querySelector('input'); if (pin) { pin.setAttribute('inputmode', 'decimal'); pin.placeholder = 'e.g. 4'; }
+            pf.classList.add('ed-peroz'); row.appendChild(pf);
+          } else row.appendChild(field('Price', it.price, function (v) { it.price = v; }));
         }
         var ib = document.createElement('div'); ib.className = 'ed-ibtns';
         var hb = btn(it.hidden ? 'Show' : 'Hide', it.hidden ? 'Show on website' : 'Hide from website', function () { it.hidden = !it.hidden; if (!it.hidden) delete it.hidden; markDirty(); edRender(); }); hb.classList.add('ed-hide'); if (it.hidden) hb.classList.add('on'); ib.appendChild(hb);
