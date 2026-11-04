@@ -123,7 +123,7 @@
   function readAI(files, partsIn) {
     var parts = partsIn ? partsIn.map(function (p) { return Promise.resolve(p); }) : files.map(function (f) {
       if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
-        if (f.size > 18 * 1024 * 1024) return Promise.reject(new Error('That PDF is over 18 MB. Save a smaller copy or photograph the pages.'));
+        if (f.size > 45 * 1024 * 1024) return Promise.reject(new Error('That PDF is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.'));
         return b64(f).then(function (d) { return { type: 'application/pdf', data: d }; });
       }
       return shrink(f);

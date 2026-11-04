@@ -10,6 +10,8 @@ import { PDFDocument } from './lib/pdf-lib-1.17.1.esm.min.js';   // MIT, github.
 
 const MODEL = 'claude-sonnet-5-5';
 const MAX_FILES = 8, MAX_BYTES = 20 * 1024 * 1024;
+// Claude takes up to 32 MB per request (base64 makes a file a third bigger), so a big PDF is read a few pages at a time
+const CHUNK_BYTES = 9 * 1024 * 1024, CHUNK_PAGES = 20;
 
 function json(obj, status) { return new Response(JSON.stringify(obj), { status: status || 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
 
@@ -87,8 +89,11 @@ export async function invoiceRoute(req, env, rpc) {
     else if (/^image\/(jpeg|png|webp|gif)$/.test(type)) content.push({ type: 'image', source: { type: 'base64', media_type: type, data } });
     else return json({ error: 'type', message: 'Send a photo (JPG or PNG) or a PDF.' }, 400);
   }
-  if (bytes > MAX_BYTES) return json({ error: 'size', message: 'That invoice is too large. Try fewer pages or a smaller PDF.' }, 413);
-  const out = await readInvoice(env, content);
+  if (bytes > 45 * 1024 * 1024) return json({ error: 'size', message: 'That file is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.' }, 413);
+  let out;
+  if (content.length === 1 && content[0].type === 'document' && bytes > CHUNK_BYTES) out = await readPdf(env, unb64(content[0].source.data));
+  else if (bytes > MAX_BYTES) return json({ error: 'size', message: 'Those photos are too large together. Send fewer at a time.' }, 413);
+  else out = await readInvoice(env, content);
   if (!out.ok) return json({ error: out.error, message: out.message }, out.status || 502);
   return json({ ok: true, invoice: out.invoice, invoices: out.invoices, usage: out.usage });
 }
@@ -135,6 +140,39 @@ export async function readInvoice(env, content) {
   return { ok: true, invoice: invoices[0], invoices, usage: j.usage || null };
 }
 
+// a PDF of any size: small ones in one go; big ones split into groups of pages, each read on its own, then put back together
+// (page numbers refer to the whole file; an invoice cut in two at a split is joined back up by its vendor and number)
+export async function readPdf(env, buf) {
+  if (buf.byteLength <= CHUNK_BYTES) return readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(buf) } }]);
+  let src;
+  try { src = await PDFDocument.load(buf, { ignoreEncryption: true }); } catch (e) { return { ok: false, error: 'read', status: 422, message: 'That PDF couldn’t be opened.' }; }
+  const total = src.getPageCount(), per = buf.byteLength / Math.max(1, total);
+  const step = Math.max(1, Math.min(CHUNK_PAGES, Math.floor(CHUNK_BYTES / per)));
+  if (per > 22 * 1024 * 1024) return { ok: false, error: 'size', status: 413, message: 'A single page of this scan is over 22 MB. Scan at 200–300 dpi in grayscale (not 600 dpi color) and try again.' };
+  let all = [], usage = { input_tokens: 0, output_tokens: 0 }, lastErr = null;
+  for (let start = 0; start < total; start += step) {
+    const idx = []; for (let i = start; i < Math.min(total, start + step); i++) idx.push(i);
+    const doc = await PDFDocument.create();
+    (await doc.copyPages(src, idx)).forEach(p => doc.addPage(p));
+    const part = await doc.save();
+    const out = await readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(part) } }]);
+    if (!out.ok) { if (out.error === 'off' || out.error === 'ai') return out; lastErr = out; continue; }   // a group with no invoice in it (blank pages) is fine
+    if (out.usage) { usage.input_tokens += out.usage.input_tokens || 0; usage.output_tokens += out.usage.output_tokens || 0; }
+    out.invoices.forEach(inv => { inv.pages = (inv.pages || []).map(p => p + start); if (!inv.pages.length) inv.pages = idx.map(i => i + 1); all.push(inv); });
+  }
+  // join an invoice that ran across a split
+  const joined = [];
+  all.forEach(inv => {
+    const prev = joined[joined.length - 1], same = prev && inv.invoice_no && prev.invoice_no === inv.invoice_no && String(prev.vendor).toLowerCase() === String(inv.vendor).toLowerCase();
+    if (!same) { joined.push(inv); return; }
+    prev.lines = prev.lines.concat(inv.lines); prev.fees = (prev.fees || []).concat(inv.fees || []); prev.pages = prev.pages.concat(inv.pages);
+    if (inv.total != null) prev.total = inv.total; if (!prev.date && inv.date) prev.date = inv.date;
+  });
+  if (!joined.length) return lastErr || { ok: false, error: 'read', status: 422, message: 'Couldn’t read any invoices in that scan.' };
+  return { ok: true, invoice: joined[0], invoices: joined, usage };
+}
+function unb64(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+
 /* ---------- the scanner's Google Drive folder ----------
  * The office Mac's scanner saves each scan into a Google Drive folder. Every 5 minutes (and on "Check now")
  * drivePoll looks for new PDFs or images there, reads each with Claude and adds it to inventory_inbox as waiting.
@@ -148,7 +186,7 @@ export async function readInvoice(env, content) {
  *   /drive/remove  disconnects and cancels the permission at Google */
 const DRIVE = 'https://www.googleapis.com/drive/v3/';
 const DEFAULT_FOLDER = 'Eden Invoices';
-const MAX_DRIVE_BYTES = 18 * 1024 * 1024;
+const MAX_DRIVE_BYTES = 45 * 1024 * 1024;
 function b64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
 const jwtOf = req => (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
 async function driveAccess(env, tokenEnc, address) {
@@ -337,17 +375,15 @@ export async function drivePoll(env, key, max) {
     }
     // mark it seen before reading, so a read that's cut off partway isn't retried (and paid for) every 5 minutes; "Read again" on the site retries it
     await sb('inv_inbox_add_server', { p_key: key, p_file_id: keyOf(f), p_name: f.name, p_created: f.createdTime, p_status: 'error', p_invoice: null, p_error: 'Reading stopped partway (a large stack can take a minute or two). Press Read again.' });
-    if (+f.size > MAX_DRIVE_BYTES) err = 'This scan is over 18 MB. Scan at 300 dpi or less, in color or grayscale, and save as PDF.';
+    if (+f.size > MAX_DRIVE_BYTES) err = 'This scan is over 45 MB. In Image Capture set Resolution to 200 or 300 dpi and Kind to Grayscale, then scan again.';
     else {
       const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(f.id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });
       if (!fr.ok) err = 'Couldn’t download it from Google Drive.';
       else {
         buf = await fr.arrayBuffer();
-        const data = b64(buf);
-        if (f.mimeType !== 'application/pdf' && data.length * 0.75 > 5 * 1024 * 1024) err = 'This image is over 5 MB. Save scans as PDF instead.';
+        if (f.mimeType !== 'application/pdf' && buf.byteLength > 5 * 1024 * 1024) err = 'This image is over 5 MB. Save scans as PDF instead.';
         else {
-          const block = f.mimeType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } : { type: 'image', source: { type: 'base64', media_type: f.mimeType, data } };
-          const out = await readInvoice(env, [block]);
+          const out = f.mimeType === 'application/pdf' ? await readPdf(env, buf) : await readInvoice(env, [{ type: 'image', source: { type: 'base64', media_type: f.mimeType, data: b64(buf) } }]);
           if (out.ok) { invs = out.invoices; inv = invs[0]; } else { err = out.message; if (out.error === 'off' || out.error === 'ai') { await done(out.message); return { error: out.error, message: out.message, added }; } }
         }
       }
