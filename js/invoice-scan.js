@@ -295,9 +295,10 @@
   }
 
   /* ---------- 2. check each line ---------- */
-  var NEW_KINDS = [['food', 'food item'], ['paper', 'paper good'], ['spirits', 'spirit'], ['wine', 'wine'], ['beer', 'beer']];
+  var NEW_KINDS = [['food', 'food item'], ['paper', 'paper good'], ['spirits', 'spirit'], ['wine', 'wine'], ['beer', 'beer'], ['na', 'non-alcoholic drink']];
   // where a new item of each kind goes: its inventory tab and section, and how the line is received
-  var NEW_AS = { food: { cat: 'food', section: '', recv: 'food' }, paper: { cat: 'paper', section: '', recv: 'food' }, spirits: { cat: 'bev', section: '', recv: 'wine' }, wine: { cat: 'bev', section: 'Wine', recv: 'wine' }, beer: { cat: 'bev', section: 'Canned beer', recv: 'other' } };
+  var NEW_AS = { food: { cat: 'food', section: '', recv: 'food' }, paper: { cat: 'paper', section: '', recv: 'food' }, spirits: { cat: 'bev', section: '', recv: 'wine' }, wine: { cat: 'bev', section: 'Wine', recv: 'wine' }, beer: { cat: 'bev', section: 'Canned beer', recv: 'other' }, na: { cat: 'bev', section: 'Soft drinks & juice', recv: 'other' } };
+  var COFFEE_RE = /\b(coffee|espresso|decaf|tea|chai|matcha|oolong|rooibos|beans?)\b/i;
   function itemSelect(L, onChange) {
     var sel = h('select', { cls: 'is-item', 'aria-label': 'Inventory item for ' + L.description });
     sel.appendChild(h('option', { value: '', text: '— Not in inventory (skip) —' }));
@@ -342,6 +343,7 @@
 
     // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
     function kindOf(L, it) {
+      if (!it && L.item === '__new' && L.newKind === 'na') return COFFEE_RE.test(L.description) ? 'coffee' : 'other';   // coffee and tea by weight; soda, juice, water by the case
       if (!it && L.item === '__new' && L.newKind && NEW_AS[L.newKind]) return NEW_AS[L.newKind].recv;
       var x = it || { category: catGuess(L) }, cat = x.category, sec = String((x && x.section) || '') + ' ' + L.description;
       if (cat === 'paper') return 'food';   // paper goods: a case of so many
@@ -362,6 +364,7 @@
     function guessKind(L) {   // the kind a new item most likely is
       if (catGuess(L) !== 'bev') return /\b(napkin|towel|glove|foil|film|wrap|container|lid|cup|straw|bag|liner|bleach|sanitizer|soap|detergent|chemical|paper|plate|fork|knife|spoon|to.?go)\b/i.test(L.description) ? 'paper' : 'food';
       var t = L.description + ' ' + (L.pack || '');
+      if (/\b(coffee|espresso|decaf|tea|chai|matcha|soda|cola|juice|lemonade|kombucha|tonic|ginger beer|ginger ale|sparkling water|mineral water|water|syrup|non.?alcoholic|alcohol.?free|zero proof)\b/i.test(t) && !/\b(liqueur|vodka|rum|whiske?y|gin)\b/i.test(t)) return 'na';
       if (/\b(beer|ipa|lager|ale|stout|pils|porter|cider|seltzer|keg|sixtel)\b/i.test(t) || /brewing|brewery/i.test((f && f.vendor && f.vendor.value) || '')) return 'beer';
       if (/\b(wine|cabernet|merlot|pinot|riesling|chardonnay|sauvignon|syrah|zinfandel|malbec|ros[ée]|sparkling|champagne|prosecco|cava|cr[eé]mant|blanc|rouge|red blend|white blend)\b/i.test(t) || /winery|vineyard|cellars/i.test((f && f.vendor && f.vendor.value) || '')) return 'wine';
       return 'spirits';
@@ -524,6 +527,7 @@
         var c = r4(L.costOver != null ? L.costOver : newCost(L)), it;
         if (L.item === '__new') {
           var as = NEW_AS[L.newKind] || null;
+          if (as && L.newKind === 'na' && COFFEE_RE.test(L.description)) as = { cat: 'bev', section: 'Coffee & tea', recv: 'coffee' };
           it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: as && as.recv === 'wine' ? 'bottle' : canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
