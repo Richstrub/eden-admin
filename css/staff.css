@@ -3280,3 +3280,4 @@ tr.mc-none th b{color:#6b665e}
 .iv-rbtn{width:100%;text-align:left;display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font:inherit}
 .iv-rbtn:hover{border-color:var(--ink)}
 .iv-rbtn span{color:var(--stone);font-size:.9rem}
+.is-size input.is-pr{width:70px;text-align:right}

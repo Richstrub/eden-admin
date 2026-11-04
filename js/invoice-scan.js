@@ -350,21 +350,47 @@
     function sizeFields(L, it, changed) {
       var k = kindOf(L, it), p = String(L.pack || '').toLowerCase().trim(), m;
       var n = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n' });
-      if (k === 'wine') {   // the bottle size, the same for a single bottle and a case (and for a case, how many bottles)
-        var isCase = BIG.test(canon(L.unit)) || !!L.cases || (!L.unit && !L.bottles);
-        var bpc = L.bottles_per_case || packCount(p) || '', sz = '750ml', custom = '';
-        if ((m = p.match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/))) { var ml = /ml/.test(m[2]) ? +m[1] : +m[1] * 1000; sz = ml === 750 ? '750ml' : ml === 375 ? '375ml' : ml === 1000 ? '1L' : 'custom'; if (sz === 'custom') custom = m[1] + (/ml/.test(m[2]) ? ' ml' : ' L'); if (!L.bottle_ml) L.bottle_ml = ml; }
-        n.value = bpc; n.setAttribute('aria-label', 'Bottles in a case'); n.placeholder = '12';
-        var s1 = sel([['750ml', '750 ml'], ['375ml', '375 ml'], ['1L', '1 L'], ['custom', 'Custom…']], sz, 'Bottle size');
-        var c1 = h('input', { type: 'text', cls: 'is-pk', value: custom, placeholder: 'e.g. 1.5 L, 500 ml', 'aria-label': 'Custom bottle size', hidden: sz !== 'custom' });
-        var upd = function () {
-          c1.hidden = s1.value !== 'custom';
-          var size = s1.value === 'custom' ? c1.value.trim().replace(/\s+/g, '') : s1.value, cnt = isCase ? num(n.value) : null;
-          var ml = (function (t) { var q = String(t).toLowerCase().match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/); return q ? (/ml/.test(q[2]) ? +q[1] : +q[1] * 1000) : null; })(size);
-          L.pack = (cnt ? cnt + '/' : '') + size; L.bottle_ml = ml; if (isCase) L.bottles_per_case = cnt || null; changed();
+      if (k === 'wine') {   // receiving wine and spirits: number received · case or bottle · bottle size · price each · price per oz
+        var ML = function (t) { var q = String(t || '').toLowerCase().match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/); return q ? (/ml/.test(q[2]) ? +q[1] : +q[1] * 1000) : null; };
+        if (L.rcv == null) {   // first time: fill in what the invoice says
+          var u0 = canon(L.unit), cs = BIG.test(u0) || (!!L.cases && !L.bottles) || (!L.unit && !L.bottles);
+          L.rcv = { unit: cs ? 'case' : 'bottle', qty: L.cases && L.bottles ? null : L.qty != null ? L.qty : cs ? L.cases : L.bottles, bpc: L.bottles_per_case || packCount(p) || (cs ? 12 : null), ml: L.bottle_ml || ML(p) || 750 };
+          if (L.rcv.qty == null && L.cases && L.bottles && L.rcv.bpc) { L.rcv.unit = 'bottle'; L.rcv.qty = L.cases * L.rcv.bpc + L.bottles; }
+        }
+        var R = L.rcv, ozOne = function () { return R.ml / 29.5735 * (R.unit === 'case' ? (R.bpc || 0) : 1); };
+        var qn = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n', value: R.qty == null ? '' : String(R.qty), 'aria-label': 'Number received' });
+        var us = sel([['case', 'Case'], ['bottle', 'Bottle']], R.unit, 'Case or bottle');
+        var bp = h('input', { type: 'text', inputmode: 'numeric', cls: 'is-n', value: R.bpc || '', placeholder: '12', 'aria-label': 'Bottles in a case', hidden: R.unit !== 'case' });
+        var szv = R.ml === 750 ? '750' : R.ml === 375 ? '375' : R.ml === 1000 ? '1000' : 'custom';
+        var s1 = sel([['750', '750 ml'], ['375', '375 ml'], ['1000', '1 L'], ['custom', 'Custom…']], szv, 'Bottle size');
+        var c1 = h('input', { type: 'text', cls: 'is-pk', value: szv === 'custom' ? (R.ml >= 1000 ? R.ml / 1000 + ' L' : R.ml + ' ml') : '', placeholder: 'e.g. 1.5 L, 500 ml', 'aria-label': 'Custom bottle size', hidden: szv !== 'custom' });
+        var pr = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', value: L.unit_price == null ? '' : String(r2(L.unit_price)), 'aria-label': 'Price per case or bottle' });
+        var oz = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', 'aria-label': 'Price per oz' });
+        var showOz = function () { var o = ozOne(); oz.value = L.unit_price != null && o ? String(Math.round(L.unit_price / o * 1000) / 1000) : ''; };
+        showOz();
+        var commit = function () {   // put the boxes back on the line, then let the row recalculate (units, new cost)
+          L.unit = R.unit; L.qty = R.qty; L.bottle_ml = R.ml;
+          if (R.unit === 'case') { L.bottles_per_case = R.bpc || null; L.cases = R.qty; L.bottles = null; } else { L.bottles = R.qty; L.cases = null; }
+          var size = R.ml % 1000 === 0 ? R.ml / 1000 + 'L' : R.ml + 'ml';
+          L.pack = (R.unit === 'case' && R.bpc ? R.bpc + '/' : '') + size;
+          if (L.unit_price != null && R.qty != null) L.extended = r2(L.unit_price * R.qty);
+          changed();
         };
-        [n, c1].forEach(function (e) { e.addEventListener('change', upd); }); s1.addEventListener('change', function () { if (s1.value === 'custom') { c1.hidden = false; c1.focus(); } else upd(); });
-        return isCase ? [h('label', null, ['Case of ', n, ' bottles,']), h('label', null, ['each ', s1]), c1] : [h('label', null, ['Bottle size ', s1]), c1];
+        qn.addEventListener('change', function () { R.qty = num(qn.value); commit(); });
+        us.addEventListener('change', function () {   // switching between a case and a bottle: the price and number follow, when the case size is known
+          var was = R.unit, known = R.bpc; R.unit = us.value; bp.hidden = R.unit !== 'case';
+          if (R.unit === 'case' && !R.bpc) R.bpc = 12;   // the usual case; change it if not
+          if (!known) { commit(); return; }
+          if (R.bpc && L.unit_price != null && was !== R.unit) { if (R.unit === 'bottle') { L.unit_price = r4(L.unit_price / R.bpc); if (R.qty != null) R.qty = r2(R.qty * R.bpc); } else { L.unit_price = r4(L.unit_price * R.bpc); if (R.qty != null) R.qty = r2(R.qty / R.bpc); } }
+          commit();
+        });
+        bp.addEventListener('change', function () { R.bpc = num(bp.value); commit(); });
+        s1.addEventListener('change', function () { c1.hidden = s1.value !== 'custom'; if (s1.value === 'custom') { c1.focus(); return; } R.ml = +s1.value; commit(); });
+        c1.addEventListener('change', function () { var v = ML(c1.value) || (num(c1.value) ? (num(c1.value) < 10 ? num(c1.value) * 1000 : num(c1.value)) : null); if (v) { R.ml = v; commit(); } });
+        pr.addEventListener('change', function () { L.unit_price = num(pr.value); commit(); });
+        oz.addEventListener('change', function () { var v = num(oz.value), o = ozOne(); if (v != null && o) { L.unit_price = r4(v * o); commit(); } });
+        return [h('label', null, ['Received ', qn]), us, h('label', { hidden: R.unit !== 'case' }, ['of ', bp, ' bottles']), h('label', null, ['Bottle ', s1]), c1,
+          h('label', null, ['$', pr, R.unit === 'case' ? ' / case' : ' / bottle']), h('label', null, ['$', oz, ' / oz'])];
       }
       var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
       if (k === 'food') {   // measurements typed in before (from the inventory's case sizes), then "Other…"
