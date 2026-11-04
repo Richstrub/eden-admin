@@ -248,18 +248,33 @@
       var emp = {}; c.lines.forEach(function (L) { var g = r2(L.gross - L.adj); if (g) emp[L.id] = g; });
       // wages by part of the house: kitchen hours → back of house; outside-the-pool hours (Tyler as manager) → management;
       // tip-pool hours → servers & bartenders; anyone else (and salaries) by their position
-      var wb = { mgmt: 0, boh: 0, foh: 0 };
-      c.lines.forEach(function (L) {
-        var cls = posClass(L.info), main = L.regBy ? L.regBy.main + L.otPayBy.main : L.mainPay, kit = L.regBy ? L.regBy.kit + L.otPayBy.kit : L.kitPay, nt = L.regBy ? L.regBy.nt + L.otPayBy.nt : L.ntPay;
-        wb[L.info.tip_eligible ? 'foh' : cls] += main || 0; wb.boh += kit || 0; wb.mgmt += nt || 0;
-        wb[cls] += (L.salary || 0) + (L.sickPay || 0) + (L.holPay || 0);
-      });
-      Object.keys(wb).forEach(function (k) { wb[k] = r2(wb[k]); });
+      var wb = splitWages(c).wb;
       return { net: net, tax: lb.sales ? lb.sales.tax : null, salesFrom: lb.sales ? lb.sales.src : '', wages: lb.wages, comm: lb.comm, cost: lb.cost,
         pct: lb.pct, tips: c.T.tips, hours: c.T.total, gross: c.T.gross, invEst: iv.total, invActual: act, extra: r2(inv - iv.gross), extraPct: iv.gross ? (inv - iv.gross) / iv.gross : null,
         trueCost: trueCost, truePct: net ? trueCost / net : null, emp: emp, wagesBy: wb,
         food: lb.sales ? lb.sales.food : null, bev: lb.sales ? lb.sales.bev : null, salesExact: !!(lb.sales && lb.sales.exact), bevBy: P.row.rows._items ? P.row.rows._items.bevBy : null, tipsIn: lb.sales ? lb.sales.tipsIn : null, cardFees: lb.sales ? lb.sales.fees : null, at: new Date().toISOString() };
     } catch (e) { return null; }
+  }
+  // wages (not tips or commission) by part of the house, in total and per person
+  function splitWages(c) {
+    var wb = { mgmt: 0, boh: 0, foh: 0 }, people = {};
+    c.lines.forEach(function (L) {
+      var cls = posClass(L.info), main = L.regBy ? L.regBy.main + L.otPayBy.main : L.mainPay, kit = L.regBy ? L.regBy.kit + L.otPayBy.kit : L.kitPay, nt = L.regBy ? L.regBy.nt + L.otPayBy.nt : L.ntPay;
+      var me = { mgmt: 0, boh: 0, foh: 0 };
+      me[L.info.tip_eligible ? 'foh' : cls] += main || 0; me.boh += kit || 0; me.mgmt += nt || 0;
+      me[cls] += (L.salary || 0) + (L.sickPay || 0) + (L.holPay || 0);
+      Object.keys(me).forEach(function (k) { me[k] = r2(me[k]); wb[k] += me[k]; });
+      if (me.mgmt || me.boh || me.foh) people[L.id] = { name: L.info.name || (L.e && L.e.name) || 'Former employee', position: L.info.position || '', pool: !!L.info.tip_eligible, mgmt: me.mgmt, boh: me.boh, foh: me.foh };
+    });
+    Object.keys(wb).forEach(function (k) { wb[k] = r2(wb[k]); });
+    return { wb: wb, people: people };
+  }
+  // the same split for a saved week, worked out from its hours (weeks saved before the split was kept, and to list who's where)
+  function splitForRow(row, wk) {
+    var keep = { row: P.row, week: P.week, sched: P.sched };
+    try { P.row = row; P.week = new Date(wk + 'T12:00:00'); P.sched = null; return splitWages(calc()); }
+    catch (e) { return null; }
+    finally { P.row = keep.row; P.week = keep.week; P.sched = keep.sched; }
   }
   function posClass(info) {   // management / back of house / front of house, from the position
     var p = String((info && info.position) || '').toLowerCase();
@@ -927,7 +942,7 @@
   function loadOverview() {
     var my = ++P.seq; OV.err = ''; paint(true);
     Promise.all([
-      sb().from('payroll_weeks').select('week_start,status,finalized_at,summary:rows->_summary').order('week_start', { ascending: false }).limit(104),
+      sb().from('payroll_weeks').select('week_start,status,finalized_at,rows').order('week_start', { ascending: false }).limit(104),
       sb().from('employees').select('*').order('name'),
       sb().from('pay_rates').select('*'),
       sb().from('payroll_settings').select('invoice').eq('id', 1).maybeSingle()
@@ -938,7 +953,12 @@
       if (!all[2].error) { P.rates = {}; (all[2].data || []).forEach(function (x) { P.rates[x.emp] = x; }); }
       setInvoice(all[3]);
       if (r.error) { P.missing = isMissing(r.error); OV.err = P.missing ? '' : 'Couldn’t load the weeks. ' + (r.error.message || ''); OV.weeks = []; }
-      else OV.weeks = (r.data || []).map(function (w) { return { week: w.week_start, status: w.status, s: w.summary && typeof w.summary === 'object' ? w.summary : null }; });
+      else OV.weeks = (r.data || []).map(function (w) {
+        var rows = w.rows && typeof w.rows === 'object' ? w.rows : null, sm = w.summary || (rows && rows._summary);
+        var s0 = sm && typeof sm === 'object' ? sm : null;
+        if (s0 && rows) { var sp = splitForRow({ week_start: w.week_start, status: w.status, rows: JSON.parse(JSON.stringify(rows)) }, w.week_start); if (sp) { s0.wagesBy = sp.wb; s0.people = sp.people; } }
+        return { week: w.week_start, status: w.status, s: s0 };
+      });
       paint(false);
     }, function () { if (my === P.seq) { OV.err = 'Couldn’t reach the database.'; OV.weeks = []; paint(false); } });
   }
@@ -1265,6 +1285,21 @@
     zone.addEventListener('drop', function (ev) { ev.preventDefault(); ev.stopPropagation(); zone.classList.remove('over'); take(ev.dataTransfer.files); });
     return h('div', null, [file, zone]);
   }
+  // who's in each payroll group over the period, with their wages there (tips and commission not included)
+  function whoWhere(ws) {
+    var by = {};
+    ws.forEach(function (w) { var pp = (w.s && w.s.people) || {}; Object.keys(pp).forEach(function (id) { var x = pp[id], o = by[id] = by[id] || { name: x.name, position: x.position, pool: x.pool, mgmt: 0, boh: 0, foh: 0 }; o.mgmt += x.mgmt; o.boh += x.boh; o.foh += x.foh; o.name = x.name; o.position = x.position; }); });
+    var ids = Object.keys(by); if (!ids.length) return h('span');
+    var G = [['mgmt', 'Management'], ['boh', 'Back of house'], ['foh', 'Servers & bartenders']];
+    var det = h('details', { cls: 'fn-who' }, [h('summary', { text: 'Who’s in each payroll group' }),
+      h('div', { cls: 'fn-whog' }, G.map(function (g) {
+        var ppl = ids.filter(function (id) { return by[id][g[0]] > 0.004; }).sort(function (a, b) { return by[b][g[0]] - by[a][g[0]]; });
+        var tot = ppl.reduce(function (a, id) { return a + by[id][g[0]]; }, 0);
+        return h('div', null, [h('b', { text: g[1] + ' · ' + money(tot) }), h('ul', null, ppl.length ? ppl.map(function (id) { var o = by[id]; return h('li', null, [h('span', { text: o.name + (o.position ? ' · ' + o.position : '') }), h('span', { text: money(o[g[0]]) })]); }) : [h('li', { text: 'No one' })])]);
+      })),
+      h('p', { cls: 'fn-note', text: 'Tip-pool hours count as servers & bartenders, kitchen hours as back of house, and hours outside the tip pool (managing) as management; everyone else, and salaries, by their position on Employees. Change a position there, or someone’s tip pool or kitchen rate in Pay rates, to move them.' })]);
+    return det;
+  }
   function cashFlow(all) {
     var n = OV.cfRange || 1, ws = all.slice(0, n);
     var cb = chartBox('Cash flow', null);
@@ -1277,6 +1312,7 @@
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
     cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · payroll ' + pctTxt(d.t.cost / d.t.net) + ' of net sales · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, 420)); cb.box.appendChild(wrap);
+    cb.box.appendChild(whoWhere(ws));
     cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees) and payroll. Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + '. Food, beverage, rent and other costs will split “Left after payroll” once invoices and the chart of accounts are added.' }));
