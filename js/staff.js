@@ -135,11 +135,11 @@
   }
 
   /* ---------------- pages: Home, Menu, Schedule ---------------- */
-  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees', partners: 'viewPartners', temps: 'viewTemps', reviews: 'viewReviews' };
+  var VIEWS = { home: 'viewHome', menu: 'viewMenu', schedule: 'viewSchedule', prep: 'viewPrep', inventory: 'viewInventory', todo: 'viewTodo', recipes: 'viewRecipes', menucosts: 'viewMenuCosts', calendar: 'viewCalendar', analytics: 'viewAnalytics', catering: 'viewCatering', payroll: 'viewPayroll', preshift: 'viewPreshift', resources: 'viewResources', orders: 'viewOrders', checklists: 'viewChecklists', eod: 'viewEod', email: 'viewEmail', promo: 'viewPromo', employees: 'viewEmployees', partners: 'viewPartners', temps: 'viewTemps', reviews: 'viewReviews' };
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], checklists: ['Service', 'Checklists'], orders: ['Kitchen & bar', 'Ordering'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'], temps: ['Kitchen & bar', 'Temperatures'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], reviews: ['Team', 'Reviews'], analytics: ['Website', 'Analytics'], partners: ['Website', 'Partner stories'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], reviews: ['Team', 'Reviews'], analytics: ['Website', 'Analytics'], menucosts: ['Kitchen & bar', 'Menu costs'], partners: ['Website', 'Partner stories'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   // Team > Employees > Permissions: sections switched off for this login (Kitchen and Front-of-house logins)
@@ -177,7 +177,7 @@
     if (v.indexOf('inventory/') === 0) { invArg = v.slice(10); v = 'inventory'; }   // back from connecting the scanner's Google Drive folder
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
-    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (v === 'reviews' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
+    if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (v === 'reviews' && !isMgr()) || (v === 'menucosts' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
     var want = v === 'payroll' ? (sub === 'overview' ? '#financials' : sub === 'rates' ? '#payroll/rates' : sub === 'past' ? '#payroll/past' : '#payroll') : '#' + v + (sub ? '/' + sub : '');
     if (want !== location.hash) history.replaceState(null, '', want);
     if (view === 'analytics' && v !== 'analytics' && window.EdenAnalytics) window.EdenAnalytics.hide();
@@ -221,7 +221,10 @@
       if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr(), focus: calFocus });
     } else if (v === 'recipes') {
       status('');
-      if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr(), getMenu: function () { return menuData || assembleMenu() || null; } });
+      if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr(), costs: isMgr(), addMenuItem: ed.canWrite ? addMenuItem : null, getMenu: function () { return menuData || assembleMenu() || null; } });
+    } else if (v === 'menucosts') {
+      status('');
+      if (window.EdenMenuCost) window.EdenMenuCost.show({ sb: sb, el: $('viewMenuCosts'), status: status, getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'todo') {
       status('');
       if (window.EdenNotes) window.EdenNotes.showTodo({ sb: sb, el: $('viewTodo'), status: status, name: staffName });
@@ -1553,6 +1556,19 @@
     return Promise.resolve();
   }
   $('edSave').onclick = function () { ed.dirty = true; save(); };
+  // Recipes → "Make it a menu item": add a dish to the end of a heading and publish it
+  function addMenuItem(o) {
+    if (!ed.canWrite) return Promise.resolve(false);
+    var d = ed.draft || (menuData ? clone(menuData) : null); if (!d) return Promise.resolve(false);
+    var t = (d.tabs || []).filter(function (x) { return x.id === o.tab; })[0], g = t && (t.groups || []).filter(function (x) { return x.id === o.gid; })[0];
+    if (!g) return Promise.resolve(false);
+    g.items = (g.items || []).concat([o.item]);
+    ed.draft = d; menuData = clone(d); ed.dirty = true; save();
+    if (!ed.el.hidden && view === 'menu') edRender();
+    return new Promise(function (res) {
+      var n = 0; (function wait() { if (!ed.saving && !ed.dirty) return res(true); if (++n > 60) return res(!ed.dirty); setTimeout(wait, 250); })();
+    });
+  }
   // print the published menu (what the website shows), not unsaved edits
   $('printMenusBtn').onclick = function () { window.EdenMenuPrint.choose(currentMenu); };
   window.addEventListener('beforeunload', function (e) { if (ed.dirty || ed.saving) { save(); e.preventDefault(); e.returnValue = ''; } });

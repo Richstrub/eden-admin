@@ -173,14 +173,33 @@
   function isMissing(e) { return e && (e.code === 'PGRST205' || e.code === '42P01' || /schema cache|does not exist/i.test(e.message || '')); }
   function isPerm(e) { return e && (e.code === '42501' || /row-level security|permission/i.test(e.message || '')); }
   function canEdit() { return !!(R.ctx && R.ctx.canEdit); }
+  // costs and menu links: the Owner and Managers on the staff site (not the staff page)
+  function costs() { return !!(R.ctx && R.ctx.costs && window.EdenMenuCost); }
+  function MC() { return window.EdenMenuCost; }
+  function cmoney(n) { return n == null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2); }
+  function invLabel(it) { return it.name + (it.pack ? ' · ' + it.pack : '') + (it.cost != null && it.cost !== '' ? ' · $' + (+it.cost).toFixed(2) + '/' + (it.unit || 'each') : ' · no price'); }
+  function menuItems() {   // every item on the menu, with its section
+    var m = R.ctx && R.ctx.getMenu ? R.ctx.getMenu() : null, out = [];
+    ((m && m.tabs) || []).forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (it) { if (it && it.name) out.push({ tab: t.id, tabLabel: t.label, gid: g.id, group: g.title || '', name: it.name, desc: it.desc || '', price: it.price || '' }); }); }); });
+    return out;
+  }
+  function sameItem(a, b) { return a.tab === b.tab && MC().norm(a.name) === MC().norm(b.name) && MC().norm(a.desc) === MC().norm(b.desc); }
+  // save just the menu links of a recipe
+  function saveLinks(x, done) {
+    R.ctx.sb.from('recipes').update({ menu_links: x.menu_links, updated_by: (R.ctx && R.ctx.name) || '' }).eq('id', x.id).then(function (r) {
+      if (r.error) { status(/menu_links/.test(r.error.message || '') ? 'Connecting recipes to the menu needs one setup step: run supabase/recipe-costing.sql in Supabase.' : 'Couldn’t save. Check your connection and try again.', 'err'); return; }
+      MC().putRecipe(x); status('Saved.', 'ok'); if (done) done();
+    });
+  }
   function blank() { return { id: uid(), name: '', category: '', yield_qty: null, yield_unit: '', time: '', allergens: '', ingredients: [{ qty: null, unit: '', item: '', note: '' }], method: '', notes: '', _new: true }; }
 
   function load() {
+    if (costs()) MC().load(R.ctx.sb, true).then(function () { if (R.el && R.cur && !R.edit) render(); }, function () {});
     return R.ctx.sb.from('recipes').select('*').order('name').then(function (r) {
       R.loaded = true;
       if (r.error) { R.missing = isMissing(r.error); R.list = []; if (!R.missing) status(isPerm(r.error) ? 'Your login can’t open the recipes.' : 'Couldn’t load the recipes.', 'err'); return; }
       R.missing = false;
-      R.list = (r.data || []).map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; }).sort(function (a, b) { return String(a.name).localeCompare(b.name); });
+      R.list = (r.data || []).map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; x.menu_links = Array.isArray(x.menu_links) ? x.menu_links : []; return x; }).sort(function (a, b) { return String(a.name).localeCompare(b.name); });
       if (R.pendingOpen) { var f = R.list.filter(function (x) { return x.id === R.pendingOpen; })[0]; if (f) { R.cur = f; R.edit = null; R.factor = 1; R.target = null; } R.pendingOpen = null; }
     }, function () { R.loaded = true; });
   }
@@ -313,9 +332,9 @@
     box.appendChild(sc);
     box.appendChild(h('p', { cls: 'rc-yield' + (Math.abs(f - 1) < 1e-9 ? ' is-base' : ''), text: (Math.abs(f - 1) < 1e-9 ? 'Base recipe' : 'Scaled ' + decStr(f, 3) + '×') + (x.yield_qty ? ' · makes ' + fmtAmount(x.yield_qty * f, normUnit(yUnit)) + ' ' + yUnit : '') }));
     // ingredients
-    var tb = h('tbody');
+    var tb = h('tbody'), showCost = costs() && MC().data.loaded;
     (x.ingredients || []).forEach(function (ing, idx) {
-      if (ing.head) { tb.appendChild(h('tr', { cls: 'rc-ihead' }, h('td', { colspan: '3', text: ing.item }))); return; }
+      if (ing.head) { tb.appendChild(h('tr', { cls: 'rc-ihead' }, h('td', { colspan: showCost ? '4' : '3', text: ing.item }))); return; }
       var s = scaled(ing, f);
       // tap an ingredient once it's gathered or weighed out
       var tr = isApp() ? h('tr', { cls: 'rc-irow' + (ck.i[idx] ? ' is-got' : ''), role: 'checkbox', tabindex: '0', 'aria-checked': ck.i[idx] ? 'true' : 'false', title: 'Tap when you have it' }) : h('tr');
@@ -326,11 +345,12 @@
         h('td', { cls: 'rc-amt', text: fmtAmount(s.n, s.unit) }),
         h('td', { cls: 'rc-unit', text: unitLabel(s.unit, s.n) }),
         h('td', { cls: 'rc-ing' }, [h('span', { text: ing.item || '' }), ing.note ? h('small', { text: ing.note }) : null])
-      ].forEach(function (td) { tr.appendChild(td); });
+      ].concat(showCost ? [(function () { var c = MC().ingCost(ing); return h('td', { cls: 'rc-icost' + (c.cost == null ? ' none' : ''), title: c.cost == null ? c.why : (ing.inv_id && MC().data.invById[ing.inv_id] ? MC().data.invById[ing.inv_id].name : ing.rec_id && MC().data.recById[ing.rec_id] ? 'Recipe: ' + MC().data.recById[ing.rec_id].name : ''), text: c.cost == null ? (ing.inv_id || ing.rec_id ? '?' : '') : cmoney(c.cost * f) }); })()] : []).forEach(function (td) { tr.appendChild(td); });
     });
     var clear = h('button', { type: 'button', cls: 'rc-clear', text: 'Clear ticks', on: { click: function () { R.checks[x.id] = { i: {}, s: {} }; render(); } } });
     function paintClear() { var any = Object.keys(ck.i).some(function (k) { return ck.i[k]; }) || Object.keys(ck.s).some(function (k) { return ck.s[k]; }); clear.hidden = !any; }
     box.appendChild(h('section', { cls: 'rc-sec' }, [isApp() ? h('div', { cls: 'rc-sech' }, [h('h3', { text: 'Ingredients' }), clear]) : h('h3', { text: 'Ingredients' }), h('table', { cls: 'rc-ings' }, tb)]));
+    if (showCost) box.appendChild(costBox(x, f));
     var steps = String(x.method || '').split('\n').map(function (s) { return s.replace(/^\s*\d+[.)]\s*/, '').trim(); }).filter(Boolean);
     // tap a step when it's done
     if (steps.length) box.appendChild(h('section', { cls: 'rc-sec' }, [h('h3', { text: 'Method' }), h('ol', { cls: 'rc-steps' }, steps.map(function (st, si) {
@@ -345,6 +365,123 @@
     if (Math.abs(f - 1) > 1e-9) box.appendChild(h('p', { cls: 'rc-fine', text: 'Times, pan sizes and seasoning don’t always scale evenly. Taste and adjust.' }));
     if (x.updated_at) box.appendChild(h('p', { cls: 'rc-fine', text: 'Last updated ' + new Date(x.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + (x.updated_by ? ' by ' + x.updated_by : '') }));
     return box;
+  }
+
+  /* ---------- cost and menu links (Owner and Managers) ---------- */
+  function costBox(x, f) {
+    var rc = MC().recipeCost(x), yu = x.yield_unit || '';
+    var sec = h('section', { cls: 'rc-sec rc-cost' });
+    var n = (x.ingredients || []).filter(function (i) { return !i.head; }).length;
+    sec.appendChild(h('h3', { text: 'Cost' }));
+    sec.appendChild(h('div', { cls: 'rc-ctiles' }, [
+      h('div', null, [h('span', { text: Math.abs(f - 1) < 1e-9 ? 'This batch' : 'Scaled batch' }), h('b', { text: cmoney(rc.total == null ? null : rc.total * f) })]),
+      h('div', null, [h('span', { text: 'Per ' + (yu ? String(unitLabel(normUnit(yu), 1) || yu).replace(/(ion|ing|ate)s$/i, '$1') : 'batch') }), h('b', { text: rc.per != null ? cmoney(rc.per) : '—' })]),
+      h('div', null, [h('span', { text: 'Priced' }), h('b', { text: rc.priced + ' of ' + n })])
+    ]));
+    if (rc.missing.length) sec.appendChild(h('details', { cls: 'rc-miss' }, [h('summary', { text: rc.missing.length + (rc.missing.length === 1 ? ' ingredient has' : ' ingredients have') + ' no cost yet' }), h('ul', null, rc.missing.map(function (m) { return h('li', { text: m }); })), canEdit() ? h('p', { cls: 'rc-fine', text: 'Edit the recipe and pick each ingredient’s inventory item (or another recipe, like a sauce). Prices come from Inventory.' }) : null]));
+    if (!x.yield_qty) sec.appendChild(h('p', { cls: 'rc-fine', text: 'Add a base yield (e.g. 12 portions or 4 qt) so a plate’s share of the recipe can be costed.' }));
+    // on the menu
+    var links = x.menu_links || [], menu = menuItems();
+    sec.appendChild(h('h3', { cls: 'rc-onmenu', text: 'On the menu' }));
+    if (!links.length) sec.appendChild(h('p', { cls: 'rc-fine', text: 'Not connected to the menu yet. Connect it to the dish it goes into, or make it a menu item.' }));
+    else sec.appendChild(h('table', { cls: 'rc-links' }, [h('tbody', null, links.map(function (l, i) {
+      var mi = menu.filter(function (m) { return sameItem(m, l); })[0], lc = MC().linkCost(x, l), pr = mi ? (String(mi.price).match(/\d+(\.\d+)?/) || [])[0] : null;
+      var q = h('input', { type: 'text', inputmode: 'decimal', cls: 'rc-x', value: l.qty == null ? '1' : fmtAmount(l.qty, normUnit(l.unit)), 'aria-label': 'Amount per plate', disabled: !canEdit() });
+      var u = h('input', { type: 'text', cls: 'rc-lu', list: 'rcUnitsV', value: l.unit || yu, 'aria-label': 'Unit', disabled: !canEdit() });
+      var upd = function () { var v = parseQty(q.value); if (v == null || v <= 0) return; l.qty = v; l.unit = u.value.trim(); saveLinks(x, render); };
+      q.addEventListener('change', upd); u.addEventListener('change', upd);
+      return h('tr', null, [
+        h('td', null, [h('b', { text: l.name }), h('small', { text: (mi ? mi.tabLabel + ' · ' + mi.group : 'No longer on the menu') + (l.desc ? ' · ' + l.desc : '') })]),
+        h('td', { cls: 'rc-lamt' }, [q, u, h('span', { text: 'per plate' })]),
+        h('td', { cls: 'num', text: cmoney(lc.cost) + (pr ? ' of $' + pr : '') }),
+        h('td', { cls: 'num' }, [lc.cost != null && pr ? h('b', { cls: lc.cost / pr > 0.3 ? 'hi' : '', text: (lc.cost / pr * 100).toFixed(1) + '%' }) : h('small', { text: lc.why || '' })]),
+        canEdit() ? h('td', null, [h('button', { type: 'button', cls: 'rc-mini rc-del', 'aria-label': 'Disconnect from ' + l.name, text: '✕', on: { click: function () { links.splice(i, 1); x.menu_links = links; saveLinks(x, render); } } })]) : null
+      ]);
+    }))]));
+    sec.appendChild(h('datalist', { id: 'rcUnitsV' }, UNIT_LIST.concat(['portions', 'servings']).map(function (v) { return h('option', { value: v }); })));
+    if (links.length) sec.appendChild(h('p', { cls: 'rc-fine', text: 'The cost % here is this recipe alone. A dish made of several recipes adds them all up on Menu costs.' }));
+    if (canEdit()) sec.appendChild(h('div', { cls: 'rc-eadd' }, [
+      h('button', { type: 'button', cls: 'ed-btn small', text: 'Connect to a menu item', on: { click: function () { pickMenu(x); } } }),
+      R.ctx.addMenuItem ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Make it a menu item', on: { click: function () { makeMenu(x); } } }) : null,
+      h('a', { cls: 'sc-link', href: '#menucosts', text: 'All menu costs →' })
+    ]));
+    return sec;
+  }
+  function dialog(title, kids, onOk, okText) {
+    var dlg = h('dialog', { cls: 'pr-dlg rc-dlg', 'aria-label': title });
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var ok = h('button', { type: 'button', cls: 'ed-btn', text: okText || 'Save' });
+    dlg.appendChild(h('h2', { text: title })); kids.forEach(function (k) { dlg.appendChild(k); }); dlg.appendChild(msg);
+    dlg.appendChild(h('div', { cls: 'rc-efoot' }, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { dlg.close(); } } }), ok]));
+    ok.addEventListener('click', function () { onOk(msg, function () { dlg.close(); }); });
+    dlg.addEventListener('close', function () { dlg.remove(); });
+    document.body.appendChild(dlg); dlg.showModal();
+    return dlg;
+  }
+  function amountFields(x) {
+    var q = h('input', { type: 'text', inputmode: 'decimal', value: '1', 'aria-label': 'Amount per plate' });
+    var u = h('input', { type: 'text', list: 'rcUnitsD', value: x.yield_unit || 'portion', 'aria-label': 'Unit' });
+    return { q: q, u: u, el: h('label', { cls: 'sc-f' }, [h('span', { text: 'How much goes on one plate' }), h('div', { cls: 'rc-yrow' }, [q, u]),
+      h('datalist', { id: 'rcUnitsD' }, UNIT_LIST.concat(['portion', 'portions', 'servings']).map(function (v) { return h('option', { value: v }); })),
+      h('small', { cls: 'rc-fine', text: x.yield_qty ? 'The recipe makes ' + fmtAmount(x.yield_qty, normUnit(x.yield_unit)) + ' ' + (x.yield_unit || '') + '.' : 'Give the recipe a base yield to cost a plate’s share.' })]) };
+  }
+  function pickMenu(x) {
+    var all = menuItems(), food = all.filter(function (m) { return MC().tabKind({ id: m.tab, label: m.tabLabel }) === 'food'; });
+    var q = h('input', { type: 'search', placeholder: 'Search the menu', 'aria-label': 'Search the menu' });
+    var everything = h('input', { type: 'checkbox' }), list = h('div', { cls: 'rc-mlist', role: 'listbox' }), pick = null, am = amountFields(x);
+    function paintL() {
+      list.innerHTML = '';
+      var w = MC().norm(q.value).split(' ').filter(Boolean), src = everything.checked ? all : food;
+      var got = src.filter(function (m) { var hay = MC().norm(m.name + ' ' + m.desc + ' ' + m.group); return w.every(function (t) { return hay.indexOf(t) >= 0; }); });
+      var guess = MC().norm(x.name).split(' ').filter(function (t) { return t.length > 3; });
+      if (!w.length && guess.length) got.sort(function (a, b) { var sa = guess.filter(function (t) { return MC().norm(a.name + ' ' + a.desc).indexOf(t) >= 0; }).length, sb = guess.filter(function (t) { return MC().norm(b.name + ' ' + b.desc).indexOf(t) >= 0; }).length; return sb - sa; });
+      if (!got.length) { list.appendChild(h('p', { cls: 'rc-fine', text: 'Nothing matches.' })); return; }
+      var lastG = '';
+      got.forEach(function (m) {
+        var g = m.tabLabel + ' · ' + m.group; if (g !== lastG && (w.length || !guess.length)) { list.appendChild(h('p', { cls: 'rc-mg', text: g })); lastG = g; }
+        var already = (x.menu_links || []).some(function (l) { return sameItem(l, m); });
+        list.appendChild(h('button', { type: 'button', role: 'option', cls: 'rc-mopt', 'aria-selected': pick === m ? 'true' : 'false', disabled: already || null, on: { click: function () { pick = m; paintL(); } } }, [h('b', { text: m.name }), h('small', { text: [m.desc, m.price ? '$' + m.price : '', already ? 'already connected' : ''].filter(Boolean).join(' · ') })]));
+      });
+    }
+    q.addEventListener('input', paintL); everything.addEventListener('change', paintL); paintL();
+    dialog('Connect “' + (x.name || 'recipe') + '” to a menu item', [h('div', { cls: 'rc-mtop' }, [q, h('label', { cls: 'sc-check' }, [everything, ' Show the whole menu'])]), list, am.el], function (msg, close) {
+      if (!pick) { msg.textContent = 'Pick the menu item.'; return; }
+      var v = parseQty(am.q.value); if (v == null || v <= 0) { msg.textContent = 'How much goes on one plate? e.g. 1 portion or 3 oz.'; am.q.focus(); return; }
+      x.menu_links = (x.menu_links || []).concat([{ tab: pick.tab, name: pick.name, desc: pick.desc, qty: v, unit: am.u.value.trim() }]);
+      close(); saveLinks(x, render);
+    }, 'Connect');
+  }
+  function makeMenu(x) {
+    var m = R.ctx.getMenu ? R.ctx.getMenu() : null, tabs = ((m && m.tabs) || []);
+    var tSel = h('select', { 'aria-label': 'Menu section' }, tabs.map(function (t) { return h('option', { value: t.id, text: t.label }); }));
+    var gSel = h('select', { 'aria-label': 'Heading' });
+    var food = tabs.filter(function (t) { return MC().tabKind(t) === 'food'; })[0]; if (food) tSel.value = food.id;
+    function paintG() { var t = tabs.filter(function (y) { return y.id === tSel.value; })[0]; gSel.innerHTML = ''; ((t && t.groups) || []).forEach(function (g) { gSel.appendChild(h('option', { value: g.id, text: g.title || 'Untitled' })); }); }
+    tSel.addEventListener('change', paintG); paintG();
+    var nm = h('input', { type: 'text', value: x.name || '' }), ds = h('input', { type: 'text', placeholder: 'e.g. Bacon, poached egg, chives' }), pr = h('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 18' });
+    var am = amountFields(x);
+    var rc = MC().recipeCost(x);
+    var hint = h('small', { cls: 'rc-fine' });
+    function paintHint() { var c = MC().linkCost(x, { qty: parseQty(am.q.value) || 1, unit: am.u.value.trim() }).cost, p = parseFloat(pr.value); hint.textContent = c != null ? 'Costs ' + cmoney(c) + ' a plate' + (p ? ' · ' + (c / p * 100).toFixed(1) + '% of $' + p : ' · at 30% food cost, price it about $' + Math.ceil(c / 0.3)) : (rc.total == null ? 'Link the ingredients to inventory to see the plate cost.' : ''); }
+    [pr, am.q, am.u].forEach(function (i) { i.addEventListener('input', paintHint); }); paintHint();
+    dialog('Make “' + (x.name || 'recipe') + '” a menu item', [
+      h('div', { cls: 'rc-grid' }, [h('label', { cls: 'sc-f' }, [h('span', { text: 'Menu section' }), tSel]), h('label', { cls: 'sc-f' }, [h('span', { text: 'Heading' }), gSel]),
+        h('label', { cls: 'sc-f rc-wide' }, [h('span', { text: 'Name on the menu' }), nm]), h('label', { cls: 'sc-f rc-wide' }, [h('span', { text: 'Description' }), ds]),
+        h('label', { cls: 'sc-f' }, [h('span', { text: 'Price' }), pr])]),
+      am.el, hint,
+      h('p', { cls: 'rc-fine', text: 'It’s added to the end of that heading and published to the website right away. Reorder or change it in Menu & Supper Club.' })
+    ], function (msg, close) {
+      var name = nm.value.trim(), price = (pr.value.match(/\d+(\.\d+)?/) || [])[0] || '', v = parseQty(am.q.value);
+      if (!name) { msg.textContent = 'Give it a name.'; nm.focus(); return; }
+      if (!gSel.value) { msg.textContent = 'That section has no headings: add one in Menu & Supper Club first.'; return; }
+      if (v == null || v <= 0) { msg.textContent = 'How much goes on one plate? e.g. 1 portion.'; am.q.focus(); return; }
+      msg.textContent = 'Adding to the menu…';
+      Promise.resolve(R.ctx.addMenuItem({ tab: tSel.value, gid: gSel.value, item: { name: name, desc: ds.value.trim(), price: price } })).then(function (ok) {
+        if (ok === false) { msg.textContent = 'Couldn’t add it to the menu (your login may not be allowed to change the menu).'; return; }
+        x.menu_links = (x.menu_links || []).concat([{ tab: tSel.value, name: name, desc: ds.value.trim(), qty: v, unit: am.u.value.trim() }]);
+        close(); saveLinks(x, render);
+      }, function () { msg.textContent = 'Couldn’t add it to the menu.'; });
+    }, 'Add to the menu');
   }
 
   /* ---------- editor (Owner and Managers) ---------- */
@@ -378,7 +515,8 @@
     var rows = h('div', { cls: 'rc-erows' });
     function paintRows() {
       rows.innerHTML = '';
-      rows.appendChild(h('div', { cls: 'rc-erow rc-ehdr' }, [h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Note (optional)' }), h('span')]));
+      rows.classList.toggle('rc-withinv', costs());
+      rows.appendChild(h('div', { cls: 'rc-erow rc-ehdr' }, [h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Note (optional)' }), costs() ? h('span', { text: 'Costed from' }) : null, h('span')]));
       x.ingredients.forEach(function (ing, i) {
         var tools = h('div', { cls: 'rc-etools' }, [
           h('button', { type: 'button', cls: 'rc-mini', 'aria-label': 'Move up', text: '↑', on: { click: function () { if (i > 0) { x.ingredients.splice(i - 1, 0, x.ingredients.splice(i, 1)[0]); R.dirty = true; paintRows(); } } } }),
@@ -401,8 +539,34 @@
         it.addEventListener('input', function () { ing.item = it.value; R.dirty = true; });
         nt.addEventListener('input', function () { ing.note = nt.value; R.dirty = true; });
         it.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (i === x.ingredients.length - 1) { x.ingredients.push({ qty: null, unit: '', item: '', note: '' }); paintRows(); } var all = rows.querySelectorAll('[aria-label=Amount]'); var nx = all[Math.min(i + 1, all.length - 1)]; if (nx) nx.focus(); } });
-        rows.appendChild(h('div', { cls: 'rc-erow' }, [q, u, it, nt, tools]));
+        rows.appendChild(h('div', { cls: 'rc-erow' }, [q, u, it, nt, costs() ? linkInput(ing, it) : null, tools]));
       });
+    }
+    // which inventory item (or recipe) an ingredient is costed from: typed or picked from the list, guessed from its name
+    var opts = {};
+    function linkInput(ing, itInp) {
+      var D = MC().data, cur = ing.inv_id && D.invById[ing.inv_id] ? invLabel(D.invById[ing.inv_id]) : ing.rec_id && D.recById[ing.rec_id] ? 'Recipe: ' + D.recById[ing.rec_id].name : '';
+      var li = h('input', { type: 'text', list: 'rcInv', value: cur, placeholder: 'Inventory item', 'aria-label': 'Inventory item for this ingredient', cls: cur ? 'rc-linked' : '' });
+      li.addEventListener('change', function () {
+        var v = li.value.trim(), o = opts[v];
+        if (!v) { delete ing.inv_id; delete ing.rec_id; }
+        else if (o) { delete ing.inv_id; delete ing.rec_id; if (o.inv) ing.inv_id = o.inv; else ing.rec_id = o.rec; }
+        else { li.classList.add('bad'); return; }
+        li.classList.remove('bad'); li.classList.toggle('rc-linked', !!v); R.dirty = true;
+      });
+      itInp.addEventListener('blur', function () {   // suggest the inventory item with the same name
+        if (li.value || !itInp.value.trim()) return;
+        var n = MC().norm(itInp.value), best = null;
+        D.inv.forEach(function (x) { var xn = MC().norm(x.name); if (!best && (xn === n || (n.length > 3 && (xn.indexOf(n) === 0 || n.indexOf(xn) === 0)))) best = x; });
+        if (best) { ing.inv_id = best.id; li.value = invLabel(best); li.classList.add('rc-linked'); R.dirty = true; }
+      });
+      return li;
+    }
+    if (costs()) {
+      var dl = h('datalist', { id: 'rcInv' });
+      MC().data.inv.slice().sort(function (a, b) { return String(a.name).localeCompare(b.name); }).forEach(function (it) { var l = invLabel(it); opts[l] = { inv: it.id }; dl.appendChild(h('option', { value: l })); });
+      R.list.filter(function (r) { return r.id !== x.id; }).forEach(function (r) { var l = 'Recipe: ' + r.name; opts[l] = { rec: r.id }; dl.appendChild(h('option', { value: l })); });
+      box.appendChild(dl);
     }
     paintRows();
     var paste = h('textarea', { rows: '5', placeholder: 'Paste or type a list, one ingredient per line:\n2 cups heavy cream\n1 1/2 tbsp kosher salt\n3 cloves garlic, minced\nFor the garnish:' });
@@ -447,18 +611,26 @@
       var row = {
         id: x.id, name: nm, category: cat.value.trim(), yield_qty: yqv, yield_unit: yu.value.trim(), time: time.value.trim(), allergens: alg.value.trim(),
         ingredients: x.ingredients.filter(function (i) { return i.head ? (i.item || '').trim() : ((i.item || '').trim() || i.qty != null); }).map(function (i) {
-          return i.head ? { head: true, item: i.item.trim() } : { qty: i.qty == null ? null : Math.round(i.qty * 10000) / 10000, unit: normUnit(i.unit), item: (i.item || '').trim(), note: (i.note || '').trim() };
+          var o = i.head ? { head: true, item: i.item.trim() } : { qty: i.qty == null ? null : Math.round(i.qty * 10000) / 10000, unit: normUnit(i.unit), item: (i.item || '').trim(), note: (i.note || '').trim() };
+          if (!i.head && i.inv_id) o.inv_id = i.inv_id; if (!i.head && i.rec_id) o.rec_id = i.rec_id;
+          return o;
         }),
+        menu_links: x.menu_links || [],
         method: method.value.replace(/\s+$/, ''), notes: notes.value.replace(/\s+$/, ''), updated_by: (R.ctx && R.ctx.name) || ''
       };
       msg.textContent = 'Saving…';
-      R.ctx.sb.from('recipes').upsert(row, { onConflict: 'id' }).then(function (r) {
+      var put = function (rw) { return R.ctx.sb.from('recipes').upsert(rw, { onConflict: 'id' }); };
+      put(row).then(function (r) {
+        if (r.error && /menu_links/.test(r.error.message || '')) { var rw = Object.assign({}, row); delete rw.menu_links; return put(rw); }   // recipe-costing.sql not run yet
+        return r;
+      }).then(function (r) {
         if (r.error) { msg.textContent = isPerm(r.error) ? 'Only the Owner and Managers can change recipes.' : 'Couldn’t save. Check your connection and try again.'; return; }
         row.updated_at = new Date().toISOString();
         var i = R.list.findIndex(function (y) { return y.id === row.id; });
         if (i === -1) R.list.push(row); else R.list[i] = row;
         R.list.sort(function (a, b) { return String(a.name).localeCompare(b.name); });
         R.edit = null; R.dirty = false; R.cur = row; R.factor = 1; R.target = null;
+        if (window.EdenMenuCost) window.EdenMenuCost.putRecipe(row);
         status('Saved “' + nm + '”.', 'ok'); render();
       });
     }
@@ -467,6 +639,7 @@
       R.ctx.sb.from('recipes').delete().eq('id', x.id).then(function (r) {
         if (r.error) { msg.textContent = isPerm(r.error) ? 'Only the Owner and Managers can delete recipes.' : 'Couldn’t delete. Try again.'; return; }
         R.list = R.list.filter(function (y) { return y.id !== x.id; }); R.edit = null; R.cur = null; R.dirty = false; status('Recipe deleted.', 'ok'); render();
+        if (window.EdenMenuCost) window.EdenMenuCost.dropRecipe(x.id);
       });
     }
     return box;
@@ -475,6 +648,7 @@
   window.EdenRecipes = {
     show: function (ctx) {
       R.ctx = ctx; R.el = ctx.el;
+      try { if (sessionStorage.getItem('eden-recipes-tab') === 'cocktails') { R.tab = 'cocktails'; sessionStorage.removeItem('eden-recipes-tab'); } } catch (e) {}
       if (!R.loaded) { render(); load().then(render); } else render();
     },
     reload: function () { R.loaded = false; if (R.el) { render(); load().then(render); } },
