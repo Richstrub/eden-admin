@@ -322,6 +322,43 @@
     var applyBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Update prices', on: { click: apply } });
     var item = function (id) { return A.items.filter(function (x) { return x.id === id; })[0]; };
 
+    // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
+    function kindOf(L, it) {
+      var x = it || (L.item === '__new' ? { category: newCatGuess() } : null), cat = x ? x.category : A.cat, sec = String((x && x.section) || '') + ' ' + L.description;
+      if (cat === 'paper') return 'food';   // paper goods: a case of so many
+      if (cat !== 'bev') return 'food';
+      if (/coffee|tea\b|espresso|matcha/i.test(sec)) return 'coffee';
+      if (/beer|draught|draft|ipa|lager|pils|stout|cider|seltzer|soda|soft|juice|water|tonic|ginger|cola|can\b|keg/i.test(sec)) return 'other';
+      return 'wine';
+    }
+    function newCatGuess() { var c = {}; inv.lines.forEach(function (L) { var x = L.item && L.item !== '__new' ? item(L.item) : null; if (x) c[x.category] = (c[x.category] || 0) + 1; }); return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0] || A.cat || 'food'; }
+    function sel(opts, val, label) { var e = h('select', { 'aria-label': label }, opts.map(function (o) { return h('option', { value: o[0], text: o[1] }); })); e.value = val; return e; }
+    function sizeFields(L, it, changed) {
+      var k = kindOf(L, it), p = String(L.pack || '').toLowerCase().trim(), m;
+      var n = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n' });
+      if (k === 'wine') {   // bottles per case and the bottle size
+        var bpc = L.bottles_per_case || packCount(p) || '', sz = '750ml', custom = '';
+        if ((m = p.match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/))) { var ml = /ml/.test(m[2]) ? +m[1] : +m[1] * 1000; sz = ml === 750 ? '750ml' : ml === 375 ? '375ml' : ml === 1000 ? '1L' : 'custom'; if (sz === 'custom') custom = m[1] + (/ml/.test(m[2]) ? ' ml' : ' L'); }
+        n.value = bpc; n.setAttribute('aria-label', 'Bottles in a case'); n.placeholder = '12';
+        var s1 = sel([['750ml', '750 ml'], ['375ml', '375 ml'], ['1L', '1 L'], ['custom', 'Custom…']], sz, 'Bottle size');
+        var c1 = h('input', { type: 'text', cls: 'is-pk', value: custom, placeholder: 'e.g. 1.5 L, 500 ml', 'aria-label': 'Custom bottle size', hidden: sz !== 'custom' });
+        var upd = function () {
+          c1.hidden = s1.value !== 'custom';
+          var size = s1.value === 'custom' ? c1.value.trim().replace(/\s+/g, '') : s1.value, cnt = num(n.value);
+          L.pack = (cnt ? cnt + '/' : '') + size; L.bottles_per_case = cnt || null; changed();
+        };
+        [n, c1].forEach(function (e) { e.addEventListener('change', upd); }); s1.addEventListener('change', function () { if (s1.value === 'custom') { c1.hidden = false; c1.focus(); } else upd(); });
+        return [h('label', null, [n, ' bottles of ']), s1, c1];
+      }
+      var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
+      var uv = units[0][0];
+      if ((m = p.match(/^(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#]+)/))) { n.value = m[1]; var u2 = m[2].replace(/s$/, '').replace('#', 'lb').replace(/^(ea|ct|count|pc)$/, 'each').replace(/^(dz|doz)$/, 'dozen').replace(/^gram$/, 'g'); if (units.some(function (o) { return o[0] === u2; })) uv = u2; }
+      n.setAttribute('aria-label', k === 'coffee' ? 'Case size' : 'How many in a case'); n.placeholder = k === 'coffee' ? '5' : '24';
+      var s2 = sel(units, uv, 'Unit');
+      var upd2 = function () { var cnt = num(n.value); L.pack = cnt ? cnt + ' ' + s2.value : ''; L.bottles_per_case = k === 'other' && cnt ? cnt : L.bottles_per_case; changed(); };
+      n.addEventListener('change', upd2); s2.addEventListener('change', upd2);
+      return [h('label', null, [k === 'coffee' ? 'Case size ' : 'Case holds ', n]), s2];
+    }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {
       var tr = L.tr; tr.innerHTML = '';
@@ -339,19 +376,13 @@
       var big = ch != null && Math.abs(ch) >= 0.5;
       tr.className = 'is-row' + (L.use && L.item ? ' is-on' : '') + (big ? ' is-big' : '');
       tr.appendChild(h('td', { cls: 'is-use' }, use));
-      // what it's sold by and the case size, as read: fill them in when the reader couldn't make them out
-      var su = h('input', { type: 'text', cls: 'is-su', list: 'isUnits', value: L.unit || '', placeholder: 'case', 'aria-label': 'Sold by (case, each, bottle, lb…)' });
-      var pk = h('input', { type: 'text', cls: 'is-pk', value: L.pack || '', placeholder: BIG.test(canon(L.unit)) || !L.unit ? 'e.g. 12/750ml, 6/#10, 25 lb' : 'e.g. 750ml, 5 lb', 'aria-label': 'Case or item size' });
-      var resize = function () {
-        L.unit = su.value.trim(); L.pack = pk.value.trim(); L.bottles_per_case = packCount(L.pack) || L.bottles_per_case || null;
-        if (it) L.per = guessPer(L, it); L.costOver = null; L.sized = true; paintRow(L);
-      };
-      su.addEventListener('change', resize); pk.addEventListener('change', resize);
+      // the case size, for receiving: fill it in when the reader couldn't make it out
+      var sizeBox = sizeFields(L, it, function () { if (it) L.per = guessPer(L, it); L.costOver = null; L.sized = true; paintRow(L); });
       var noSize = !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
       tr.appendChild(h('td', { cls: 'is-line' }, [
         h('b', { text: L.description }),
         h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
-        h('span', { cls: 'is-size' + (noSize ? ' is-miss' : '') }, [h('label', null, ['Sold by ', su]), h('label', null, ['Size ', pk]), noSize ? h('em', { text: 'Size not read: add it' }) : null]),
+        h('span', { cls: 'is-size' + (noSize ? ' is-miss' : '') }, sizeBox.concat([noSize ? h('em', { text: 'Size not read: add it' }) : null])),
         L.note ? h('span', { cls: 'is-note', text: L.note }) : null
       ]));
       tr.appendChild(h('td', { cls: 'is-it' }, [itemSelect(L, function (v) {
@@ -382,7 +413,6 @@
       h('div', { cls: 'sc-row3 is-head' }, [lbl('Vendor', f.vendor), lbl('Invoice #', f.no), lbl('Date', f.date)]),
       h('p', { cls: 'sc-small', text: 'Tick each line that’s matched to the right inventory item. Check the units: the new cost is the invoice price ÷ how many of the item’s counting units come in one invoice unit. Lines you tick are remembered for next time.' }),
       sumNote,
-      h('datalist', { id: 'isUnits' }, ['case', 'each', 'bottle', 'can', 'lb', 'oz', 'bag', 'box', 'dozen', 'gal', 'keg', 'bunch', 'pack', 'flat', 'pint', 'quart'].map(function (u) { return h('option', { value: u }); })),
       h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
       msg
     ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: opts.onCancel ? 'Skip to the next invoice' : 'Cancel', on: { click: function () { m.close(); if (opts.onCancel) opts.onCancel(); } } }), applyBtn], true);

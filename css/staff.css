@@ -3260,3 +3260,6 @@ tr.mc-none th b{color:#6b665e}
 .is-size input.is-pk{width:130px}
 .is-size.is-miss input.is-pk{border-color:#c9965a;background:#fff8ee}
 .is-size em{font-style:normal;color:#a5662a;font-weight:500}
+.is-size input.is-n{width:54px}
+.is-size select{font:inherit;font-size:.82rem;padding:3px 4px;border:1px solid rgba(42,46,51,.2);border-radius:4px;background:#fff}
+.is-size.is-miss input.is-n{border-color:#c9965a;background:#fff8ee}
