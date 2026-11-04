@@ -50,15 +50,20 @@
   function perCase(line) { return line.bottles_per_case || packCount(line.pack) || (/(\d+)\s*b\b/i.exec(line.description + ' ' + line.pack) || [])[1] * 1 || null; }
   // an item counted in cases but priced per bottle: the Units box shows bottles per case, and the cost is price × that
   function flipped(line, it) { return !!it && BIG.test(canon(it.unit)) && !BIG.test(canon(line.unit)) && !!canon(line.unit); }
+  var WEIGHT = { lb: 453.592, oz: 28.3495, kg: 1000, g: 1 };
+  function wu(u) { u = normU(canon(u) || u); return WEIGHT[u] ? u : null; }
   function guessPer(line, it) {
     var iu = canon(it.unit), lu = canon(line.unit);
+    if (line.setUnit) return BIG.test(canon(line.unit)) ? (packN(line.pack) || 1) : 1;   // food counted in its own unit now: by the case, the case holds so many of them
     if (!iu || iu === lu) return 1;
+    if (wu(iu) && wu(lu)) return WEIGHT[wu(lu)] / WEIGHT[wu(iu)];   // received in oz, counted by the lb: 1/16
     if (flipped(line, it)) return 1 / (packN(line.pack) || perCase(line) || packCount(it.pack) || 12);   // the case size on this invoice first
     if (BIG.test(iu)) return 1;
     if (lu === 'case' || lu === 'box' || lu === 'pack' || !lu) {
       // a case size in the item's own counting unit ("12 flats", "5 kg" for an item counted by the kg)
       var pm = String(line.pack || '').toLowerCase().match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#][a-z ]*)$/);
       if (pm && (normU(pm[2]) === normU(it.unit) || canon(pm[2]) === iu)) return +pm[1];
+      if (pm && wu(pm[2]) && wu(iu)) return +pm[1] * WEIGHT[wu(pm[2])] / WEIGHT[wu(iu)];   // a case of 80 oz, counted by the lb: 5
       if (lu) return perCase(line) || packCount(it.pack) || 1;
     }
     return 1;
@@ -476,7 +481,7 @@
         c2.hidden = s2.value !== '__other';
         var cnt = num(n.value), u = s2.value === '__other' ? normU(c2.value) : s2.value;
         if (s2.value === '__other' && !u) return;
-        L.pack = cnt ? cnt + ' ' + u : ''; L.bottles_per_case = k === 'other' && cnt ? cnt : L.bottles_per_case; changed();
+        L.pack = cnt ? cnt + ' ' + u : ''; L.bottles_per_case = k === 'other' && cnt ? cnt : L.bottles_per_case; L.setUnit = undefined; changed();
       };
       n.addEventListener('change', upd2); c2.addEventListener('change', upd2);
       s2.addEventListener('change', function () { if (s2.value === '__other') { c2.hidden = false; c2.focus(); } else upd2(); });
@@ -491,10 +496,23 @@
       var rp = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', value: L.unit_price == null ? '' : String(r2(L.unit_price)), 'aria-label': 'Price per unit received' });
       var cnt0 = num(n.value), perCaseTxt = '';
       if (L.unit_price != null && cnt0 && inner) perCaseTxt = ru.value === 'case' ? '= $' + r2(L.unit_price / cnt0) + ' / ' + inner : ru.value === inner ? '= $' + r2(L.unit_price * cnt0) + ' / case' + (L.qty ? ' · ' + r2(L.qty / cnt0) + (L.qty / cnt0 === 1 ? ' case' : ' cases') + ' received' : '') : '';
-      var recv = function () { L.qty = num(rq.value); L.unit = ru.value; L.unit_price = num(rp.value); if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price); L.costOver = null; changed(); };
+      // food received by the pound (or any weight, or each) is listed that way: no case size needed, and the item is counted in that unit
+      var byUnit = k === 'food' && ru.value !== 'case' && (it ? it.category === 'food' : L.newKind !== 'paper');
+      // food is counted by weight or by the each, never by the case: by the pound → by the pound; a case → what the case holds
+      var setU = function () {
+        var x = it || { unit: '', category: L.newKind || 'food' }, tgt = byUnit ? ru.value : (num(n.value) && (s2.value === '__other' ? normU(c2.value) : s2.value)) || null;
+        var isFood = (it ? it.category : (L.newKind === 'food' || !L.newKind ? 'food' : L.newKind)) === 'food';   // food only: paper goods stay by the case
+        L.setUnit = isFood && tgt && normU(canon(x.unit)) !== normU(tgt) && !(wu(x.unit) && wu(tgt)) ? tgt : null;
+      };
+      setU();
+      var recv = function () { L.qty = num(rq.value); L.unit = ru.value; L.unit_price = num(rp.value); if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price); L.costOver = null; byUnit = k === 'food' && ru.value !== 'case'; setU(); changed(); };
       rq.addEventListener('change', recv); ru.addEventListener('change', recv); rp.addEventListener('change', recv);
+      if (byUnit) return [h('label', null, ['Received ', rq]), ru, h('label', null, ['· $', rp, ' / ' + ru.value]),
+        L.setUnit && it ? h('span', { cls: 'is-u is-setu', text: it.name + ' will be counted by the ' + ru.value + ' (was by the ' + (it.unit || 'unit') + ')' }) : null];
       return [h('label', null, ['Received ', rq]), ru, h('label', null, [k === 'coffee' ? '· Case size ' : '· Case holds ', n]), s2, c2,
-        h('label', null, ['· $', rp, ' / ' + (ru.value === 'case' ? 'case' : ru.value)]), perCaseTxt ? h('span', { cls: 'is-u', text: perCaseTxt }) : null];
+        h('label', null, ['· $', rp, ' / ' + (ru.value === 'case' ? 'case' : ru.value)]), perCaseTxt ? h('span', { cls: 'is-u', text: perCaseTxt }) : null,
+        k === 'food' && ru.value === 'case' && !num(n.value) ? h('em', { text: 'Add what the case holds, to cost it by the ' + (wu(inner) ? inner : 'each') }) : null,
+        L.setUnit && it ? h('span', { cls: 'is-u is-setu', text: it.name + ' will be counted by the ' + L.setUnit + ' (was by the ' + (it.unit || 'unit') + ')' }) : null];
     }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {
@@ -502,8 +520,9 @@
       var it = L.item && L.item !== '__new' ? item(L.item) : null, isNew = L.item === '__new';
       if (isNew && !L.newKind) L.newKind = guessKind(L);
       if (L.item && L.rcv == null && kindOf(L, it) === 'wine') sizeFields(L, it, function () {});   // fill in the receiving boxes first, so the units and cost below use them
+      if (L.item && kindOf(L, it) === 'food') { var su0 = L.setUnit || null; sizeFields(L, it, function () {}); if ((L.setUnit || null) !== su0 || L.setUnit) L.per = guessPer(L, it || { unit: '' }); }   // received by weight or each: counted that way
       var nc = L.costOver != null ? L.costOver : newCost(L);
-      var old = it && it.cost != null ? +it.cost : null, ch = old && nc != null ? (nc - old) / old : null;
+      var old = it && it.cost != null && !L.setUnit ? +it.cost : null, ch = old && nc != null ? (nc - old) / old : null;
       var use = h('input', { type: 'checkbox', checked: !!L.use && !!L.item, disabled: !L.item, 'aria-label': 'Use this line' });
       use.addEventListener('change', function () { L.use = use.checked; tr.classList.toggle('is-on', L.use); count(); });
       var flip = flipped(L, it) || (L.per > 0 && L.per < 1);
@@ -512,14 +531,14 @@
       var nci = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-cost', value: nc == null ? '' : String(nc), disabled: !L.item, 'aria-label': 'New cost per counting unit' });
       nci.addEventListener('change', function () { var v = num(nci.value); L.costOver = v; paintRow(L); });
       if (isNew && !L.newKind) L.newKind = guessKind(L);
-      var unitName = isNew ? (NEW_AS[L.newKind] && NEW_AS[L.newKind].recv === 'wine' ? 'bottle' : canon(L.unit) || 'unit') : it ? (it.unit || 'unit') : '';
+      var unitName = L.setUnit ? L.setUnit : isNew ? (NEW_AS[L.newKind] && NEW_AS[L.newKind].recv === 'wine' ? 'bottle' : canon(L.unit) || 'unit') : it ? (it.unit || 'unit') : '';
       var big = ch != null && Math.abs(ch) >= 0.5;
       tr.className = 'is-row' + (L.use && L.item ? ' is-on' : '') + (big ? ' is-big' : '');
       tr.appendChild(h('td', { cls: 'is-use' }, use));
       // the case size, for receiving: fill it in when the reader couldn't make it out
       var sizeBox = sizeFields(L, it, function () { if (it) L.per = guessPer(L, it); L.costOver = null; L.sized = true; paintRow(L); });
       var recvWine = kindOf(L, it) === 'wine';
-      var noSize = !recvWine && !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
+      var noSize = !recvWine && kindOf(L, it) !== 'food' && !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
       tr.appendChild(h('td', { cls: 'is-line' }, [
         h('b', { text: L.description }),
         h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
@@ -534,7 +553,7 @@
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
-      tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: old == null ? 'No cost yet' : cost(old) }),
+      tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: L.setUnit ? (it.cost != null ? cost(+it.cost) + ' / ' + (it.unit || 'unit') : 'No cost yet') : old == null ? 'No cost yet' : cost(old) }),
         ch != null ? h('span', { cls: 'is-ch ' + (ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : ''), text: (ch > 0 ? '+' : '') + Math.round(ch * 100) + '%' }) : null,
         big ? h('span', { cls: 'is-note', text: 'Big change: check the units' }) : null] : isNew ? h('span', { cls: 'is-u', text: 'New item' }) : null));
     }
@@ -577,11 +596,11 @@
         if (L.item === '__new') {
           var as = NEW_AS[L.newKind] || null;
           if (as && L.newKind === 'na' && COFFEE_RE.test(L.description)) as = { cat: 'bev', section: 'Coffee & tea', recv: 'coffee' };
-          it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: as && as.recv === 'wine' ? 'bottle' : canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
+          it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
-          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it));
+          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {});
         }
         L.newCost = c;
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString() };
