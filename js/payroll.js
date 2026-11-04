@@ -937,7 +937,8 @@
 
   /* ----- Financials overview: revenue, payroll cost and payroll % week by week ----- */
   var OV = { weeks: null, range: 13, err: '' };
-  try { OV.range = +localStorage.getItem('eden-fin-range') || 13; } catch (e) {}
+  try { OV.range = +localStorage.getItem('eden-fin-range') || 8; } catch (e) {}
+  if ([1, 4, 8, 13, 26, 52].indexOf(OV.range) === -1) OV.range = 8;
   try { OV.cfRange = +localStorage.getItem('eden-cf-range') || 1; } catch (e) {}
   function loadOverview() {
     var my = ++P.seq; OV.err = ''; paint(true);
@@ -972,8 +973,9 @@
     var all = OV.weeks.filter(function (w) { return w.s && (w.s.net || w.s.cost); });
     var pending = OV.weeks.filter(function (w) { return !w.s; });
     // range
-    var ranges = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Weeks shown' }, [8, 13, 26, 52].map(function (n) {
-      return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === n ? 'true' : 'false', text: n === 13 ? 'Quarter' : n === 52 ? 'Year' : n + ' weeks', on: { click: function () { OV.range = n; try { localStorage.setItem('eden-fin-range', n); } catch (e) {} paint(false); } } });
+    var ranges = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Period shown' }, [[1, '1 week'], [4, '1 month'], [8, '8 weeks'], [13, '1 quarter'], [26, '26 weeks'], [52, '1 year']].map(function (o) {
+      var n = o[0];
+      return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === n ? 'true' : 'false', text: o[1], on: { click: function () { OV.range = n; try { localStorage.setItem('eden-fin-range', n); } catch (e) {} paint(false); } } });
     }));
     el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Each week’s revenue (net sales), payroll cost and payroll percentage, from the weekly payroll. A week appears here once its Square files are in.' }), ranges]));
     el.appendChild(salesZone());
@@ -982,29 +984,44 @@
       return;
     }
     var shown = all.slice(0, OV.range).reverse();   // oldest first
-    var last = shown[shown.length - 1], prev = shown[shown.length - 2];
+    var before = all.slice(OV.range, OV.range * 2);   // the same number of weeks just before, to compare with
+    var last = shown[shown.length - 1];
     var avg = function (k) { var v = shown.filter(function (w) { return w.s[k] != null; }); return v.length ? v.reduce(function (a, w) { return a + w.s[k]; }, 0) / v.length : null; };
     var totNet = shown.reduce(function (a, w) { return a + (w.s.net || 0); }, 0), totCost = shown.reduce(function (a, w) { return a + (w.s.cost || 0); }, 0);
-    // KPI tiles: the latest week, against the week before and the range
+    // the period's totals (one week, a month, 8 weeks or a quarter), against the same length of time just before
+    var agg = function (ws) {
+      if (!ws.length) return null;
+      var net = 0, cost = 0, tnet = 0, tc = 0, inv = 0, gross = 0, est = 0, act = 0;
+      ws.forEach(function (w) { net += w.s.net || 0; cost += w.s.cost || 0; if (w.s.trueCost != null && w.s.net) { tnet += w.s.net; tc += w.s.trueCost; } if (w.s.invEst != null) { inv += w.s.invActual || w.s.invEst; gross += w.s.gross || 0; if (w.s.invActual) act++; else est++; } });
+      return { n: ws.length, net: r2(net), cost: r2(cost), pct: net ? cost / net : null, truePct: tnet ? tc / tnet : null, inv: r2(inv), extraPct: gross ? (inv - gross) / gross : null, est: est, act: act };
+    };
+    var A = agg(shown), B = before.length === shown.length ? agg(before) : null;
+    var vsTxt = OV.range === 1 ? 'the week before' : 'the ' + OV.range + ' weeks before';
     var delta = function (a, b, isPct, lowerGood) {
       if (a == null || b == null) return null;
-      var d = a - b; if (Math.abs(d) < (isPct ? 0.0005 : 0.5)) return h('small', { cls: 'fn-delta', text: 'same as the week before' });
+      var d = a - b; if (Math.abs(d) < (isPct ? 0.0005 : 0.5)) return h('small', { cls: 'fn-delta', text: 'same as ' + vsTxt });
       var good = lowerGood ? d < 0 : d > 0;
-      return h('small', { cls: 'fn-delta ' + (good ? 'good' : 'bad') }, [(d > 0 ? '▲ ' : '▼ ') + (isPct ? (Math.abs(d) * 100).toFixed(1) + ' pts' : money(Math.abs(d))) + ' vs the week before']);
+      return h('small', { cls: 'fn-delta ' + (good ? 'good' : 'bad') }, [(d > 0 ? '▲ ' : '▼ ') + (isPct ? (Math.abs(d) * 100).toFixed(1) + ' pts' : money(Math.abs(d))) + ' vs ' + vsTxt]);
     };
     var tile = function (label, val, sub, dEl, color) {
       return h('div', { cls: 'fn-tile' }, [h('span', { cls: 'fn-tl' }, [color ? h('i', { cls: 'fn-sw', style: 'background:' + color }) : null, label]), h('b', { text: val }), dEl, h('small', { cls: 'fn-sub', text: sub })]);
     };
-    el.appendChild(h('p', { cls: 'fn-wk', text: 'Week of ' + weekLabel(new Date(last.week + 'T12:00:00')) + (last.status === 'final' ? ' · final' : ' · draft') }));
+    var first = shown[0], endD = addDays(new Date(last.week + 'T12:00:00'), 6);
+    var period = OV.range === 1 ? 'Week of ' + weekLabel(new Date(last.week + 'T12:00:00')) + (last.status === 'final' ? ' · final' : ' · draft')
+      : ({ 4: 'Last month', 8: 'Last 8 weeks', 13: 'Last quarter', 26: 'Last 26 weeks', 52: 'Last year' }[OV.range]) + ' · ' + new Date(first.week + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' – ' + endD.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) +
+        (shown.length < OV.range ? ' · ' + shown.length + ' of ' + OV.range + ' weeks in so far' : '');
+    el.appendChild(h('p', { cls: 'fn-wk', text: period }));
+    var one = OV.range === 1;
     el.appendChild(h('div', { cls: 'fn-tiles' }, [
-      tile('Revenue', last.s.net != null ? money(last.s.net) : '–', 'Average ' + money(avg('net') || 0) + ' a week', delta(last.s.net, prev && prev.s.net, false, false), REV),
-      tile('Payroll cost', money(last.s.cost), 'Average ' + money(avg('cost') || 0) + ' a week', delta(last.s.cost, prev && prev.s.cost, false, true), PAY),
-      tile('Payroll %', pctTxt(last.s.pct), 'Over these ' + shown.length + ' weeks: ' + pctTxt(totNet ? totCost / totNet : null), delta(last.s.pct, prev && prev.s.pct, true, true), PAY),
-      tile('True labor %', pctTxt(last.s.truePct), last.s.invEst != null ? (last.s.invActual ? 'Invoice ' : 'Est. invoice ') + money(last.s.invActual || last.s.invEst) + ' less tips · ' + pctTxt(last.s.extraPct) + ' on top of pay' : 'Open the week to estimate its invoice', delta(last.s.truePct, prev && prev.s.truePct, true, true), TRUE_C)
+      tile('Revenue', money(A.net), one ? 'Average ' + money(avg('net') || 0) + ' a week' : money(A.net / A.n) + ' a week on average', delta(A.net, B && B.net, false, false), REV),
+      tile('Payroll cost', money(A.cost), one ? 'Average ' + money(avg('cost') || 0) + ' a week' : money(A.cost / A.n) + ' a week on average', delta(A.cost, B && B.cost, false, true), PAY),
+      tile('Payroll %', pctTxt(A.pct), 'Payroll cost ÷ revenue' + (one ? '' : ' over these ' + A.n + ' weeks'), delta(A.pct, B && B.pct, true, true), PAY),
+      tile('True labor %', pctTxt(A.truePct), A.inv ? (A.est ? 'Est. invoice' + (A.n > 1 ? 's ' : ' ') : 'Invoice' + (A.n > 1 ? 's ' : ' ')) + money(A.inv) + ' less tips · ' + pctTxt(A.extraPct) + ' on top of pay' : 'Open the week to estimate its invoice', delta(A.truePct, B && B.truePct, true, true), TRUE_C)
     ]));
     el.appendChild(cashFlow(all));
-    el.appendChild(barsChart(shown));
-    el.appendChild(pctChart(shown, totNet ? totCost / totNet : null));
+    var ctx8 = OV.range < 8 ? all.slice(0, 8).reverse() : shown;   // the trend charts show at least 8 weeks
+    el.appendChild(barsChart(ctx8));
+    el.appendChild(pctChart(ctx8, totNet ? totCost / totNet : null));
     var withInv = shown.filter(function (w) { return w.s.extraPct != null; });
     if (withInv.length) {
       var avgOn = withInv.reduce(function (a, w) { return a + w.s.extraPct; }, 0) / withInv.length;
@@ -1301,16 +1318,16 @@
     return det;
   }
   function cashFlow(all) {
-    var n = OV.cfRange || 1, ws = all.slice(0, n);
+    var n = OV.range || 1, ws = all.slice(0, n);
     var cb = chartBox('Cash flow', null);
     var span = ws.length === 1 ? 'Week of ' + weekLabel(new Date(ws[0].week + 'T12:00:00')) : ws.length + ' weeks · ' + wkLabel(ws[ws.length - 1].week) + ' to ' + wkLabel(iso(addDays(new Date(ws[0].week + 'T12:00:00'), 6)));
     var pick = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Cash flow period' }, [[1, 'Last week'], [4, '4 weeks'], [13, 'Quarter'], [52, 'Year']].map(function (o) {
       return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': n === o[0] ? 'true' : 'false', text: o[1], on: { click: function () { OV.cfRange = o[0]; try { localStorage.setItem('eden-cf-range', o[0]); } catch (e) {} paint(false); } } });
     }));
-    cb.box.querySelector('figcaption').appendChild(pick);
+    void pick;   // the period is picked at the top of the page
     var d = cashFlowData(ws);
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
-    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · payroll ' + pctTxt(d.t.cost / d.t.net) + ' of net sales · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
+    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips) · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, 420)); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
     cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees) and payroll. Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
