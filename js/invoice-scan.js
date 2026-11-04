@@ -338,12 +338,21 @@
 
     // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
     function kindOf(L, it) {
-      var x = it || (L.item === '__new' ? { category: newCatGuess() } : null), cat = x ? x.category : A.cat, sec = String((x && x.section) || '') + ' ' + L.description;
+      var x = it || { category: catGuess(L) }, cat = x.category, sec = String((x && x.section) || '') + ' ' + L.description;
       if (cat === 'paper') return 'food';   // paper goods: a case of so many
       if (cat !== 'bev') return 'food';
       if (/coffee|tea\b|espresso|matcha/i.test(sec)) return 'coffee';
       if (/beer|draught|draft|ipa|lager|pils|stout|cider|seltzer|soda|soft|juice|water|tonic|ginger|cola|can\b|keg/i.test(sec)) return 'other';
       return 'wine';
+    }
+    // a line not matched to an item yet: what it is, from its words and the vendor (a distillery, a winery, a farm…)
+    var SPIRIT = /\b(brandy|cognac|armagnac|calvados|whiske?y|bourbon|rye|scotch|gin|vodka|rum|tequila|mezcal|agave|liqueur|amaro|aperitif|aperitivo|vermouth|bitters|absinthe|grappa|eau de vie|schnapps|pflaume|kirsch|spirit|proof|wine|cabernet|merlot|pinot|riesling|chardonnay|sauvignon|syrah|zinfandel|malbec|rosé|rose|sparkling|champagne|prosecco|cava|cr[eé]mant|ros[ée]|blanc|rouge|red blend|white blend|750\s*ml|375\s*ml|1\.75|magnum)\b/i;
+    var DRINKV = /distill|winery|vineyard|wine|cellars|spirits|liquor|merchants|beverage|brewing|brewery|cider/i;
+    function catGuess(L) {
+      var v = (f && f.vendor && f.vendor.value) || inv.vendor || '', t = L.description + ' ' + (L.pack || '');
+      if (SPIRIT.test(t) || (/distill|winery|vineyard|cellars|spirits|liquor/i.test(v) && !/(bag|box|lb|kg)\b/i.test(t))) return 'bev';
+      if (/\b(beer|ipa|lager|ale|stout|pils|cider|seltzer|soda|juice|coffee|tea|kombucha|tonic)\b/i.test(t) || /brewing|brewery|roast/i.test(v)) return 'bev';
+      return DRINKV.test(v) ? 'bev' : newCatGuess();
     }
     function newCatGuess() { var c = {}; inv.lines.forEach(function (L) { var x = L.item && L.item !== '__new' ? item(L.item) : null; if (x) c[x.category] = (c[x.category] || 0) + 1; }); return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0] || A.cat || 'food'; }
     function sel(opts, val, label) { var e = h('select', { 'aria-label': label }, opts.map(function (o) { return h('option', { value: o[0], text: o[1] }); })); e.value = val; return e; }
@@ -484,11 +493,11 @@
       applyBtn.disabled = true; msg.className = 'sc-msg is-info'; msg.textContent = 'Saving…';
       var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {};
       var cats = {}; use.forEach(function (L) { var x = item(L.item); if (x) cats[x.category] = (cats[x.category] || 0) + 1; });
-      var newCat = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || A.cat;   // new items join the inventory the rest of the invoice is in
+      var newCat = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || null;   // new items join the inventory the rest of the invoice is in
       use.forEach(function (L) {
         var c = r4(L.costOver != null ? L.costOver : newCost(L)), it;
         if (L.item === '__new') {
-          it = Object.assign({ id: A.uid(), category: newCat, section: '', name: L.description, unit: canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
+          it = Object.assign({ id: A.uid(), category: newCat || catGuess(L), section: '', name: L.description, unit: canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
