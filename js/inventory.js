@@ -500,7 +500,7 @@
     var tot = rows.reduce(function (a, r) { return a + r.n; }, 0), withCost = rows.reduce(function (a, r) { return a + r.cost; }, 0);
     var bevN = rows.filter(function (r) { return r.menu != null; }).reduce(function (a, r) { return a + r.n; }, 0), withMenu = rows.reduce(function (a, r) { return a + (r.menu || 0); }, 0);
     var pct = function (a, b) { return b ? Math.round(a / b * 100) : 0; };
-    var off = items.filter(function (it) { return onMenu(it, list) === false; });
+    var off = items.filter(function (it) { return it.category === 'bev' && onMenu(it, list) === false; });   // drinks only: food goes into dishes, not onto the menu by name
     var box = function (label, a, b, sub) { return h('div', { cls: 'iv-pbox' }, [h('span', { text: label }), h('b', { text: a + ' of ' + b }), h('small', { text: pct(a, b) + '%' + (sub ? ' · ' + sub : '') })]); };
     var bar = function (v, n, kind) {
       if (v == null) return h('div', { cls: 'iv-pbar none' }, [h('i'), h('em', { text: '—' })]);
@@ -516,7 +516,7 @@
         return h('div', { cls: 'iv-prow', role: 'row' }, [h('span', { cls: 'iv-plabel', role: 'rowheader', text: r.label }), h('span', { cls: 'iv-pn', text: r.n + (r.n === 1 ? ' item' : ' items') }),
           h('div', { cls: 'iv-pbars' }, [bar(r.cost, r.n, 'cost'), bar(r.menu, r.n, 'menu')])]);
       }))),
-      off.length ? h('p', { cls: 'iv-poff' }, h('button', { type: 'button', cls: 'sc-link', text: off.length + ' item' + (off.length === 1 ? '' : 's') + ' in the inventory aren’t on the menu →', on: { click: function () { notOnMenu(off); } } })) : h('p', { cls: 'iv-poff', text: 'Everything in the inventory is on the menu.' })
+      off.length ? h('p', { cls: 'iv-poff' }, h('button', { type: 'button', cls: 'sc-link', text: off.length + (off.length === 1 ? ' beverage in the inventory isn’t' : ' beverages in the inventory aren’t') + ' on the menu →', on: { click: function () { notOnMenu(off); } } })) : h('p', { cls: 'iv-poff', text: 'Every beverage in the inventory is on the menu.' })
     ]);
     var tog = h('button', { type: 'button', cls: 'ed-btn small', text: open ? 'Hide' : 'Show', on: { click: function () { I.pricingOpen = body.hidden; body.hidden = !body.hidden; tog.textContent = body.hidden ? 'Show' : 'Hide'; } } });
     return h('div', { cls: 'is-bar iv-pricing' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: 'Pricing' }), h('span', { text: pct(withCost, tot) + '% of items have a cost · ' + pct(withMenu, bevN) + '% of beverages have a menu price' })]), tog]), body]);
@@ -524,7 +524,7 @@
   function notOnMenu(off) {
     var byG = {}; off.forEach(function (it) { (byG[groupOf(it)] = byG[groupOf(it)] || []).push(it); });
     var text = ['Eden inventory items not on the menu'];
-    var body = [h('p', { cls: 'sc-sub', text: 'Beverages not matched to anything on the menu, and kitchen items whose name isn’t in any dish. Click one to edit it (link it to a menu item, or mark it inactive). Paper goods aren’t sold, so they’re left out.' })];
+    var body = [h('p', { cls: 'sc-sub', text: 'Beverages in the inventory that aren’t matched to anything on the menu. Click one to edit it (link it to a menu item, or mark it inactive). Food and paper goods aren’t listed: food goes into dishes, and paper goods aren’t sold.' })];
     GROUPS.forEach(function (g) {
       var xs = (byG[g[0]] || []).sort(function (a, b) { return String(a.name).localeCompare(b.name); }); if (!xs.length) return;
       text.push('', g[1].toUpperCase()); xs.forEach(function (it) { text.push('• ' + it.name + (it.vendor ? ' (' + it.vendor + ')' : '')); });
