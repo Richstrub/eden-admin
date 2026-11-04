@@ -1143,7 +1143,7 @@
     var t = { loan: 0, exact: 0, net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
     ws.forEach(function (w) {
       var x = w.s, net = x.net || 0;
-      t.loan += x.loan || 0;
+      t.loan += x.loan || 0; if (net && x.cardFees == null) t.noFees = (t.noFees || 0) + 1;
       t.net += net; t.tax += x.tax || 0; t.tips += x.tips || 0; t.tipsIn += x.tipsIn != null ? x.tipsIn : (x.tips || 0); t.fees += x.cardFees || 0; t.comm += x.comm || 0;
       if (x.food != null && x.bev != null) {
         // item sales are net of discounts the same way, but may differ from the Transactions CSV by refunds or timing: scale to its net sales
@@ -1171,16 +1171,17 @@
       { id: 'food', label: 'Food sales', col: 0, color: CF.teal }, { id: 'bev', label: 'Beverage sales', col: 0, color: CF.plum }, { id: 'sales', label: 'Net sales (not split)', col: 0, color: '#7fb0a8' },
       { id: 'tax', label: 'Sales tax collected', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
-      { id: 'taxout', label: 'Sales tax (to NYS)', col: 2, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 2, color: CF.sand }, { id: 'feesout', label: 'Card fees (Square)', col: 2, color: '#a8a39a' }, { id: 'loanout', label: 'Square Loan repayment', col: 2, color: '#7d6b9e' },
+      { id: 'taxout', label: 'Sales tax (to NYS)', col: 2, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 2, color: CF.sand }, { id: 'square', label: 'Square', col: 2, color: '#6f6a8f' },
       { id: 'pay', label: 'Payroll', col: 2, color: CF.ember }, { id: 'left', label: left >= 0 ? 'Left after payroll' : 'Payroll over sales', col: 2, color: left >= 0 ? CF.green : CF.red },
       { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'boh', label: 'Back of house', col: 3, color: CF.ember }, { id: 'foh', label: 'Servers & bartenders', col: 3, color: '#d39a6a' },
       { id: 'comm', label: 'Commission', col: 3, color: '#d39a6a' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red },
+      { id: 'feesout', label: 'Card processing fees', col: 3, color: '#a8a39a' }, { id: 'loanout', label: 'Loan repayment', col: 3, color: '#8a6fa8' },
       { id: 'later', label: 'Everything else', col: 3, color: CF.green, note: 'food, beverage, rent… (with invoices)' }
     ];
     var links = [
       ['food', 'in', t.food], ['bev', 'in', t.bev], ['sales', 'in', t.unsplit], ['tax', 'in', t.tax], ['tips', 'in', t.tipsIn],
-      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'feesout', t.fees], ['in', 'loanout', t.loan], ['in', 'pay', payOut], ['in', 'left', Math.max(0, left)],
-      ['pay', 'mgmt', t.mgmt], ['pay', 'boh', t.boh], ['pay', 'foh', t.foh], ['pay', 'comm', t.comm], ['pay', 'ptax', t.ptax], ['left', 'later', Math.max(0, left)]
+      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'square', r2(t.fees + t.loan)], ['in', 'pay', payOut], ['in', 'left', Math.max(0, left)],
+      ['square', 'feesout', t.fees], ['square', 'loanout', t.loan], ['pay', 'mgmt', t.mgmt], ['pay', 'boh', t.boh], ['pay', 'foh', t.foh], ['pay', 'comm', t.comm], ['pay', 'ptax', t.ptax], ['left', 'later', Math.max(0, left)]
     ].map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
     return { nodes: nodes, links: links, t: t, left: left, total: inT };
   }
@@ -1395,7 +1396,7 @@
     cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips) · ' + (d.left >= 0 ? money(d.left) + ' left after payroll' : 'payroll was ' + money(-d.left) + ' more than net sales') }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, 420)); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
-    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees) and payroll. Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
+    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + '. Food, beverage, rent and other costs will split “Left after payroll” once invoices and the chart of accounts are added.' }));
     return cb.box;
