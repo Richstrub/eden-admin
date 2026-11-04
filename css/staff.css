@@ -3173,3 +3173,7 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-tbl tfoot th, .fn-tbl tfoot td { font-weight: 600; background: #f4f1ec; }
 .fn-tbl tfoot tr.share th, .fn-tbl tfoot tr.share td { font-weight: 500; background: #faf8f4; }
 @media (max-width: 640px) { .fn-mrow { grid-template-columns: 1fr; } .fn-mgrp.exp { text-align: left; } .fn-mgrp.exp .fn-mbtns { justify-content: flex-start; } }
+
+.fn-metpa { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.fn-mrange .fn-rbtn { font-size: 12px; padding: 5px 9px; }
+@media (max-width: 760px) { .fn-metph { flex-direction: column; } .fn-metpa { justify-content: flex-start; } }

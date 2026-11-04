@@ -989,7 +989,7 @@
     var all = OV.weeks.filter(function (w) { return w.s && (w.s.net || w.s.cost); });
     var pending = OV.weeks.filter(function (w) { return !w.s; });
     // range
-    var ranges = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Period shown' }, [[1, '1 week'], [4, '1 month'], [8, '8 weeks'], [13, '1 quarter'], [26, '26 weeks'], [52, '1 year']].map(function (o) {
+    var ranges = h('div', { cls: 'fn-range', role: 'group', 'aria-label': 'Period shown' }, RANGE_OPTS.map(function (o) {
       var n = o[0];
       return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === n ? 'true' : 'false', text: o[1], on: { click: function () { OV.range = n; try { localStorage.setItem('eden-fin-range', n); } catch (e) {} paint(false); } } });
     }));
@@ -1474,6 +1474,7 @@
   }
   /* ----- Financials: the numbers behind the chart, as tables. Revenue on the left, expenses on the right ----- */
   var MET = { open: null };
+  var RANGE_OPTS = [[1, '1 week'], [4, '1 month'], [8, '8 weeks'], [13, '1 quarter'], [26, '26 weeks'], [52, '1 year']];
   try { MET.open = localStorage.getItem('eden-fin-table') || null; } catch (e) {}
   var DOWN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   function pc(v, base) { return base ? (v / base * 100).toFixed(1) + '%' : '–'; }
@@ -1563,7 +1564,15 @@
         var lines = [d.cols].concat(d.rows).concat(d.total ? [d.total] : []).concat(d.share ? [d.share] : []).map(function (r) { return r.map(csvCell).join(','); });
         var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'Eden ' + tb.label + ' ' + weeks[0].week + ' to ' + weeks[weeks.length - 1].week + '.csv'; document.body.appendChild(a); a.click(); a.remove();
       } } });
-      panel.appendChild(h('div', { cls: 'fn-metph' }, [h('div', null, [h('b', { text: tb.title }), h('small', { text: span + (NET ? ' · net sales ' + money(NET) : '') })]), d.rows.length ? dl : null]));
+      // the same period as the top of the page: changing it here changes the whole page
+      var rng = h('div', { cls: 'fn-range fn-mrange', role: 'group', 'aria-label': 'Period for this table and the page' }, RANGE_OPTS.map(function (o) {
+        return h('button', { type: 'button', cls: 'fn-rbtn', 'aria-pressed': OV.range === o[0] ? 'true' : 'false', text: o[1], on: { click: function () {
+          OV.range = o[0]; try { localStorage.setItem('eden-fin-range', o[0]); } catch (e) {}
+          paint(false);
+          var p2 = P.pane && P.pane.querySelector('.fn-metp'); if (p2) p2.scrollIntoView({ block: 'nearest' });
+        } } });
+      }));
+      panel.appendChild(h('div', { cls: 'fn-metph' }, [h('div', null, [h('b', { text: tb.title }), h('small', { text: span + (NET ? ' · net sales ' + money(NET) : '') + (weeks.length < OV.range ? ' · only ' + weeks.length + (weeks.length === 1 ? ' week has' : ' weeks have') + ' sales so far' : '') })]), h('div', { cls: 'fn-metpa' }, [rng, d.rows.length ? dl : null])]));
       if (!d.rows.length) { panel.appendChild(h('p', { cls: 'an-li-empty', text: d.empty || 'Nothing for these weeks yet.' })); return; }
       var shown = d.rows.slice(0, 200);
       panel.appendChild(h('div', { cls: 'fn-tblw' }, [h('table', { cls: 'fn-tbl' }, [
