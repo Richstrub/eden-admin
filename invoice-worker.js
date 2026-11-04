@@ -90,11 +90,8 @@ export async function invoiceRoute(req, env, rpc) {
     else if (/^image\/(jpeg|png|webp|gif)$/.test(type)) content.push({ type: 'image', source: { type: 'base64', media_type: type, data } });
     else return json({ error: 'type', message: 'Send a photo (JPG or PNG) or a PDF.' }, 400);
   }
-  if (bytes > 45 * 1024 * 1024) return json({ error: 'size', message: 'That file is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.' }, 413);
-  let out;
-  if (content.length === 1 && content[0].type === 'document') out = await readPdf(env, unb64(content[0].source.data));
-  else if (bytes > MAX_BYTES) return json({ error: 'size', message: 'Those photos are too large together. Send fewer at a time.' }, 413);
-  else out = await readInvoice(env, content);
+  if (bytes > MAX_BYTES) return json({ error: 'size', message: 'That’s too large to read at once. Send fewer pages at a time.' }, 413);
+  const out = await readInvoice(env, content);
   if (!out.ok) return json({ error: out.error, message: out.message }, out.status || 502);
   return json({ ok: true, invoice: out.invoice, invoices: out.invoices, usage: out.usage });
 }
@@ -302,14 +299,66 @@ export async function driveRoute(req, env, path, rpc, key) {
   const jwt = jwtOf(req);
   if (!jwt) return json({ error: 'auth', message: 'Sign in again.' }, 401);
   if (mailInternals.missing(env).length) return json({ error: 'not_ready', message: 'Google isn’t set up for the staff site yet (the same settings as Business email).' }, 503);
+  const SB = String(env.SUPABASE_URL).replace(/\/$/, '');
+  const server = (name, args) => fetch(SB + '/rest/v1/rpc/' + name, { method: 'POST', headers: { apikey: env.SUPABASE_KEY, Authorization: 'Bearer ' + env.SUPABASE_KEY, 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ p_key: key }, args || {})) }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const listed = fid => fetch(SB + '/rest/v1/inventory_inbox?select=id&file_id=eq.' + encodeURIComponent(fid), { headers: { apikey: env.SUPABASE_KEY, Authorization: 'Bearer ' + jwt } }).then(r => r.ok ? r.json() : []).catch(() => []);
+  const fidOk = fid => /^[A-Za-z0-9_-]{10,200}(~\d{0,20})?$/.test(fid);
+  // filing a scan the staff site has read: the Drive connection, and whether it can write
+  async function conn() {
+    const ok = await rpc(env, 'can_inventory', {}, jwt).catch(() => false);
+    if (ok !== true) return { err: json({ error: 'denied' }, 403) };
+    const d = await server('inv_drive_server');
+    if (!d || d.error || !d.folder_id) return { err: json({ error: 'not_connected', message: 'Google Drive isn’t connected.' }, 400) };
+    const at = await driveAccess(env, d.token, d.address);
+    if (!at || at === 'REVOKED') return { err: json({ error: 'reconnect', message: 'Google Drive needs to be connected again.' }, 400) };
+    if (!(await canFile(env, d.token, d.address))) return { err: json({ error: 'readonly', message: 'To file scans into vendor folders, reconnect Google Drive (Change folder → Disconnect, then Connect Google Drive).' }, 400) };
+    return { d, at };
+  }
+  if (path === '/drive/put') {   // one invoice's pages, split from a stack by the staff site: upload it into its vendor's folder
+    const u = new URL(req.url), fid = u.searchParams.get('file_id') || '';
+    if (!fidOk(fid) || !(await listed(fid)).length) return json({ error: 'denied' }, 403);
+    const c = await conn(); if (c.err) return c.err;
+    const buf = await req.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > MAX_DRIVE_BYTES) return json({ error: 'bad' }, 400);
+    try {
+      const F = await filing(c.at, c.d.folder_id), v = await F.vendor(u.searchParams.get('vendor') || '');
+      const nm = safeName(u.searchParams.get('name') || 'Invoice') + '.pdf';
+      const up = await uploadPdf(c.at, v.id, nm, new Uint8Array(buf));
+      return json({ ok: true, name: nm, folder: v.name, id: up.id, link: up.webViewLink, made: !!v.made });
+    } catch (e) { return json({ error: 'google', message: 'Couldn’t save it in Google Drive (' + (e.status || 'error') + ').' }, 502); }
+  }
   let b = {}; try { b = await req.json(); } catch (e) {}
+  if (path === '/drive/move') {   // a scan the site has read: into its vendor's folder (one invoice) or Filed → Original scans (a split stack)
+    const fid = String(b.file_id || '');
+    if (!fidOk(fid) || !(await listed(fid)).length) return json({ error: 'denied' }, 403);
+    const c = await conn(); if (c.err) return c.err;
+    try {
+      const F = await filing(c.at, c.d.folder_id), id = fid.split('~')[0];
+      if (b.to === 'originals') { const m = await moveFile(c.at, id, c.d.folder_id, await F.originals()); return json({ ok: true, id: m.id, link: m.webViewLink }); }
+      const v = await F.vendor(b.vendor || ''), nm = safeName(b.name || 'Invoice') + (b.ext || '.pdf');
+      const m = await moveFile(c.at, id, c.d.folder_id, v.id, nm);
+      return json({ ok: true, name: nm, folder: v.name, id: m.id, link: m.webViewLink, made: !!v.made });
+    } catch (e) { return json({ error: 'google', message: 'Couldn’t file it in Google Drive (' + (e.status || 'error') + ').' }, 502); }
+  }
+  if (path === '/drive/save') {   // what the site read from a scan: one waiting invoice per invoice in it
+    const ok = await rpc(env, 'can_inventory', {}, jwt).catch(() => false);
+    if (ok !== true) return json({ error: 'denied' }, 403);
+    const fid = String(b.file_id || ''), invs = Array.isArray(b.invoices) ? b.invoices.slice(0, 60) : [];
+    if (!fidOk(fid) || !(await listed(fid)).length) return json({ error: 'denied' }, 403);
+    if (!invs.length) { await server('inv_inbox_add_server', { p_file_id: fid, p_name: String(b.name || ''), p_created: b.created || null, p_status: 'error', p_invoice: { lines: [], failed: true }, p_error: String(b.error || 'Couldn’t read it.').slice(0, 300) }); return json({ ok: true }); }
+    for (let i = 0; i < invs.length; i++) {
+      const x = invs[i] || {}, nm = x.filed && x.filed.name ? x.filed.name : String(b.name || '') + (invs.length > 1 ? ' · ' + (i + 1) + ' of ' + invs.length : '');
+      await server('inv_inbox_add_server', { p_file_id: i ? fid + '#' + (i + 1) : fid, p_name: nm, p_created: b.created || null, p_status: 'waiting', p_invoice: x, p_error: '' });
+    }
+    return json({ ok: true, saved: invs.length });
+  }
   const lvl = await rpc(env, 'access_level', {}, jwt).catch(() => null);
   const boss = lvl === 'owner' || lvl === 'manager';
 
   if (path === '/drive/check') {
     const ok = await rpc(env, 'can_inventory', {}, jwt).catch(() => false);
     if (ok !== true) return json({ error: 'denied', message: 'Your login can’t use the inventory.' }, 403);
-    const r = await drivePoll(env, key, 1);   // one scan per request (the site asks again for the next), so a big stack isn't cut off
+    const r = await drivePoll(env, key, 25);
     return json(r, r.error ? 400 : 200);
   }
   if (path === '/drive/file') {   // one scanned file from the folder (only files already in the scanned-invoices list), for the staff site to convert
@@ -385,42 +434,16 @@ export async function drivePoll(env, key, max) {
   const fresh = ((await lr.json()).files || []).filter(f => !seen.has(keyOf(f)) && !(seen.has(f.id) && /hei[cf]/i.test(f.mimeType)));
   let added = 0, failed = 0, noFile = false, F = null;
   const writable = fresh.length ? await canFile(env, d.token, d.address) : false;
-  for (const f of fresh.slice(0, max || 3)) {
-    let inv = null, err = '', invs = null, buf = null;
-    if (/hei[cf]/i.test(f.mimeType)) {   // iPhone photo: the staff site converts it to JPEG and reads it when it's opened
-      await sb('inv_inbox_add_server', { p_key: key, p_file_id: keyOf(f), p_name: f.name, p_created: f.createdTime, p_status: 'waiting', p_invoice: { pending: 'heic', mime: f.mimeType, lines: [] }, p_error: '' });
-      added++; continue;
-    }
-    // mark it seen before reading, so a read that's cut off partway isn't retried (and paid for) every 5 minutes; "Read again" on the site retries it
-    await sb('inv_inbox_add_server', { p_key: key, p_file_id: keyOf(f), p_name: f.name, p_created: f.createdTime, p_status: 'error', p_invoice: null, p_error: 'Reading stopped partway (a large stack can take a minute or two). Press Read again.' });
-    if (+f.size > MAX_DRIVE_BYTES) err = 'This scan is over 45 MB. In Image Capture set Resolution to 200 or 300 dpi and Kind to Grayscale, then scan again.';
-    else {
-      const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(f.id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });
-      if (!fr.ok) err = 'Couldn’t download it from Google Drive.';
-      else {
-        buf = await fr.arrayBuffer();
-        if (f.mimeType !== 'application/pdf' && buf.byteLength > 5 * 1024 * 1024) err = 'This image is over 5 MB. Save scans as PDF instead.';
-        else {
-          const out = f.mimeType === 'application/pdf' ? await readPdf(env, buf) : await readInvoice(env, [{ type: 'image', source: { type: 'base64', media_type: f.mimeType, data: b64(buf) } }]);
-          if (out.ok) { invs = out.invoices; inv = invs[0]; } else { err = out.message; if (out.error === 'off' || out.error === 'ai') { await done(out.message); return { error: out.error, message: out.message, added }; } }
-        }
-      }
-    }
-    if (!invs) { await sb('inv_inbox_add_server', { p_key: key, p_file_id: keyOf(f), p_name: f.name, p_created: f.createdTime, p_status: 'error', p_invoice: null, p_error: err }); failed++; continue; }
-    // file each invoice in its vendor's folder (and split a stack into one PDF per invoice)
-    let filed = [];
-    if (writable) {
-      try { F = F || await filing(at, d.folder_id); filed = await fileScan(at, F, d.folder_id, f, buf, invs); }
-      catch (e) { filed = invs.map(() => ({ note: 'Couldn’t file it in Google Drive (' + (e.status || 'error') + '); it’s still in Eden Invoices' })); }
-    } else noFile = true;
-    for (let i = 0; i < invs.length; i++) {
-      const x = invs[i], fl = filed[i] || null;
-      x.source = 'scan: ' + f.name + (invs.length > 1 ? ' (invoice ' + (i + 1) + ' of ' + invs.length + ')' : '');
-      if (fl) x.filed = fl;
-      await sb('inv_inbox_add_server', { p_key: key, p_file_id: i ? keyOf(f) + '#' + (i + 1) : keyOf(f), p_name: fl && fl.name ? fl.name : f.name + (invs.length > 1 ? ' · ' + (i + 1) + ' of ' + invs.length : ''), p_created: f.createdTime, p_status: 'waiting', p_invoice: x, p_error: '' });
-      added++;
-    }
+  // the staff site does the reading (it splits a big stack into a few pages at a time in the browser, so nothing here runs long):
+  // each new scan is listed as waiting to be read, and the Inventory page reads it as soon as it's open
+  for (const f of fresh.slice(0, max || 25)) {
+    const big = +f.size > MAX_DRIVE_BYTES;
+    await sb('inv_inbox_add_server', { p_key: key, p_file_id: keyOf(f), p_name: f.name, p_created: f.createdTime, p_status: big ? 'error' : 'waiting',
+      p_invoice: big ? null : { pending: /hei[cf]/i.test(f.mimeType) ? 'heic' : 'scan', mime: f.mimeType, size: +f.size || 0, created: f.createdTime, lines: [] },
+      p_error: big ? 'This scan is over 45 MB. In Image Capture set Resolution to 200 or 300 dpi and Kind to Grayscale, then scan again.' : '' });
+    if (big) failed++; else added++;
   }
+  noFile = fresh.length && !writable;
   await done(noFile ? 'To file scans into vendor folders, reconnect Google Drive (Change folder → Disconnect, then Connect Google Drive).' : '');
-  return { ok: true, added, failed, more: Math.max(0, fresh.length - (max || 3)) };
+  return { ok: true, added, failed, more: Math.max(0, fresh.length - (max || 25)) };
 }

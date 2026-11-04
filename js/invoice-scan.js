@@ -96,7 +96,52 @@
 
   /* ---------- reading the file ---------- */
   function b64(file) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(file); }); }
-  var HEIC = 'js/vendor/heic2any-0.0.4.min.js';   // MIT, github.com/alexcorvi/heic2any: only loaded for an iPhone HEIC photo the browser can't open itself
+  var HEIC = 'js/vendor/heic2any-0.0.4.min.js';
+  var PDFLIB = 'js/vendor/pdf-lib-1.17.1.min.js';   // MIT, github.com/Hopding/pdf-lib: splits a big scan into a few pages at a time
+  function pdfLib() { return window.PDFLib ? Promise.resolve(window.PDFLib) : loadScript(PDFLIB).then(function () { return window.PDFLib; }); }
+  function bufB64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+  // a PDF of any size, read a few pages at a time (each group goes to the reader on its own, two at once), then put back together:
+  // page numbers are for the whole file, and an invoice cut in two at a split is joined back up
+  var GROUP_BYTES = 3 * 1024 * 1024, GROUP_PAGES = 8;
+  function readPdfBuf(buf, name, prog) {
+    return pdfLib().then(function (L) {
+      return L.PDFDocument.load(buf, { ignoreEncryption: true }).then(function (src) {
+        var total = src.getPageCount(), per = buf.byteLength / Math.max(1, total);
+        var step = Math.max(1, Math.min(GROUP_PAGES, Math.floor(GROUP_BYTES / per)));
+        if (per > 15 * 1024 * 1024) throw new Error('A single page of this scan is over 15 MB. Scan at 200–300 dpi in grayscale (not 600 dpi color) and try again.');
+        var starts = []; for (var st = 0; st < total; st += step) starts.push(st);
+        var results = new Array(starts.length), next = 0, done = 0;
+        function one() {
+          if (next >= starts.length) return Promise.resolve();
+          var gi = next++, start = starts[gi], idx = [];
+          for (var i = start; i < Math.min(total, start + step); i++) idx.push(i);
+          return L.PDFDocument.create().then(function (doc) {
+            return doc.copyPages(src, idx).then(function (pg) { pg.forEach(function (p) { doc.addPage(p); }); return doc.save(); });
+          }).then(function (bytes) {
+            return readAI([{ name: name, type: 'application/pdf' }], [{ type: 'application/pdf', data: bufB64(bytes) }]).then(function (list) { results[gi] = { start: start, idx: idx, list: list }; },
+              function (e) { if (/couldn.t read any/i.test(e.message || '')) results[gi] = { start: start, idx: idx, list: [] }; else throw e; });   // blank pages are fine
+          }).then(function () { done++; if (prog) prog(done, starts.length); return one(); });
+        }
+        if (prog) prog(0, starts.length);
+        return Promise.all([one(), one()]).then(function () {
+          var all = [];
+          results.forEach(function (r) { r.list.forEach(function (inv, k) { inv.pages = (inv.pages || []).map(function (p) { return p + r.start; }); if (!inv.pages.length) inv.pages = r.idx.map(function (i) { return i + 1; }); inv._first = k === 0 && r.start > 0 && inv.pages[0] === r.start + 1; all.push(inv); }); });
+          var joined = [];
+          all.forEach(function (inv) {
+            var prev = joined[joined.length - 1], sameV = prev && String(prev.vendor || '').toLowerCase() === String(inv.vendor || '').toLowerCase();
+            var same = prev && sameV && ((inv.invoice_no && prev.invoice_no === inv.invoice_no) || (inv._first && !inv.invoice_no && prev.pages[prev.pages.length - 1] === inv.pages[0] - 1));
+            delete inv._first;
+            if (!same) { joined.push(inv); return; }
+            prev.lines = (prev.lines || []).concat(inv.lines || []); prev.fees = (prev.fees || []).concat(inv.fees || []); prev.pages = prev.pages.concat(inv.pages);
+            if (inv.total != null) prev.total = inv.total; if (!prev.date && inv.date) prev.date = inv.date;
+          });
+          if (!joined.length) throw new Error('Couldn’t read any invoices in that scan.');
+          joined.forEach(function (inv, i) { inv.source = 'pdf: ' + name + (joined.length > 1 ? ' (invoice ' + (i + 1) + ' of ' + joined.length + ')' : ''); });
+          return { invoices: joined, src: src, L: L, total: total };
+        });
+      });
+    });
+  }   // MIT, github.com/alexcorvi/heic2any: only loaded for an iPhone HEIC photo the browser can't open itself
   function isHeic(f) { return /hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || ''); }
   function toJpeg(blob) {   // HEIC → JPEG for browsers without HEIC support (Chrome, Firefox, Windows)
     return (window.heic2any ? Promise.resolve() : loadScript(HEIC)).then(function () {
@@ -121,6 +166,10 @@
     });
   }
   function readAI(files, partsIn) {
+    if (!partsIn && files.length === 1 && (/pdf$/i.test(files[0].type) || /\.pdf$/i.test(files[0].name))) {
+      if (files[0].size > 45 * 1024 * 1024) return Promise.reject(new Error('That PDF is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.'));
+      return files[0].arrayBuffer().then(function (buf) { return readPdfBuf(buf, files[0].name, function (d, n) { if (n > 1) A.status('Reading the PDF… ' + d + ' of ' + n + ' parts.', 'dirty'); }); }).then(function (r) { return r.invoices; });
+    }
     var parts = partsIn ? partsIn.map(function (p) { return Promise.resolve(p); }) : files.map(function (f) {
       if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
         if (f.size > 45 * 1024 * 1024) return Promise.reject(new Error('That PDF is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.'));
@@ -421,6 +470,7 @@
   }
   function paintBar(el, again) {
     D.again = again;
+    if (!D.processing && (D.inbox || []).some(function (x) { return x.status === 'waiting' && x.invoice && x.invoice.pending === 'scan' && !(D.tried && D.tried[x.id]); })) setTimeout(processAll, 0);
     var st = D.st; el.innerHTML = '';
     if (D.missing || !st || st.error) { el.hidden = true; return; }
     if (!st.address) {
@@ -455,6 +505,7 @@
       var dismiss = h('button', { type: 'button', cls: 'ed-btn small', text: 'Dismiss', title: 'Remove from this list (the file stays in Google Drive)', on: { click: function () {
         A.sb.from('inventory_inbox').update({ status: 'dismissed', done_at: new Date().toISOString() }).eq('id', x.id).then(function () { D.inbox = D.inbox.filter(function (y) { return y.id !== x.id; }); again(); });
       } } });
+      if (inv.pending === 'scan' && x.status === 'waiting') return h('li', null, [h('div', null, [h('b', { text: x.file_name }), h('span', { text: D.processing ? 'Reading… keep this page open (a big stack takes a minute or two)' : 'Waiting to be read' })]), h('div', { cls: 'is-bar-t' }, [dismiss])]);
       if (inv.pending) return h('li', null, [h('div', null, [h('b', { text: x.file_name }), h('span', { text: 'iPhone photo: read when you open it' })]),
         h('div', { cls: 'is-bar-t' }, [h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Read & check', on: { click: function () { openWaiting(x, again); } } }), dismiss])]);
       return h('li', { cls: x.status === 'error' ? 'is-bad' : '' }, [
@@ -484,6 +535,81 @@
       return inv;
     });
   }
+  /* ---------- scans from the Drive folder: read here in the browser, then filed into vendor folders ---------- */
+  function vendorDate(inv, x) { var d = /^\d{4}-\d\d-\d\d$/.test(inv.date || '') ? inv.date : String((x.invoice && x.invoice.created) || x.file_created || '').slice(0, 10); return [inv.vendor || 'Unknown vendor', d, inv.invoice_no ? '#' + inv.invoice_no : ''].filter(Boolean).join(' '); }
+  function fileScanned(x, invs, r) {   // returns the filed info per invoice (or notes); never fails the read
+    var base = String(x.file_id || ''), ext = /png/.test((x.invoice && x.invoice.mime) || '') ? '.png' : /jpe?g/.test((x.invoice && x.invoice.mime) || '') ? '.jpg' : '.pdf';
+    var used = {}, nameFor = function (inv) { var n = vendorDate(inv, x), k = n, i = 2; while (used[k]) k = n + ' (' + i++ + ')'; used[k] = 1; return k; };
+    if (invs.length === 1 || !r) {
+      return post('drive/move', { file_id: base, vendor: invs[0].vendor, name: nameFor(invs[0]), ext: ext }).then(function (j) {
+        if (!j._ok) return invs.map(function () { return { note: j.message || 'Couldn’t file it in Google Drive' }; });
+        return invs.map(function (v, i) { return i === 0 ? { name: j.name, folder: j.folder, id: j.id, link: j.link, made: j.made } : { folder: j.folder, note: 'Filed with the first invoice in this scan' }; });
+      });
+    }
+    var out = [], chain = Promise.resolve(), stop = null;
+    invs.forEach(function (inv, i) {
+      chain = chain.then(function () {
+        if (stop) { out[i] = { note: stop }; return; }
+        var pages = (inv.pages || []).filter(function (p) { return p >= 1 && p <= r.total; }).map(function (p) { return p - 1; });
+        if (!pages.length) { out[i] = { note: 'Its pages couldn’t be told apart, so it stays in the original scan' }; return; }
+        return r.L.PDFDocument.create().then(function (doc) { return doc.copyPages(r.src, pages).then(function (pg) { pg.forEach(function (p) { doc.addPage(p); }); return doc.save(); }); }).then(function (bytes) {
+          return A.sb.auth.getSession().then(function (y) {
+            var jwt = y && y.data && y.data.session && y.data.session.access_token || '';
+            var q = new URLSearchParams({ file_id: base, vendor: inv.vendor || '', name: nameFor(inv) });
+            return fetch('drive/put?' + q, { method: 'POST', headers: { 'content-type': 'application/pdf', authorization: 'Bearer ' + jwt }, body: bytes });
+          }).then(function (res) { return res.json().catch(function () { return {}; }).then(function (j) {
+            if (!res.ok) { stop = j.message || 'Couldn’t file it in Google Drive'; out[i] = { note: stop }; return; }
+            out[i] = { name: j.name, folder: j.folder, id: j.id, link: j.link, made: j.made, pages: inv.pages };
+          }); });
+        });
+      });
+    });
+    return chain.then(function () { if (out.some(function (o) { return o && o.link; })) return post('drive/move', { file_id: base, to: 'originals' }); }).then(function () { return out; });
+  }
+  function processScan(x) {
+    var base = String(x.file_id || ''), mime = (x.invoice && x.invoice.mime) || 'application/pdf', name = x.file_name || 'scan';
+    A.status('Reading ' + name + '…', 'dirty');
+    return A.sb.auth.getSession().then(function (y) {
+      var jwt = y && y.data && y.data.session && y.data.session.access_token || '';
+      return fetch('drive/file', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt }, body: JSON.stringify({ file_id: base }) });
+    }).then(function (res) {
+      if (!res.ok) return res.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.message || 'Couldn’t download it from Google Drive.'); });
+      return res.arrayBuffer();
+    }).then(function (buf) {
+      if (/pdf/i.test(mime)) return readPdfBuf(buf, name, function (d, n) { A.status('Reading ' + name + '… ' + d + ' of ' + n + ' parts' + (n > 2 ? ' (a big stack takes a minute or two)' : '') + '.', 'dirty'); });
+      return shrink(new File([buf], name, { type: mime })).then(function (part) { return readAI([{ name: name, type: 'image/jpeg' }], [part]); }).then(function (list) { return { invoices: list }; });
+    }).then(function (r) {
+      var invs = r.invoices;
+      invs.forEach(function (inv, i) { inv.source = 'scan: ' + name + (invs.length > 1 ? ' (invoice ' + (i + 1) + ' of ' + invs.length + ')' : ''); });
+      A.status('Filing ' + name + ' in Google Drive…', 'dirty');
+      return fileScanned(x, invs, r.src ? r : null).then(function (filed) { invs.forEach(function (inv, i) { if (filed[i]) inv.filed = filed[i]; }); return invs; }, function () { return invs; });
+    }).then(function (invs) {
+      return post('drive/save', { file_id: base, name: name, created: x.file_created, invoices: invs }).then(function () { return invs.length; });
+    }, function (e) {
+      return post('drive/save', { file_id: base, name: name, created: x.file_created, invoices: [], error: e.message || 'Couldn’t read it.' }).then(function () { throw e; });
+    });
+  }
+  // read every waiting scan, one after another, while the Inventory page is open
+  function processAll() {
+    if (D.processing) return Promise.resolve();
+    D.tried = D.tried || {};
+    var todo = (D.inbox || []).filter(function (x) { return x.status === 'waiting' && x.invoice && x.invoice.pending === 'scan' && !D.tried[x.id]; });
+    todo.forEach(function (x) { D.tried[x.id] = 1; });   // once per visit to the page
+    if (!todo.length) return Promise.resolve();
+    D.processing = true; if (D.again) D.again();
+    var ok = 0, bad = 0, chain = Promise.resolve();
+    todo.forEach(function (x, i) {
+      chain = chain.then(function () {
+        if (todo.length > 1) A.status('Reading scan ' + (i + 1) + ' of ' + todo.length + '…', 'dirty');
+        return processScan(x).then(function (n) { ok += n; }, function () { bad++; });
+      });
+    });
+    return chain.then(function () {
+      D.processing = false;
+      A.status((ok ? ok + ' invoice' + (ok === 1 ? '' : 's') + ' ready to check.' : '') + (bad ? ' ' + bad + ' scan' + (bad === 1 ? '' : 's') + ' couldn’t be read (the reason is under each one).' : ''), bad && !ok ? 'err' : 'ok');
+      return loadBar().then(function () { if (D.again) D.again(); });
+    });
+  }
   // the server reads one scan per request: keep asking until the folder is caught up, showing progress
   function checkAll() {
     var tot = { _ok: true, added: 0, failed: 0, more: 0 }, n = 0;
@@ -500,6 +626,7 @@
   }
   // forget this scan (and the other invoices split from it) so the next check reads and files it again
   function readAgain(x, again) {
+    D.tried = {};
     var base = String(x.file_id || '').replace(/#\d+$/, '');
     if (!base) return;
     A.status('Reading the scan again… a large stack can take a minute or two.', 'dirty');
