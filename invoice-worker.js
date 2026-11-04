@@ -48,7 +48,7 @@ const PROMPT = 'This is a vendor invoice for Eden, a restaurant in Syracuse, NY.
   'a wine/spirits distributor invoice or a supply invoice, possibly over several photos (pages, in order). Read every product line. ' +
   'Skip deposits, fuel/delivery charges, taxes and subtotals as lines, but keep credits as lines with negative amounts. ' +
   'If only a line total and quantity are printed, work out unit_price = extended / qty. Use the shipped quantity. ' +
-  'Copy descriptions as printed; do not invent codes or packs. Put anything you are unsure of in note. Then call the invoice tool.';
+  'Copy descriptions as printed; do not invent codes or packs. Put anything you are unsure of in note. You must answer by calling the invoice tool once with every line; do not reply with text.';
 
 export async function invoiceRoute(req, env, rpc) {
   if (req.method !== 'POST') return json({ error: 'bad' }, 405);
@@ -87,7 +87,7 @@ export async function readInvoice(env, content) {
     r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: env.INVOICE_MODEL || MODEL, max_tokens: 8000, tools: [TOOL], tool_choice: { type: 'tool', name: 'invoice' }, messages: [{ role: 'user', content }] })
+      body: JSON.stringify({ model: env.INVOICE_MODEL || MODEL, max_tokens: 16000, tools: [TOOL], tool_choice: { type: 'auto' }, messages: [{ role: 'user', content }] })
     });
     j = await r.json();
   } catch (e) { return { ok: false, error: 'ai', message: 'Couldn’t reach the invoice reader. Try again.' }; }
@@ -95,7 +95,12 @@ export async function readInvoice(env, content) {
     const m = (j && j.error && j.error.message) || '';
     return { ok: false, error: 'ai', message: r.status === 401 ? 'The ANTHROPIC_API_KEY secret isn’t valid.' : r.status === 429 ? 'Too many invoices at once. Wait a minute and try again.' : 'The invoice reader had a problem' + (m ? ': ' + m : '.') };
   }
-  const use = (j.content || []).filter(x => x.type === 'tool_use')[0];
+  let use = (j.content || []).filter(x => x.type === 'tool_use')[0];
+  if (!use) {   // no tool call: take the JSON from the reply's text, if it wrote it out instead
+    const txt = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (m) { try { const o = JSON.parse(m[0]); if (o && Array.isArray(o.lines)) use = { input: o }; } catch (e) {} }
+  }
   if (!use || !use.input || !Array.isArray(use.input.lines)) return { ok: false, error: 'read', status: 422, message: 'Couldn’t read any lines on that invoice. Try a sharper, flatter photo.' };
   const inv = use.input;
   inv.lines = inv.lines.filter(l => l && String(l.description || '').trim()).map(l => ({
