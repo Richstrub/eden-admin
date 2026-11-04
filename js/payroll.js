@@ -1483,6 +1483,16 @@
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
     var bt = d.buy.total, what = bt ? 'payroll & costs' : 'payroll';
     cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips)' + (d.buy.inv ? ' · invoices ' + money(d.buy.inv) + ' (' + pctTxt(d.buy.inv / d.t.net) + ')' : '') + (d.buy.bfixed ? ' · fixed costs ' + money(d.buy.bfixed) : '') + ' · ' + (d.left >= 0 ? money(d.left) + ' (' + pctTxt(d.left / d.t.net) + ') left after ' + what : what + ' came to ' + money(-d.left) + ' more than came in') }));
+    // scanned invoices the chart can't place yet: dated after the last week with sales, or with no date
+    (function () {
+      var to = iso(addDays(new Date(ws[0].week + 'T12:00:00'), 6)), later = [], undated = [];
+      (OV.invoices || []).forEach(function (v) { if (!v.invoice_date) undated.push(v); else if (v.invoice_date > to) later.push(v); });
+      var tot = function (xs) { return money(xs.reduce(function (a, v) { return a + (+v.total || +v.lines_total || 0); }, 0)); };
+      var msg = [];
+      if (later.length) msg.push(later.length + (later.length === 1 ? ' scanned invoice' : ' scanned invoices') + ' (' + tot(later) + ', ' + later.map(function (v) { return (v.vendor || 'unknown') + ' ' + wkLabel(v.invoice_date); }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '') + ') ' + (later.length === 1 ? 'is' : 'are') + ' dated after ' + wkLabel(to) + ', the last week with sales. ' + (later.length === 1 ? 'It' : 'They') + ' will show here once that week’s Transactions CSV is in Weekly payroll.');
+      if (undated.length) msg.push(undated.length + (undated.length === 1 ? ' scanned invoice has' : ' scanned invoices have') + ' no date (' + undated.map(function (v) { return v.vendor || 'unknown'; }).slice(0, 4).join(', ') + '), so ' + (undated.length === 1 ? 'it isn’t' : 'they aren’t') + ' counted.');
+      if (msg.length) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: msg.join(' ') }));
+    })();
     if (d.t.noFees) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: 'Card processing fees aren’t in for ' + d.t.noFees + ' of these ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' (they were imported before fees were read), so the Square band is only the loan there. Drop ' + (d.t.noFees === 1 ? 'that week’s' : 'those weeks’') + ' Transactions CSV into Weekly payroll again to add them.' }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctFrom: 0, pctSkip: ['in'], totLabel: 'Total costs', totSkip: ['taxout', 'tipsout', 'left'] })); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
