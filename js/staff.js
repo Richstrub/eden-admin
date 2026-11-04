@@ -38,6 +38,7 @@
     var email = signinForm.email.value.trim(), pw = signinForm.password.value;
     if (!email || !pw) { signinMsg.textContent = 'Enter your email and password.'; return; }
     signinMsg.textContent = 'Signing in…';
+    window.EdenAccount.markSignIn();
     sb.auth.signInWithPassword({ email: email, password: pw }).then(function (r) {
       if (r.error) {
         signinMsg.textContent = /rate|too many/i.test(r.error.message || '') ? 'Too many attempts. Try again in a few minutes.' : /not confirmed/i.test(r.error.message || '') ? 'This account still needs its confirmation email. Ask a manager to switch it on (Schedule › Employees).' : 'That email and password did not work. New to the team? Use the link below to create your account.';
@@ -121,6 +122,7 @@
         // a menu group with nothing this person can open is left out
         document.querySelectorAll('.sb-group').forEach(function (g) { if (!g.hasAttribute('data-owner')) g.hidden = ![].some.call(g.querySelectorAll('a'), function (a) { return !a.hidden; }); });
         show('app'); entered = session.user.id;
+        window.EdenAccount.visit(sb, 'admin');
         if (window.EdenNotes) window.EdenNotes.init({ sb: sb, status: status, name: name, canCal: isMgr(), canShare: isMgr(), canMail: canMail(), canRecipes: isMgr(), isOwner: role === 'owner' });
         if (!started) { started = true; if (role !== 'scheduler') startData(); }
         loadSections().then(route);
@@ -137,7 +139,7 @@
   // where each page sits in the menu (shown at the top of the page) and its browser-tab title
   var PAGES = { home: ['', 'Today'], preshift: ['Service', 'Pre-shift meeting'], resources: ['Service', 'Resources'], checklists: ['Service', 'Checklists'], orders: ['Kitchen & bar', 'Ordering'], eod: ['Office', 'End of day report'], menu: ['Front of house', 'Menu & Supper Club'],
     calendar: ['Front of house', 'Calendar'], catering: ['Front of house', 'Catering & BEOs'], prep: ['Kitchen & bar', 'Prep List'], inventory: ['Kitchen & bar', 'Inventory'], temps: ['Kitchen & bar', 'Temperatures'],
-    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], reviews: ['Team', 'Reviews'], analytics: ['Owner', 'Analytics'], partners: ['Owner', 'Partner stories'], todo: ['', 'To-do'] };
+    recipes: ['Kitchen & bar', 'Recipes'], schedule: ['Team', 'Schedule'], payroll: ['Owner', 'Financials'], email: ['Office', 'Business email'], promo: ['Office', 'Promotional emails'], employees: ['Team', 'Employees'], reviews: ['Team', 'Reviews'], analytics: ['Website', 'Analytics'], partners: ['Website', 'Partner stories'], todo: ['', 'To-do'] };
   var view = null, menuOpened = false, staffName = '';
   function isMgr() { return role === 'owner' || role === 'manager' || role === 'scheduler'; }
   // Team > Employees > Permissions: sections switched off for this login (Kitchen and Front-of-house logins)
@@ -160,7 +162,7 @@
     if ($('app').hidden) return;
     var v = (location.hash || '').replace(/^#/, ''), sub = '';
     if (v === 'history') v = 'analytics/history';   // History now lives under Analytics
-    if (v.indexOf('analytics/') === 0) { sub = v.slice(10) === 'history' ? 'history' : ''; v = 'analytics'; }
+    if (v.indexOf('analytics/') === 0) { sub = { history: 'history', logins: 'logins' }[v.slice(10)] || ''; v = 'analytics'; }
     if (v === 'financials') { v = 'payroll'; sub = 'overview'; }   // Financials: the overview, Payroll and Pay rates
     else if (v.indexOf('payroll/') === 0) { sub = { rates: 'rates', overview: 'overview', past: 'past' }[v.slice(8)] || 'week'; v = 'payroll'; }
     else if (v === 'payroll') sub = 'week';
@@ -190,7 +192,7 @@
     document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
     $('printMenusBtn').hidden = v !== 'menu' || !window.EdenMenuPrint;
-    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll', past: 'Past payroll' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll', past: 'Past payroll' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'analytics' && sub === 'logins' ? 'Staff logins' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
     if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }

@@ -104,6 +104,7 @@
       });
     } else {
       msg.textContent = 'Signing in…';
+      window.EdenAccount.markSignIn();
       sb.auth.signInWithPassword({ email: email, password: pw }).then(function (r) {
         if (!r.error) return;
         var m = r.error.message || '';
@@ -183,6 +184,7 @@
         $('notlistedMsg').textContent = 'You’re signed in as ' + (session.user && session.user.email) + ', but that email isn’t on Eden’s current staff list. Ask a manager if you think this is a mistake.';
         show('notlisted'); return;
       }
+      window.EdenAccount.visit(sb, 'staff');
       var name = (me.employee && me.employee.name) || (session.user && session.user.email) || '';
       $('whoName').textContent = name;
       $('meBtn').textContent = String(name).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('') || '•';

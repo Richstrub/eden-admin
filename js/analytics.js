@@ -79,12 +79,14 @@
     var wrap = h('div', { cls: 'an-in' });
     var tabs = h('nav', { cls: 'an-tabs', 'aria-label': 'Analytics pages' }, [
       h('a', { href: '#analytics', 'data-sub': 'traffic', text: 'Website traffic' }),
+      h('a', { href: '#analytics/logins', 'data-sub': 'logins', text: 'Staff logins' }),
       h('a', { href: '#analytics/history', 'data-sub': 'history', text: 'History' })
     ]);
     wrap.appendChild(h('div', { cls: 'an-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'Analytics' })]), tabs]));
     A.paneTraffic = h('div', { cls: 'an-pane', id: 'anTraffic' });
     A.paneHistory = h('div', { cls: 'an-pane', id: 'anHistory' });
-    wrap.appendChild(A.paneTraffic); wrap.appendChild(A.paneHistory);
+    A.paneLogins = h('div', { cls: 'an-pane', id: 'anLogins' });
+    wrap.appendChild(A.paneTraffic); wrap.appendChild(A.paneLogins); wrap.appendChild(A.paneHistory);
     el.appendChild(wrap);
     A.tip = h('div', { cls: 'an-tip', role: 'tooltip', hidden: true }); document.body.appendChild(A.tip);
     A.shell = true;
@@ -93,7 +95,9 @@
     A.el.querySelectorAll('.an-tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-sub') === A.sub ? 'page' : 'false'); });
     A.paneTraffic.hidden = A.sub !== 'traffic';
     A.paneHistory.hidden = A.sub !== 'history';
+    A.paneLogins.hidden = A.sub !== 'logins';
     hideTip();
+    if (A.sub === 'logins') { loadLogins(); return; }
     if (A.sub === 'history') {
       if (window.EdenHistory) window.EdenHistory.show({ sb: A.ctx.sb, el: A.paneHistory, status: A.ctx.status, embedded: true });
     } else load();
@@ -209,6 +213,103 @@
       h('div', { cls: 'an-card-h' }, [h('h2', { text: title }), h('span', { cls: 'an-unit', text: by === 'views' ? 'page views' : 'visitors' })]),
       body, more > 0 ? h('p', { cls: 'an-li-more', text: '+ ' + more + ' more' }) : null
     ]);
+  }
+
+  /* ---------- staff logins: when staff sign in and use the admin site and the staff page (supabase/staff-activity.sql) ---------- */
+  var L = { range: '30', data: null, missing: false, err: '', seq: 0 };
+  function loadLogins() {
+    var my = ++L.seq, n = +L.range, to = new Date(Date.now() + 60e3), from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - n + 1);
+    L.from = from; paintLogins(true);
+    A.ctx.sb.rpc('staff_activity', { p_from: from.toISOString(), p_to: to.toISOString() }).then(function (r) {
+      if (my !== L.seq) return;
+      if (r.error) { L.missing = isMissing(r.error); L.err = L.missing ? '' : 'Couldn’t load staff logins. ' + (r.error.message || ''); L.data = null; }
+      else { L.missing = false; L.err = ''; L.data = r.data || { visits: [], people: [] }; }
+      paintLogins(false);
+    }, function () { if (my === L.seq) { L.err = 'Couldn’t reach the database.'; paintLogins(false); } });
+  }
+  function etParts(t) {   // the time in Eden's time zone
+    var p = {}; new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', hour: 'numeric', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(new Date(t)).forEach(function (x) { p[x.type] = x.value; });
+    return { dow: DOW.indexOf(p.weekday), hour: +p.hour % 24, day: p.year + '-' + String(p.month).padStart(2, '0') + '-' + String(p.day).padStart(2, '0') };
+  }
+  function when(t) {
+    if (!t) return '—';
+    var d = new Date(t), mins = (Date.now() - d) / 60e3;
+    if (mins < 30) return 'Now';
+    if (mins < 60) return Math.round(mins) + ' min ago';
+    var tm = d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+    var today = etParts(Date.now()).day, day = etParts(t).day, yest = etParts(Date.now() - 864e5).day;
+    if (day === today) return 'Today ' + tm;
+    if (day === yest) return 'Yesterday ' + tm;
+    return d.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + tm;
+  }
+  function dur(v) { var m = Math.max(1, Math.round((new Date(v.last) - new Date(v.start)) / 60e3)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60 ? m % 60 + ' min' : ''); }
+  function paintLogins(loading) {
+    var el = A.paneLogins; el.innerHTML = '';
+    el.appendChild(h('div', { cls: 'an-bar' }, [
+      h('p', { cls: 'an-sub', text: 'When staff use the managers’ site and the staff page. A visit starts when someone opens the site and ends after 30 minutes away. “Signed in” means they typed their password; otherwise their browser kept them signed in.' }),
+      seg([['7', '7 days'], ['30', '30 days'], ['90', '90 days']], L.range, function (v) { L.range = v; loadLogins(); }, 'Time period')
+    ]));
+    if (L.missing) {
+      el.appendChild(h('div', { cls: 'iv-setup' }, [
+        h('p', { text: 'Staff logins aren’t switched on yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/staff-activity.sql from the eden-admin repository, and click Run.' }),
+        h('p', { text: 'Visits are counted from then on. Until then, Employees shows each person’s last sign-in.' })
+      ]));
+      return;
+    }
+    if (L.err) { el.appendChild(h('p', { cls: 'an-err', text: L.err })); return; }
+    var d = L.data;
+    if (loading && !d) { el.appendChild(h('p', { cls: 'an-loading', text: 'Loading staff logins…' })); return; }
+    if (!d) return;
+    var V = d.visits || [], P = d.people || [], byEm = {};
+    P.forEach(function (p) { byEm[p.email] = p; });
+    var nm = function (em) { return (byEm[em] && byEm[em].name) || em; };
+    var people = {}; V.forEach(function (v) { var o = people[v.email] = people[v.email] || { visits: 0, days: {}, admin: 0, staff: 0, devices: {}, signins: 0 }; o.visits++; o.days[etParts(v.start).day] = 1; o[v.site]++; o.devices[v.device || 'computer'] = 1; if (v.signed_in) o.signins++; });
+    var now = V.filter(function (v) { return Date.now() - new Date(v.last) < 30 * 60e3; });
+    var nowP = {}; now.forEach(function (v) { nowP[v.email] = 1; });
+    el.appendChild(h('div', { cls: 'an-kpis' }, [
+      h('div', { cls: 'an-kpi' }, [h('span', { cls: 'an-k', text: 'Staff who used the site' }), h('b', { text: num(Object.keys(people).length) }), h('span', { cls: 'an-delta', text: 'of ' + P.length + ' with a login' })]),
+      h('div', { cls: 'an-kpi' }, [h('span', { cls: 'an-k', text: 'Visits' }), h('b', { text: num(V.length) }), h('span', { cls: 'an-delta', text: num(V.filter(function (v) { return v.site === 'staff'; }).length) + ' on the staff page' })]),
+      h('div', { cls: 'an-kpi' }, [h('span', { cls: 'an-k', text: 'Password sign-ins' }), h('b', { text: num(V.filter(function (v) { return v.signed_in; }).length) }), h('span', { cls: 'an-delta', text: 'The rest were already signed in' })]),
+      h('div', { cls: 'an-kpi' }, [h('span', { cls: 'an-k', text: 'On the site now' }), h('b', { text: num(Object.keys(nowP).length) }), h('span', { cls: 'an-delta', text: Object.keys(nowP).map(nm).join(', ') || 'Nobody in the last 30 minutes' })])
+    ]));
+    // when: visits by day of the week and hour (Eden's time)
+    var grid = [], max = 0; for (var i = 0; i < 7; i++) grid.push(new Array(24).fill(0));
+    V.forEach(function (v) { var e = etParts(v.start); if (e.dow >= 0) { grid[e.dow][e.hour]++; max = Math.max(max, grid[e.dow][e.hour]); } });
+    var hrs = []; for (var hr = 6; hr < 24; hr++) hrs.push(hr); hrs.push(0, 1, 2);
+    var late = V.filter(function (v) { var hh = etParts(v.start).hour; return hh >= 3 && hh < 6; }).length;
+    var hl = function (x) { return x === 0 ? '12a' : x < 12 ? x + 'a' : x === 12 ? '12p' : (x - 12) + 'p'; };
+    var tbl = h('table', { cls: 'an-heat' }, [h('thead', null, [h('tr', null, [h('th')].concat(hrs.map(function (x) { return h('th', { scope: 'col', text: x % 3 === 0 ? hl(x) : '' }); })))]),
+      h('tbody', null, [3, 4, 5, 6, 0, 1, 2].map(function (dw) {
+        return h('tr', null, [h('th', { scope: 'row', text: DOW[dw] })].concat(hrs.map(function (x) {
+          var c = grid[dw][x], lvl = c ? Math.min(RAMP.length - 1, Math.floor((c / max) * (RAMP.length - 0.001))) : -1;
+          return h('td', { style: 'background:' + (lvl < 0 ? EMPTY : RAMP[lvl]), title: DOW[dw] + ' ' + hl(x) + ': ' + c + (c === 1 ? ' visit' : ' visits'), 'aria-label': DOW[dw] + ' ' + hl(x) + ': ' + c });
+        })));
+      }))]);
+    el.appendChild(h('section', { cls: 'an-card' }, [h('div', { cls: 'an-card-h' }, [h('h2', { text: 'When staff use the site' }), h('span', { cls: 'an-unit', text: 'visits by day and hour, Eastern time' })]),
+      V.length ? h('div', { cls: 'an-heatw' }, [tbl]) : h('p', { cls: 'an-li-empty', text: 'No visits in this period yet.' }),
+      late ? h('p', { cls: 'an-note', text: late + (late === 1 ? ' visit' : ' visits') + ' between 3 and 6 am not shown.' }) : null]));
+    // each person
+    var rows = P.map(function (p) { var o = people[p.email]; return { p: p, o: o }; }).sort(function (a, b) { return String(b.p.last_seen || b.p.last_sign_in || '').localeCompare(String(a.p.last_seen || a.p.last_sign_in || '')); });
+    var devName = { phone: 'Phone', tablet: 'Tablet', computer: 'Computer' };
+    el.appendChild(h('section', { cls: 'an-card' }, [h('div', { cls: 'an-card-h' }, [h('h2', { text: 'Each person' }), h('span', { cls: 'an-unit', text: 'in the last ' + L.range + ' days' })]),
+      h('div', { cls: 'an-tblw' }, [h('table', { cls: 'an-tbl' }, [
+        h('thead', null, [h('tr', null, ['Name', 'Last on the site', 'Visits', 'Days', 'Where', 'Device'].map(function (x) { return h('th', { scope: 'col', text: x }); }))]),
+        h('tbody', null, rows.map(function (r) {
+          var o = r.o, last = r.p.last_seen || r.p.last_sign_in;
+          return h('tr', { cls: o ? '' : 'an-dim' }, [
+            h('td', null, [h('b', { text: r.p.name || r.p.email }), r.p.position || r.p.role ? h('small', { text: r.p.position || ({ owner: 'Owner', manager: 'Manager', kitchen: 'Kitchen', scheduler: 'Manager' }[r.p.role] || r.p.role) }) : null]),
+            h('td', { text: last ? when(last) + (r.p.last_seen ? '' : ' (sign-in)') : 'Never signed in' }),
+            h('td', { text: o ? num(o.visits) : '0' }), h('td', { text: o ? num(Object.keys(o.days).length) : '0' }),
+            h('td', { text: o ? [o.admin ? 'Managers’ site' : '', o.staff ? 'Staff page' : ''].filter(Boolean).join(' · ') : '—' }),
+            h('td', { text: o ? Object.keys(o.devices).map(function (k) { return devName[k] || k; }).join(', ') : '—' })
+          ]);
+        }))])])]));
+    // recent visits
+    el.appendChild(h('section', { cls: 'an-card' }, [h('div', { cls: 'an-card-h' }, [h('h2', { text: 'Recent visits' }), h('span', { cls: 'an-unit', text: V.length > 40 ? 'latest 40' : '' })]),
+      V.length ? h('ol', { cls: 'an-visits' }, V.slice(0, 40).map(function (v) {
+        return h('li', null, [h('b', { text: nm(v.email) }), h('span', { text: when(v.start) }),
+          h('span', { cls: 'an-li-s', text: [v.site === 'staff' ? 'Staff page' : 'Managers’ site', devName[v.device] || '', dur(v), v.pages + (v.pages === 1 ? ' page' : ' pages'), v.signed_in ? 'signed in' : ''].filter(Boolean).join(' · ') })]);
+      })) : h('p', { cls: 'an-li-empty', text: 'No visits in this period yet.' })]));
   }
 
   /* ---------- tooltip ---------- */
@@ -379,7 +480,7 @@
     show: function (ctx) {
       A.ctx = ctx;
       if (A.el !== ctx.el || !A.shell || !ctx.el.firstChild) { A.el = ctx.el; shell(); }
-      A.sub = ctx.sub === 'history' ? 'history' : 'traffic';
+      A.sub = ctx.sub === 'history' || ctx.sub === 'logins' ? ctx.sub : 'traffic';
       showSub();
     },
     hide: hideTip

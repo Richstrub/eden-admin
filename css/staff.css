@@ -3124,3 +3124,20 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-sk-rule { stroke: rgba(42,46,51,.25); stroke-width: 1; }
 .fn-sk-tot { font-weight: 600; }
 .fn-sk-warn { margin: 6px 0 0; padding: 8px 12px; border-radius: 8px; background: #f6ecd9; color: #6b4d1c; font-size: 13px; line-height: 1.4; }
+
+/* Website → Analytics → Staff logins */
+.an-heatw { overflow-x: auto; }
+.an-heat { border-collapse: separate; border-spacing: 2px; font-size: 11px; min-width: 560px; width: 100%; table-layout: fixed; }
+.an-heat thead th:first-child, .an-heat tbody th { width: 38px; }
+.an-heat thead th { overflow: visible; }
+.an-heat th { font-weight: 500; color: #8a857d; text-align: left; padding: 0 4px 2px 0; white-space: nowrap; }
+.an-heat td { height: 22px; border-radius: 3px; min-width: 16px; }
+.an-tblw { overflow-x: auto; }
+.an-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.an-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: #8a857d; padding: 6px 10px 6px 0; border-bottom: 1px solid rgba(42,46,51,.12); }
+.an-tbl td { padding: 8px 10px 8px 0; border-bottom: 1px solid rgba(42,46,51,.07); vertical-align: top; }
+.an-tbl td small { display: block; color: #8a857d; font-size: 12px; }
+.an-tbl tr.an-dim td { color: #a19c94; }
+.an-visits { list-style: none; margin: 0; padding: 0; }
+.an-visits li { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(140px, 1fr) 2fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(42,46,51,.07); font-size: 14px; }
+@media (max-width: 640px) { .an-visits li { grid-template-columns: 1fr; gap: 2px; } }

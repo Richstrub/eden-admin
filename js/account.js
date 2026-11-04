@@ -50,7 +50,29 @@
     return words[r[0] % words.length] + '-' + words[r[1] % words.length] + '-' + String(100 + r[2] % 900);
   }
 
+  // Staff logins (Website → Analytics): log this visit. A visit runs until 30 minutes away; the page reports at most
+  // every 5 minutes. A password sign-in is marked by markSignIn() just before it, so it starts a new visit.
+  var lastVisit = 0, visitOff = false;
+  function device() { var w = Math.min(screen.width || 0, screen.height || 0); return /iPad|Tablet/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)) ? 'tablet' : /Mobi|iPhone|Android/i.test(navigator.userAgent) || (w && w < 500) ? 'phone' : 'computer'; }
+  function visit(sb, site) {
+    if (visitOff || !sb) return;
+    var signin = false; try { signin = sessionStorage.getItem('eden-signin') === '1'; } catch (e) {}
+    if (!signin && Date.now() - lastVisit < 5 * 60e3) return;
+    lastVisit = Date.now(); try { sessionStorage.removeItem('eden-signin'); } catch (e) {}
+    sb.rpc('log_staff_visit', { p_site: site, p_device: device(), p_signin: signin }).then(function (r) {
+      if (r && r.error && /log_staff_visit|function|schema cache/i.test(r.error.message || '')) visitOff = true;   // staff-activity.sql not run yet
+    }, function () {});
+  }
   window.EdenAccount = {
+    visit: function (sb, site) {
+      visit(sb, site);
+      if (!window.__edenVisitHooks) {
+        window.__edenVisitHooks = true;
+        window.addEventListener('hashchange', function () { visit(sb, site); });
+        document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') visit(sb, site); });
+      }
+    },
+    markSignIn: function () { try { sessionStorage.setItem('eden-signin', '1'); } catch (e) {} },
     change: function (sb, done) {
       sb.auth.getSession().then(function (res) {
         var email = res && res.data && res.data.session && res.data.session.user && res.data.session.user.email;
