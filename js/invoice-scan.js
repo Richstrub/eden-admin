@@ -388,7 +388,8 @@
         var c1 = h('input', { type: 'text', cls: 'is-pk', value: szv === 'custom' ? (R.ml >= 1000 ? R.ml / 1000 + ' L' : R.ml + ' ml') : '', placeholder: 'e.g. 1.5 L, 500 ml', 'aria-label': 'Custom bottle size', hidden: szv !== 'custom' });
         var pr = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', value: L.unit_price == null ? '' : String(r2(L.unit_price)), 'aria-label': 'Price per case or bottle' });
         var oz = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', 'aria-label': 'Price per oz' });
-        var showOz = function () { var o = ozOne(); oz.value = L.unit_price != null && o ? String(Math.round(L.unit_price / o * 1000) / 1000) : ''; };
+        var pb = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', 'aria-label': 'Price per bottle' });   // a case: what one bottle comes to
+        var showOz = function () { var o = ozOne(); oz.value = L.unit_price != null && o ? String(Math.round(L.unit_price / o * 1000) / 1000) : ''; pb.value = L.unit_price != null && R.unit === 'case' && R.bpc ? String(r2(L.unit_price / R.bpc)) : ''; };
         showOz();
         var commit = function () {   // put the boxes back on the line, then let the row recalculate (units, new cost)
           L.unit = R.unit; L.qty = R.qty; L.bottle_ml = R.ml;
@@ -411,9 +412,10 @@
         s1.addEventListener('change', function () { c1.hidden = s1.value !== 'custom'; if (s1.value === 'custom') { c1.focus(); return; } R.ml = +s1.value; commit(); });
         c1.addEventListener('change', function () { var v = ML(c1.value) || (num(c1.value) ? (num(c1.value) < 10 ? num(c1.value) * 1000 : num(c1.value)) : null); if (v) { R.ml = v; commit(); } });
         pr.addEventListener('change', function () { L.unit_price = num(pr.value); commit(); });
+        pb.addEventListener('change', function () { var v = num(pb.value); if (v != null && R.bpc) { L.unit_price = r4(v * R.bpc); commit(); } });
         oz.addEventListener('change', function () { var v = num(oz.value), o = ozOne(); if (v != null && o) { L.unit_price = r4(v * o); commit(); } });
         return [h('label', null, ['Received ', qn]), us, h('label', { hidden: R.unit !== 'case' }, ['of ', bp, ' bottles']), h('label', null, ['Bottle ', s1]), c1,
-          h('label', null, ['$', pr, R.unit === 'case' ? ' / case' : ' / bottle']), h('label', null, ['$', oz, ' / oz'])];
+          h('label', null, ['$', pr, R.unit === 'case' ? ' / case' : ' / bottle']), R.unit === 'case' ? h('label', null, ['$', pb, ' / bottle']) : null, h('label', null, ['$', oz, ' / oz'])];
       }
       var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
       if (k === 'food') {   // measurements typed in before (from the inventory's case sizes), then "Other…"
