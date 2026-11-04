@@ -35,6 +35,8 @@
   function packCount(p) { var m = String(p || '').match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x\b|×|-?ct\b|count\b|pk\b|pack\b|dz\b|doz|lbs?\b|#|ea\b|each\b)/i); return m ? +m[1] : null; }
   // counting units in one invoice unit: a case of 6/#10 cans counted by the can is 6; counted by the case, 1
   var BIG = /^(case|box|keg|bag|sleeve|pack)$/;
+  var FEE = /deliver|fuel|freight|surcharge|deposit|shipping|service charge|handling|small order/i;
+  function feesOf(inv) { return (inv.fees || []).filter(function (f) { return f && +f.amount; }); }
   function perCase(line) { return line.bottles_per_case || packCount(line.pack) || (/(\d+)\s*b\b/i.exec(line.description + ' ' + line.pack) || [])[1] * 1 || null; }
   // an item counted in cases but priced per bottle: the Units box shows bottles per case, and the cost is price × that
   function flipped(line, it) { return !!it && BIG.test(canon(it.unit)) && !BIG.test(canon(line.unit)) && !!canon(line.unit); }
@@ -45,6 +47,16 @@
     if (BIG.test(iu)) return 1;
     if (lu === 'case' || lu === 'box' || lu === 'pack') return perCase(line) || packCount(it.pack) || 1;
     return 1;
+  }
+  // how the item is ordered, from the confirmed line: by the bottle or by the case (and how many in a case)
+  function orderInfo(L, it) {
+    if (!A.orderCols) return {};
+    var u = canon(L.unit), o = {};
+    if (L.cases && !L.bottles) o.order_unit = 'case'; else if (L.bottles && !L.cases) o.order_unit = 'bottle';
+    else if (u === 'case' || u === 'bottle') o.order_unit = u;
+    var pc = L.bottles_per_case || packCount(L.pack) || (it && (it.per_case || packCount(it.pack)));
+    if (pc && pc > 1) o.per_case = pc;
+    return o;
   }
   function qtyText(L) {   // "2 cs + 4 btl" when the invoice has Cases and Bottles columns
     var p = [];
@@ -168,9 +180,10 @@
       var hdr = hi >= 0 ? rows[hi].map(function (c) { return String(c).toLowerCase().trim(); }) : [];
       if (hi < 0) throw new Error('Couldn’t find the item and price columns in ' + file.name + '. Take a photo or use the PDF instead.');
       var g = function (r, k) { return col[k] >= 0 ? String(r[col[k]] == null ? '' : r[col[k]]).trim() : ''; };
-      var lines = [], vendor = '';
+      var lines = [], fees = [], vendor = '';
       rows.slice(hi + 1).forEach(function (r) {
-        var d = g(r, 'desc'); if (!d || /^(sub)?total|^tax|^freight|^fuel|^delivery|^deposit/i.test(d)) return;
+        var d = g(r, 'desc'); if (!d || /^(sub)?total|^tax/i.test(d)) return;
+        if (FEE.test(d)) { var fa = num(g(r, 'ext')) != null ? num(g(r, 'ext')) : num(g(r, 'price')); if (fa) fees.push({ description: d, amount: fa }); return; }
         var qty = num(g(r, 'qty')), price = num(g(r, 'price')), ext = num(g(r, 'ext'));
         var cs = col.cases >= 0 ? num(g(r, 'cases')) : (col.btls >= 0 ? qty : null), bt = col.btls >= 0 ? num(g(r, 'btls')) : null, perB = /bottle|btl|each|unit/.test(hdr[col.price] || '');
         var bpc = packCount(g(r, 'pack'));
@@ -182,7 +195,7 @@
         lines.push({ cases: bt != null ? cs : null, bottles: bt, bottles_per_case: bpc, code: g(r, 'code'), description: d, pack: g(r, 'pack'), qty: qty, unit: g(r, 'unit') || (bt != null && perB ? 'bottle' : 'case'), unit_price: price, extended: ext != null ? ext : qty != null ? r2(qty * price) : null, note: '' });
       });
       if (!lines.length) throw new Error('No item lines found in ' + file.name + '.');
-      return { vendor: vendor, invoice_no: '', date: '', total: null, lines: lines, source: 'csv: ' + file.name };
+      return { vendor: vendor, invoice_no: '', date: '', total: null, lines: lines, fees: fees, source: 'csv: ' + file.name };
     });
   }
 
@@ -234,7 +247,11 @@
   }
   function review(inv, links, opts) {
     opts = opts || {}; var savedId = null;
-    inv.lines = (inv.lines || []).filter(function (l) { return l.unit_price != null && !(!+l.unit_price && !+l.extended); });   // no price, or nothing shipped
+    inv.fees = feesOf(inv);
+    inv.lines = (inv.lines || []).filter(function (l) {
+      if (FEE.test(l.description) && !l.code) { var a = l.extended != null ? l.extended : l.unit_price; if (+a) inv.fees.push({ description: l.description, amount: +a }); return false; }
+      return l.unit_price != null && !(!+l.unit_price && !+l.extended);   // no price, or nothing shipped
+    });
     match(inv, links);
     var f = {
       vendor: h('input', { type: 'text', value: inv.vendor || '', placeholder: 'Who is this invoice from?' }),
@@ -283,8 +300,10 @@
     }
     inv.lines.forEach(function (L) { L.tr = h('tr'); tbody.appendChild(L.tr); paintRow(L); });
     var ext = r2(inv.lines.reduce(function (a, L) { return a + (+L.extended || 0); }, 0));
+    var feeSum = r2(inv.fees.reduce(function (a, f) { return a + (+f.amount || 0); }, 0)), all = r2(ext + feeSum);
     sumNote.textContent = inv.lines.length + ' line' + (inv.lines.length === 1 ? '' : 's') + ' adding up to ' + money(ext) +
-      (inv.total != null ? (Math.abs(ext - inv.total) > 0.05 ? '. The invoice total is ' + money(inv.total) + ' (taxes, fees or a missed line?).' : ', the same as the invoice total.') : '.');
+      (inv.fees.length ? ', plus ' + inv.fees.map(function (f) { return f.description + ' ' + money(f.amount); }).join(', ') + ' = ' + money(all) : '') +
+      (inv.total != null ? (Math.abs(all - inv.total) > 0.05 ? '. The invoice total is ' + money(inv.total) + ' (taxes or a missed line?).' : ', the same as the invoice total.') : '.');
     var sugg = inv.lines.filter(function (L) { return L.how === 'suggested'; }).length;
     var tickAll = sugg ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Tick all suggested (' + sugg + ')', on: { click: function () { inv.lines.forEach(function (L) { if (L.how === 'suggested') { L.use = true; paintRow(L); } }); count(); } } }) : null;
 
@@ -311,11 +330,11 @@
       use.forEach(function (L) {
         var c = r4(L.costOver != null ? L.costOver : newCost(L)), it;
         if (L.item === '__new') {
-          it = { id: A.uid(), category: newCat, section: '', name: L.description, unit: canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 };
+          it = Object.assign({ id: A.uid(), category: newCat, section: '', name: L.description, unit: canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
-          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor });
+          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, orderInfo(L, it));
         }
         L.newCost = c;
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString() };
@@ -324,7 +343,12 @@
       var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, cases: L.cases, bottles: L.bottles, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
       A.sb.auth.getSession().then(function (x) {
         var who = (x && x.data && x.data.session && x.data.session.user && x.data.session.user.email) || '';
-        return A.sb.from('inventory_invoices').insert({ vendor: vendor, invoice_no: f.no.value.trim(), invoice_date: date, total: inv.total == null ? null : inv.total, lines: inv.lines.map(clean), source: inv.source || '', created_by: who }).select('id').single();
+        var row = { vendor: vendor, invoice_no: f.no.value.trim(), invoice_date: date, total: inv.total == null ? null : inv.total, lines: inv.lines.map(clean), source: inv.source || '', created_by: who };
+        var withFees = Object.assign({ fees: inv.fees, fees_total: feeSum, lines_total: ext }, row);
+        return A.sb.from('inventory_invoices').insert(withFees).select('id').single().then(function (r) {
+          if (r.error && /fees|lines_total|column/i.test(r.error.message || '') && r.error.code !== '42501') return A.sb.from('inventory_invoices').insert(row).select('id').single();   // invoice-vendors.sql not run yet
+          return r;
+        });
       }).then(function (r) {
         if (r.error) throw r.error;
         var invId = savedId = r.data.id;
@@ -490,5 +514,41 @@
     });
   }
 
-  window.EdenInvoiceScan = { open: open, bar: bar, handleArg: handleArg, _test: { match: match, guessPer: guessPer, canon: canon, score: score, readSheet: readSheet, review: function (api, inv, links) { A = api; review(inv, links); } } };
+
+  /* ---------- Vendors: spend and delivery charges, from the invoices put into the inventory ---------- */
+  function vendors(api) {
+    A = api;
+    A.sb.from('inventory_invoices').select('*').order('invoice_date', { ascending: false }).limit(1000).then(function (r) {
+      if (r.error) { A.status(isMissing(r.error) ? 'Run supabase/invoices.sql in Supabase first.' : 'Couldn’t load the invoices.', 'err'); return; }
+      var by = {};
+      (r.data || []).forEach(function (x) {
+        var k = norm(x.vendor) || '(no vendor)', v = by[k] || (by[k] = { name: x.vendor || '(no vendor)', list: [], spend: 0, fees: 0, feeN: 0 });
+        var fees = Array.isArray(x.fees) ? x.fees : [], fs = x.fees_total != null ? +x.fees_total : fees.reduce(function (a, f) { return a + (+f.amount || 0); }, 0);
+        var lt = x.lines_total != null ? +x.lines_total : (x.lines || []).reduce(function (a, l) { return a + (+l.extended || 0); }, 0);
+        v.list.push({ x: x, fees: fees, fs: r2(fs), lt: r2(lt) });
+        v.spend += x.total != null ? +x.total : lt + fs; v.fees += fs; if (fs) v.feeN++;
+      });
+      var list = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.spend - a.spend; });
+      var since = list.length ? list.reduce(function (m, v) { var d = v.list[v.list.length - 1].x.invoice_date; return !m || (d && d < m) ? d : m; }, '') : '';
+      var body = [h('p', { cls: 'sc-sub', text: list.length ? 'From the invoices put into the inventory' + (since ? ' since ' + since : '') + '. Tap a vendor to see its invoices.' : 'No invoices yet. Scan an invoice and update its prices; it shows up here.' })];
+      if (list.length) {
+        var tb = h('tbody');
+        list.forEach(function (v) {
+          var avg = v.list.length ? v.fees / v.list.length : 0;
+          var row = h('tr', { cls: 'is-vrow' }, [h('td', null, h('b', { text: v.name })), h('td', { cls: 'r', text: String(v.list.length) }), h('td', { cls: 'r', text: money(v.spend) }),
+            h('td', { cls: 'r', text: money(v.fees) }), h('td', { cls: 'r', text: v.fees ? money(avg) : '—' }), h('td', { cls: 'r', text: v.spend ? Math.round(v.fees / v.spend * 1000) / 10 + '%' : '—' }), h('td', { text: v.list[0].x.invoice_date || '' })]);
+          var det = h('tr', { cls: 'is-vdet', hidden: true }, h('td', { colspan: '7' }, h('table', { cls: 'is-vinv' }, [h('thead', null, h('tr', null, ['Date', 'Invoice #', 'Items', 'Delivery & fees', 'Total'].map(function (t) { return h('th', { text: t }); }))),
+            h('tbody', null, v.list.map(function (o) { return h('tr', null, [h('td', { text: o.x.invoice_date || '' }), h('td', { text: o.x.invoice_no || '' }), h('td', { cls: 'r', text: money(o.lt) }),
+              h('td', { cls: 'r', title: o.fees.map(function (f) { return f.description + ' ' + money(f.amount); }).join(', '), text: o.fs ? money(o.fs) + (o.fees.length ? ' (' + o.fees.map(function (f) { return f.description; }).join(', ') + ')' : '') : '—' }),
+              h('td', { cls: 'r', text: o.x.total != null ? money(o.x.total) : money(o.lt + o.fs) })]); }))])));
+          row.addEventListener('click', function () { det.hidden = !det.hidden; row.classList.toggle('open', !det.hidden); });
+          tb.appendChild(row); tb.appendChild(det);
+        });
+        body.push(h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-vtable' }, [h('thead', null, h('tr', null, ['Vendor', 'Invoices', 'Spent', 'Delivery & fees', 'Avg per invoice', 'Of spend', 'Last invoice'].map(function (t, i) { return h('th', { cls: i && i < 6 ? 'r' : '', text: t }); }))), tb])));
+      }
+      var m = A.modal('Vendors', body, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })], true);
+      m.el.classList.add('is-scan');
+    });
+  }
+  window.EdenInvoiceScan = { open: open, vendors: vendors, bar: bar, handleArg: handleArg, _test: { match: match, guessPer: guessPer, canon: canon, score: score, readSheet: readSheet, review: function (api, inv, links) { A = api; review(inv, links); } } };
 })();

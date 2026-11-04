@@ -22,6 +22,7 @@ const TOOL = {
       invoice_no: { type: 'string' },
       date: { type: 'string', description: 'Invoice date as YYYY-MM-DD, or empty' },
       total: { type: ['number', 'null'], description: 'Invoice total' },
+      fees: { type: 'array', description: 'Delivery charges, fuel surcharges, freight, deposits, bottle/keg deposits, service fees: not products', items: { type: 'object', properties: { description: { type: 'string' }, amount: { type: ['number', 'null'] } }, required: ['description', 'amount'] } },
       lines: {
         type: 'array',
         items: {
@@ -49,7 +50,7 @@ const TOOL = {
 
 const PROMPT = 'This is a vendor invoice for Eden, a restaurant in Syracuse, NY. It may be a printed distributor invoice, a farm\'s handwritten slip, ' +
   'a wine/spirits distributor invoice or a supply invoice, possibly over several photos (pages, in order). Read every product line. ' +
-  'Skip deposits, fuel/delivery charges, taxes and subtotals as lines, but keep credits as lines with negative amounts. ' +
+  'Put delivery charges, fuel surcharges, freight, deposits and service fees in fees (not lines). Skip taxes and subtotals. Keep credits as lines with negative amounts. ' +
   'If only a line total and quantity are printed, work out unit_price = extended / qty. Use the shipped quantity. ' +
   'Wine, beer and spirits invoices often have separate Cases and Bottles (Btls) columns: put full cases in cases and loose bottles in bottles, exactly as printed. ' +
   'The price may be per bottle (a Unit Price, Net Bottle or Bottle Price column) or per case: set unit to bottle or case to match what unit_price is per, ' +
@@ -120,6 +121,7 @@ export async function readInvoice(env, content) {
     qty: typeof l.qty === 'number' ? l.qty : null, unit: String(l.unit || '').trim(), unit_price: typeof l.unit_price === 'number' ? l.unit_price : null,
     extended: typeof l.extended === 'number' ? l.extended : null, note: String(l.note || '').trim()
   }));
+  inv.fees = (Array.isArray(inv.fees) ? inv.fees : []).filter(f => f && String(f.description || '').trim() && n(f.amount)).map(f => ({ description: String(f.description).trim(), amount: n(f.amount) }));
   return { ok: true, invoice: inv, usage: j.usage || null };
 }
 

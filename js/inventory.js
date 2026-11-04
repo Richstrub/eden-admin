@@ -84,9 +84,10 @@
     I.loading = true;
     return Promise.all([
       sb().from('inventory_items').select('*').order('section').then(function (r) { if (r.error) throw r.error; return r.data || []; }),
-      sb().from('inventory_counts').select('*').order('count_date', { ascending: false }).then(function (r) { if (r.error) throw r.error; return r.data || []; })
+      sb().from('inventory_counts').select('*').order('count_date', { ascending: false }).then(function (r) { if (r.error) throw r.error; return r.data || []; }),
+      sb().from('inventory_items').select('order_unit,per_case').limit(1).then(function (r) { return !r.error; }, function () { return false; })
     ]).then(function (res) {
-      I.items = res[0]; I.counts = res[1]; I.loaded = true; I.missing = false; I.loading = false;
+      I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.loaded = true; I.missing = false; I.loading = false;
     }, function (e) {
       I.loading = false; I.loaded = true;
       if (isMissing(e)) I.missing = true;
@@ -95,7 +96,9 @@
   }
   function saveItems(list) {
     return sb().from('inventory_items').upsert(list.map(function (it) {
-      return { id: it.id, category: it.category, section: it.section || '', name: it.name, unit: it.unit || '', pack: it.pack || '', vendor: it.vendor || '', par: it.par, cost: it.cost, sort: it.sort || 0, active: it.active !== false };
+      var row = { id: it.id, category: it.category, section: it.section || '', name: it.name, unit: it.unit || '', pack: it.pack || '', vendor: it.vendor || '', par: it.par, cost: it.cost, sort: it.sort || 0, active: it.active !== false };
+      if (I.orderCols) { row.order_unit = it.order_unit || ''; row.per_case = it.per_case == null || it.per_case === '' ? null : +it.per_case; }   // supabase/invoice-vendors.sql
+      return row;
     }), { onConflict: 'id' }).then(function (r) { if (r.error) throw r.error; });
   }
   function saveErr(e) { status(isPerm(e) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection; your changes are kept here and will retry.', 'err'); }
@@ -147,6 +150,7 @@
       h('div', { cls: 'iv-tools' }, [
         h('label', { cls: 'sc-f iv-date' }, [h('span', { text: 'Count date' }), date]),
         window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
+        window.EdenInvoiceScan && window.EdenInvoiceScan.vendors ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Vendors', title: 'Spending and delivery charges by vendor, from scanned invoices', on: { click: function () { window.EdenInvoiceScan.vendors(scanApi()); } } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } }),
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
@@ -235,7 +239,7 @@
     inp.addEventListener('focus', function () { inp.select(); });
     var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + it.vendor + ' ' + it.pack) }, [
       h('td', { cls: 'iv-name' }, [h('button', { type: 'button', cls: 'iv-namebtn', title: 'Edit item', text: it.name, on: { click: function () { editItem(it); } } }),
-        it.pack || it.vendor ? h('small', { text: [it.pack, it.vendor].filter(Boolean).join(' · ') }) : null]),
+        it.pack || it.vendor || it.order_unit ? h('small', { text: [it.pack, it.vendor, orderedBy(it) ? 'ordered ' + orderedBy(it) : ''].filter(Boolean).join(' · ') }) : null]),
       h('td', { cls: 'iv-unit', text: it.unit || '' }),
       h('td', { cls: 'r', text: qty(it.par) }),
       h('td', { cls: 'r iv-last', text: qty(last) }),
@@ -401,7 +405,11 @@
     return rows;
   }
 
-  function scanApi() { return { items: I.items, saveItems: saveItems, sb: sb(), status: status, done: render, modal: modal, h: h, cat: I.cat, uid: uid }; }
+  function scanApi() { return { items: I.items, saveItems: saveItems, sb: sb(), status: status, done: render, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function orderedBy(it) {   // "by the case of 6", "by the bottle"
+    if (!it.order_unit) return '';
+    return 'by the ' + it.order_unit + (it.order_unit === 'case' && it.per_case ? ' of ' + qty(+it.per_case) : '');
+  }
   function scanInvoice() { flush(); window.EdenInvoiceScan.open(scanApi()); }
 
   /* ---------- dialogs ---------- */
@@ -431,8 +439,11 @@
       pack: h('input', { type: 'text', value: it.pack || '', placeholder: 'e.g. 6/#10 cans, 750ml' }),
       vendor: h('input', { type: 'text', value: it.vendor || '', list: 'ivVendors', placeholder: 'Optional' }),
       par: h('input', { type: 'text', inputmode: 'decimal', value: qty(it.par), placeholder: 'How many to keep on hand' }),
-      cost: h('input', { type: 'text', inputmode: 'decimal', value: it.cost != null ? String(it.cost) : '', placeholder: 'Cost per unit, e.g. 24.50' })
+      cost: h('input', { type: 'text', inputmode: 'decimal', value: it.cost != null ? String(it.cost) : '', placeholder: 'Cost per unit, e.g. 24.50' }),
+      ord: h('select', null, [['', 'Not set'], ['bottle', 'By the bottle'], ['case', 'By the case'], ['each', 'By the each'], ['lb', 'By the pound']].map(function (o) { return h('option', { value: o[0], text: o[1] }); })),
+      pc: h('input', { type: 'text', inputmode: 'decimal', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: 'e.g. 6 or 12' })
     };
+    f.ord.value = it.order_unit || '';
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
     var m;
     var foot = [
@@ -447,6 +458,7 @@
       h('div', { cls: 'sc-row2' }, [lbl('Section', f.section), lbl('Counted in (unit)', f.unit)]),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
       h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), lbl('Cost per unit ($)', f.cost)]),
+      I.orderCols ? h('div', { cls: 'sc-row2' }, [lbl('Ordered from the vendor', f.ord), lbl('How many in a case', f.pc)]) : null,
       datalist('ivSections', uniq((SECTIONS[I.cat] || []).concat(catItemsAll.map(function (x) { return x.section; })))),
       datalist('ivUnits', UNITS), datalist('ivVendors', uniq(I.items.map(function (x) { return x.vendor; }))),
       msg
@@ -468,6 +480,7 @@
       var dup = I.items.filter(function (x) { return x.category === I.cat && x.id !== it.id && keyOf(x.name) === keyOf(name); })[0];
       if (dup && !confirm('“' + dup.name + '” is already on this list. Add another with the same name?')) return;
       var next = Object.assign({}, it, { name: name, section: f.section.value.trim(), unit: f.unit.value.trim(), pack: f.pack.value.trim(), vendor: f.vendor.value.trim(), par: par, cost: cost });
+      if (I.orderCols) { next.order_unit = f.ord.value; next.per_case = num(f.pc.value); }
       status('Saving…', 'dirty');
       saveItems([next]).then(function () {
         if (isNew) I.items.push(next); else Object.assign(it, next);
@@ -483,6 +496,13 @@
     }
   }
 
+  // what to order in the vendor's unit: counted in bottles but ordered by the case of 6 → whole cases, and the other way round
+  function orderQty(it, need) {
+    var u = String(it.unit || '').toLowerCase(), pc = +it.per_case || 0, plural = function (n, w) { return qty(n) + ' ' + w + (n === 1 ? '' : (/s$/.test(w) ? '' : 's')); };
+    if (it.order_unit === 'case' && pc > 1 && !/^(case|cs)s?$/.test(u)) { var c = Math.ceil(need / pc - 1e-9); return { text: plural(c, 'case'), note: 'short ' + plural(need, u || 'unit') + ', ' + qty(pc) + ' per case' }; }
+    if (it.order_unit === 'bottle' && pc > 1 && /^(case|cs)s?$/.test(u)) { var b = Math.ceil(need * pc - 1e-9); return { text: plural(b, 'bottle'), note: 'by the bottle' }; }
+    return { text: qty(need) + ' ' + (it.unit || ''), note: it.order_unit ? 'by the ' + it.order_unit : '' };
+  }
   function orderList() {
     var items = catItems(), byVendor = {}, notCounted = 0, noPar = 0;
     items.forEach(function (it) {
@@ -501,9 +521,10 @@
       lines.push('', v.toUpperCase());
       var ul = h('ul', { cls: 'iv-olist' });
       byVendor[v].forEach(function (x) {
-        var t = qty(x.need) + ' ' + (x.it.unit || '') + ' ' + x.it.name + (x.it.pack ? ' (' + x.it.pack + ')' : '');
+        var o = orderQty(x.it, x.need);
+        var t = o.text + ' ' + x.it.name + (x.it.pack ? ' (' + x.it.pack + ')' : '') + (o.note ? ' [' + o.note + ']' : '');
         lines.push('• ' + t.replace(/\s+/g, ' ').trim());
-        ul.appendChild(h('li', null, [h('b', { text: qty(x.need) + ' ' + (x.it.unit || '') }), ' ' + x.it.name, x.it.pack ? h('small', { text: ' ' + x.it.pack }) : null]));
+        ul.appendChild(h('li', null, [h('b', { text: o.text }), ' ' + x.it.name, x.it.pack ? h('small', { text: ' ' + x.it.pack }) : null, o.note ? h('small', { text: ' · ' + o.note }) : null]));
       });
       body.push(h('div', { cls: 'iv-ovendor' }, [h('h3', { text: v }), ul]));
     });
