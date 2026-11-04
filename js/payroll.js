@@ -1284,7 +1284,8 @@
       });
     });
   }
-  // Square Loans → loan → All activity → Export: each repayment (taken out of card sales), added up by week
+  // Square Dashboard → Banking → Loans → Loan details → Download: each repayment (taken out of card sales), added up by week.
+  // "Loan payment refund" lines come back off that week; "Loan deposit" (the loan itself) and "Pending" lines are left out.
   function loanFile(text, fname) {
     var rows = parseCSV(text), hi = -1, H = [];
     for (var i = 0; i < Math.min(rows.length, 15); i++) { var r = rows[i].map(function (x) { return String(x).trim().toLowerCase(); }); if (r.some(function (c) { return /date/.test(c); }) && r.some(function (c) { return /amount|payment|repaid|repayment|withheld|paid/.test(c); })) { hi = i; H = r; break; } }
@@ -1293,21 +1294,23 @@
     if (ai < 0) ai = H.findIndex(function (c) { return /repayment|repaid|payment|withheld|paid|amount/.test(c) && !/balance|remaining/.test(c); });
     var dsi = H.findIndex(function (c) { return /description|type|activity|details/.test(c); });
     var m0 = function (v) { v = String(v || '').trim(); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : n; };
-    var weeks = {}, n = 0;
+    var weeks = {}, n = 0, dep = null, paid = 0, back = 0;
     rows.slice(hi + 1).forEach(function (r) {
-      var d = parseDate(r[di]); if (!d) return;
       var desc = dsi >= 0 ? String(r[dsi] || '') : '';
-      if (/disburs|funded|loan deposit|advance deposit|refund/i.test(desc)) return;   // the loan money coming in, not a repayment
+      var d = parseDate(r[di]); if (!d) return;   // "Pending" payments aren't taken yet
       var a = m0(r[ai]); if (!a) return;
+      if (/disburs|funded|loan deposit|advance deposit/i.test(desc)) { dep = { amount: a, date: iso(d) }; return; }   // the loan itself coming in
+      if (/refund|reversal|returned/i.test(desc)) { a = -a; back += -a; } else paid += a;
       var wk = iso(sunday(d)), w = weeks[wk] = weeks[wk] || { days: [0, 0, 0, 0, 0, 0, 0] };
       w.days[d.getDay()] = r2(w.days[d.getDay()] + a); n++;
     });
     var keys = Object.keys(weeks).sort();
     if (!keys.length) return Promise.reject(new Error(fname + ': no repayments found.'));
+    var lead = dep ? 'Square loan of ' + money(dep.amount) + ' (' + wkLabel(dep.date) + '): ' + money(r2(paid - back)) + ' repaid in this file' + (back ? ' after ' + money(back) + ' in refunds' : '') + '. ' : '';
     return saveToWeeks(keys, fname, function (rows2, k) {
-      var t = sum(weeks[k].days); rows2._loan = { days: weeks[k].days, total: t, file: fname, at: new Date().toISOString() };
+      var t = sum(weeks[k].days); rows2._loan = { days: weeks[k].days, total: t, file: fname, loan: dep, at: new Date().toISOString() };
       if (rows2._summary) rows2._summary.loan = t;
-    }, 'loan repayments');
+    }, 'loan repayments').then(function (m) { return lead + m; });
   }
   // put something into each week's payroll row (the Financials overview reads it from there)
   function saveToWeeks(keys, fname, put, what) {
@@ -1319,7 +1322,7 @@
       return (ups.length ? sb().from('payroll_weeks').upsert(ups, { onConflict: 'week_start' }) : Promise.resolve({})).then(function (u) {
         if (u && u.error) throw new Error('Couldn’t save to the payroll weeks.');
         return fname + ': ' + what + ' for ' + (ups.length ? ups.length + (ups.length === 1 ? ' week' : ' weeks') + ' (' + ups.map(function (u) { return wkLabel(u.week_start); }).join(', ') + ')' : 'no weeks') +
-          (skipped.length ? '. Not saved for ' + skipped.map(function (k) { return 'week of ' + wkLabel(k); }).join(', ') + ': that week isn’t in Weekly payroll yet. Drop its Square files there first, then this file again.' : '.');
+          (skipped.length ? '. Skipped ' + (skipped.length > 3 ? skipped.length + ' weeks (' + wkLabel(skipped[0]) + ' to ' + wkLabel(skipped[skipped.length - 1]) + ')' : skipped.map(function (k) { return 'the week of ' + wkLabel(k); }).join(', ')) + ' that aren’t in Weekly payroll yet; drop those weeks’ Square files there first, then this file again.' : '.');
       });
     });
   }
@@ -1336,7 +1339,7 @@
         slot(1, nTx, 'Sales, tax, tips & card fees: Transactions CSV', ['Square Dashboard → Payments & invoices → Transactions', 'Pick the week, Sunday to Saturday', 'Export → Transactions CSV', 'Drop it in Weekly payroll with the week’s timecards (not here)'], nTx + (nTx === 1 ? ' week' : ' weeks') + ' in.',
           h('a', { cls: 'sc-link fn-go', href: '#payroll', text: 'Go to Weekly payroll →', on: { click: function (ev) { ev.stopPropagation(); } } })),
         slot(2, nItems, 'Food vs beverage: Item sales detail', ['Square Dashboard → Reports → Item sales', 'Pick the dates (one week or many)', 'Export → Item sales detail', 'Drop it here'], nItems + (nItems === 1 ? ' week has' : ' weeks have') + ' the exact split.'),
-        slot(3, nLoan, 'Square Loan repayments: loan activity', ['Square Dashboard → Capital (or Square Loans)', 'Your loan → View details → All activity', 'Export (top right)', 'Drop it here'], nLoan + (nLoan === 1 ? ' week has' : ' weeks have') + ' repayments.')
+        slot(3, nLoan, 'Square Loan repayments: loan activity', ['Square Dashboard → Banking → Loans', 'Loan details', 'Download', 'Drop it here'], nLoan + (nLoan === 1 ? ' week has' : ' weeks have') + ' repayments.')
       ]),
       h('p', { cls: 'pr-zonef', text: 'or click here to choose files. Drop several at once; each is recognized by its columns. Every week goes into that week’s payroll, and dropping a file again replaces it.' })
     ]);
