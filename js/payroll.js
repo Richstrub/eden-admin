@@ -1038,6 +1038,7 @@
     var ctx8 = OV.range < 8 ? all.slice(0, 8).reverse() : shown;   // the trend charts show at least 8 weeks
     el.appendChild(barsChart(ctx8));
     el.appendChild(pctChart(ctx8, totNet ? totCost / totNet : null));
+    el.appendChild(whoWhere(all.slice(0, OV.range || 1)));   // the people behind the payroll numbers, for the period picked
     var withInv = shown.filter(function (w) { return w.s.extraPct != null; });
     if (withInv.length) {
       var avgOn = withInv.reduce(function (a, w) { return a + w.s.extraPct; }, 0) / withInv.length;
@@ -1623,12 +1624,12 @@
     })();
     if (d.t.noFees) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: 'Card processing fees aren’t in for ' + d.t.noFees + ' of these ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' (they were imported before fees were read), so the Square band is only the loan there. Drop ' + (d.t.noFees === 1 ? 'that week’s' : 'those weeks’') + ' Transactions CSV into Weekly payroll again to add them.' }));
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctFrom: 0, pctSkip: ['in'], totLabel: 'Total costs', totSkip: ['taxout', 'tipsout', 'left'] })); cb.box.appendChild(wrap);
-    cb.box.appendChild(whoWhere(ws));
+    var costsDet = null;
     if (d.buy.list.length || d.buy.fixed.length) {
       var gname = {}; BUY.forEach(function (b) { gname[b[0]] = b[1]; });
       var byV = {}; d.buy.list.forEach(function (x) { (byV[x.vendor] = byV[x.vendor] || []).push(x); });
       var nv = Object.keys(byV).length; if (d.buy.fixed.length) byV['Fixed costs'] = d.buy.fixed;
-      cb.box.appendChild(h('details', { cls: 'fn-who' }, [h('summary', { text: 'Costs in this period · ' + (d.buy.list.length ? d.buy.list.length + (d.buy.list.length === 1 ? ' invoice' : ' invoices') + ' from ' + nv + (nv === 1 ? ' vendor' : ' vendors') : 'no invoices yet') + (d.buy.fixed.length ? ' · ' + d.buy.fixed.map(function (f) { return f.vendor + ' ' + money(f.total); }).join(', ') : '') }),
+      costsDet = (h('details', { cls: 'fn-who' }, [h('summary', { text: 'Costs in this period · ' + (d.buy.list.length ? d.buy.list.length + (d.buy.list.length === 1 ? ' invoice' : ' invoices') + ' from ' + nv + (nv === 1 ? ' vendor' : ' vendors') : 'no invoices yet') + (d.buy.fixed.length ? ' · ' + d.buy.fixed.map(function (f) { return f.vendor + ' ' + money(f.total); }).join(', ') : '') }),
         h('div', { cls: 'fn-whog' }, Object.keys(byV).sort(function (a, b) { return byV[b].reduce(function (s, x) { return s + x.total; }, 0) - byV[a].reduce(function (s, x) { return s + x.total; }, 0); }).map(function (vn) {
           var xs = byV[vn], tot = xs.reduce(function (s, x) { return s + x.total; }, 0);
           return h('div', null, [h('b', { text: vn + ' · ' + money(tot) }), h('ul', null, xs.map(function (x) { return h('li', null, [h('span', { text: wkLabel(x.date) + (x.fixed ? ' · ' + x.vendor : (x.no ? ' · #' + x.no : '') + ' · ' + gname[x.top]) }), h('span', { text: money(x.total) })]); }))]);
@@ -1636,6 +1637,7 @@
         h('p', { cls: 'fn-note', text: 'Each invoice counts on its invoice date. Lines go to food, beverage or paper goods by the inventory item they were matched to when the invoice was scanned; unmatched vendors, delivery and fuel charges go to Other. Fixed costs: rent, $6,000 on the 1st of every month, counted in the period that includes the 1st.' })]));
     }
     cb.box.appendChild(metrics(ws));
+    if (costsDet) cb.box.appendChild(costsDet);
     cb.box.appendChild(h('p', { cls: 'fn-note', text: 'Percentages are of net sales (' + money(d.t.net) + '); “Total costs” adds up the right-hand column, leaving out sales tax and tips (they pass through) and what’s left. Costs line up with sales: Food costs are kitchen (back of house) labor and food purchases; Beverage & service are servers & bartenders and beverage purchases; Overhead is management, payroll taxes, commission, paper goods, other and fixed costs. From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + (d.buy.inv ? '. Invoices are the ones scanned in Inventory, by invoice date.' : OV.invErr ? '. Invoices couldn’t be loaded (run supabase/invoices.sql, or sign in as someone with inventory access).' : '. No scanned invoices are dated in this period yet: invoices scanned in Inventory will show here by their date.') + (d.buy.bfixed ? '' : ' Rent ($6,000) counts in any period that includes the 1st of a month.') }));
