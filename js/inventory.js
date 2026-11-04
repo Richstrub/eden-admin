@@ -175,7 +175,8 @@
         window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
         window.EdenInvoiceScan && window.EdenInvoiceScan.vendors ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Vendors', title: 'Spending and delivery charges by vendor, from scanned invoices', on: { click: function () { window.EdenInvoiceScan.vendors(scanApi()); } } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print', on: { click: function () { window.print(); } } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', title: 'A blank sheet to count on, for Food, Paper goods and Beverages', on: { click: countSheet } }),
+        h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } }),
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
       ])
     ]));
@@ -723,6 +724,67 @@
     if (it.order_unit === 'case' && pc > 1 && !/^(case|cs)s?$/.test(u)) { var c = Math.ceil(need / pc - 1e-9); return { text: plural(c, 'case'), note: 'short ' + plural(need, u || 'unit') + ', ' + qty(pc) + ' per case' }; }
     if (it.order_unit === 'bottle' && pc > 1 && /^(case|cs)s?$/.test(u)) { var b = Math.ceil(need * pc - 1e-9); return { text: plural(b, 'bottle'), note: 'by the bottle' }; }
     return { text: qty(need) + ' ' + (it.unit || ''), note: it.order_unit ? 'by the ' + it.order_unit : '' };
+  }
+  /* ---------- printable count sheet: every item by section, with boxes to write the count in ---------- */
+  function countSheet() {
+    flush();
+    var boxes = CATS.map(function (c) { var n = I.items.filter(function (it) { return it.category === c.id && it.active !== false; }).length; var cb = h('input', { type: 'checkbox', value: c.id }); cb.checked = c.id === I.cat; return [cb, h('label', { cls: 'sc-check' }, [cb, ' ' + c.label + ' (' + n + ')'])]; });
+    var optLast = h('input', { type: 'checkbox' }), optPar = h('input', { type: 'checkbox' }), optVendor = h('input', { type: 'checkbox' });
+    optLast.checked = true; optPar.checked = true;
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var m = modal('Print a count sheet', [
+      h('p', { cls: 'sc-sub', text: 'Each one prints on its own pages, grouped like the inventory, with a box to write the count in. Enter the counts here afterwards.' }),
+      h('div', { cls: 'iv-cs-opts' }, [h('b', { text: 'Sheets' })].concat(boxes.map(function (b) { return b[1]; }))),
+      h('div', { cls: 'iv-cs-opts' }, [h('b', { text: 'Columns' }), h('label', { cls: 'sc-check' }, [optLast, ' Last count']), h('label', { cls: 'sc-check' }, [optPar, ' Par']), h('label', { cls: 'sc-check' }, [optVendor, ' Vendor'])]),
+      msg
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Print', on: { click: function () {
+        var cats = boxes.filter(function (b) { return b[0].checked; }).map(function (b) { return b[0].value; });
+        if (!cats.length) { msg.textContent = 'Pick at least one sheet.'; return; }
+        if (printSheets(cats, { last: optLast.checked, par: optPar.checked, vendor: optVendor.checked }) === false) { msg.textContent = 'Allow pop-ups for the staff site to print.'; return; }
+        m.close();
+      } } })]);
+  }
+  function printSheets(cats, o) {
+    var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    var num = function (v) { return v == null ? '' : String(Math.round(v * 100) / 100); };
+    var SUBN = { beer: 'Beer', wine: 'Wine', liquor: 'Liquor', na: 'N/A (non-alcoholic)' };
+    var pages = cats.map(function (cid) {
+      var c = catOf(cid), order = SECTIONS[cid] || [];
+      var last = I.counts.filter(function (r) { return r.category === cid && r.counts && Object.keys(r.counts).length; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0] || null;
+      var items = I.items.filter(function (it) { return it.category === cid && it.active !== false; }).sort(function (a, b) {
+        var sa = cid === 'bev' ? ['beer', 'wine', 'liquor', 'na'].indexOf(subOf(a)) : 0, sb = cid === 'bev' ? ['beer', 'wine', 'liquor', 'na'].indexOf(subOf(b)) : 0;
+        var ia = order.indexOf(a.section), ib = order.indexOf(b.section); if (ia < 0) ia = 999; if (ib < 0) ib = 999;
+        return sa - sb || ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
+      });
+      var cols = '<th class="it">Item</th><th class="u">Unit</th>' + (o.vendor ? '<th class="v">Vendor</th>' : '') + (o.par ? '<th class="p">Par</th>' : '') + (o.last ? '<th class="l">Last' + (last ? '<small>' + esc(last.count_date.slice(5).replace('-', '/')) + '</small>' : '') + '</th>' : '') + '<th class="c">Count</th><th class="nt">Notes</th>';
+      var ncol = 4 + (o.vendor ? 1 : 0) + (o.par ? 1 : 0) + (o.last ? 1 : 0);
+      var body = '', curSub = null, curSec = null;
+      items.forEach(function (it) {
+        if (cid === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; body += '<tr class="sub"><td colspan="' + ncol + '">' + esc(SUBN[curSub] || curSub) + '</td></tr>'; }
+        if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; body += '<tr class="sec"><td colspan="' + ncol + '">' + esc(curSec) + '</td></tr>'; }
+        var lv = last && last.counts[it.id] != null ? last.counts[it.id] : null;
+        body += '<tr><td class="it">' + esc(it.name) + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(it.unit) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td></tr>';
+      });
+      for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td></tr>';
+      return '<section class="page"><header><div><h1>Eden · ' + esc(c.label) + ' inventory</h1><span>' + items.length + ' items · write in anything missing at the end</span></div><div class="who"><span>Date <i></i></span><span>Counted by <i></i></span></div></header>' +
+        '<table><thead><tr>' + cols + '</tr></thead><tbody>' + body + '</tbody></table></section>';
+    }).join('');
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden inventory count sheet</title><style>' +
+      '@page{size:letter;margin:.45in}body{font:10pt/1.25 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '.page{break-after:page;page-break-after:always}.page:last-child{break-after:auto;page-break-after:auto}' +
+      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;gap:16px}header h1{font:600 17pt Georgia,serif;margin:0}header span{font-size:8.5pt;color:#555}' +
+      '.who{display:flex;gap:16px}.who span{font-size:9pt;color:#111;display:flex;align-items:flex-end;gap:6px}.who i{display:inline-block;width:1.3in;border-bottom:1px solid #111;height:14px}' +
+      'table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1.5px solid #111;padding:4px 6px}th small{display:block;font-weight:400;letter-spacing:0;text-transform:none}' +
+      'td{border-bottom:1px solid #bbb;padding:4px 6px;vertical-align:middle;height:.27in}tr{break-inside:avoid;page-break-inside:avoid}' +
+      'td.it small{color:#666;font-size:7.5pt;margin-left:6px}td.u,td.p,td.l,td.v{color:#444;font-size:8.5pt;white-space:nowrap}td.p,td.l,th.p,th.l{text-align:right;width:.55in}' +
+      'td.c,th.c{width:.85in;text-align:center}td.c{border:1.5px solid #111;background:#fff}td.nt,th.nt{width:1.6in}' +
+      'tr.sec td{background:#eee;font-weight:700;font-size:8.5pt;text-transform:uppercase;letter-spacing:.06em;height:auto;padding:5px 6px;border-bottom:1px solid #111}' +
+      'tr.sub td{font:600 13pt Georgia,serif;height:auto;padding:12px 6px 4px;border-bottom:2px solid #111}' +
+      '</style></head><body>' + pages + '<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
+    var w = window.open('', '_blank');
+    if (!w) return false;
+    w.document.open(); w.document.write(html); w.document.close();
   }
   function orderList() {
     var items = catItems(), byVendor = {}, notCounted = 0, noPar = 0;

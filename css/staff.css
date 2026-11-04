@@ -3251,3 +3251,5 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 tr.mc-none th b{color:#6b665e}
 @media (max-width:640px){.mc-in{padding:16px}}
 .rc-ehdr span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iv-cs-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:10px 0}
+.iv-cs-opts b{width:100%;font-size:12px;color:var(--stone);font-weight:500}
