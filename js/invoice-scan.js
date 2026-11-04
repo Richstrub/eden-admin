@@ -336,19 +336,21 @@
     function sizeFields(L, it, changed) {
       var k = kindOf(L, it), p = String(L.pack || '').toLowerCase().trim(), m;
       var n = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n' });
-      if (k === 'wine') {   // bottles per case and the bottle size
+      if (k === 'wine') {   // the bottle size, the same for a single bottle and a case (and for a case, how many bottles)
+        var isCase = BIG.test(canon(L.unit)) || !!L.cases || (!L.unit && !L.bottles);
         var bpc = L.bottles_per_case || packCount(p) || '', sz = '750ml', custom = '';
-        if ((m = p.match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/))) { var ml = /ml/.test(m[2]) ? +m[1] : +m[1] * 1000; sz = ml === 750 ? '750ml' : ml === 375 ? '375ml' : ml === 1000 ? '1L' : 'custom'; if (sz === 'custom') custom = m[1] + (/ml/.test(m[2]) ? ' ml' : ' L'); }
+        if ((m = p.match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/))) { var ml = /ml/.test(m[2]) ? +m[1] : +m[1] * 1000; sz = ml === 750 ? '750ml' : ml === 375 ? '375ml' : ml === 1000 ? '1L' : 'custom'; if (sz === 'custom') custom = m[1] + (/ml/.test(m[2]) ? ' ml' : ' L'); if (!L.bottle_ml) L.bottle_ml = ml; }
         n.value = bpc; n.setAttribute('aria-label', 'Bottles in a case'); n.placeholder = '12';
         var s1 = sel([['750ml', '750 ml'], ['375ml', '375 ml'], ['1L', '1 L'], ['custom', 'Custom…']], sz, 'Bottle size');
         var c1 = h('input', { type: 'text', cls: 'is-pk', value: custom, placeholder: 'e.g. 1.5 L, 500 ml', 'aria-label': 'Custom bottle size', hidden: sz !== 'custom' });
         var upd = function () {
           c1.hidden = s1.value !== 'custom';
-          var size = s1.value === 'custom' ? c1.value.trim().replace(/\s+/g, '') : s1.value, cnt = num(n.value);
-          L.pack = (cnt ? cnt + '/' : '') + size; L.bottles_per_case = cnt || null; changed();
+          var size = s1.value === 'custom' ? c1.value.trim().replace(/\s+/g, '') : s1.value, cnt = isCase ? num(n.value) : null;
+          var ml = (function (t) { var q = String(t).toLowerCase().match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/); return q ? (/ml/.test(q[2]) ? +q[1] : +q[1] * 1000) : null; })(size);
+          L.pack = (cnt ? cnt + '/' : '') + size; L.bottle_ml = ml; if (isCase) L.bottles_per_case = cnt || null; changed();
         };
         [n, c1].forEach(function (e) { e.addEventListener('change', upd); }); s1.addEventListener('change', function () { if (s1.value === 'custom') { c1.hidden = false; c1.focus(); } else upd(); });
-        return [h('label', null, [n, ' bottles of ']), s1, c1];
+        return isCase ? [h('label', null, ['Case of ', n, ' bottles,']), h('label', null, ['each ', s1]), c1] : [h('label', null, ['Bottle size ', s1]), c1];
       }
       var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
       var uv = units[0][0];
@@ -436,13 +438,13 @@
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
-          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, orderInfo(L, it));
+          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it));
         }
         L.newCost = c;
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString() };
       });
       var upd = Object.keys(changed).map(function (k) { return changed[k]; });
-      var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, cases: L.cases, bottles: L.bottles, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
+      var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, bottle_ml: L.bottle_ml || null, cases: L.cases, bottles: L.bottles, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
       A.sb.auth.getSession().then(function (x) {
         var who = (x && x.data && x.data.session && x.data.session.user && x.data.session.user.email) || '';
         var row = { vendor: vendor, invoice_no: f.no.value.trim(), invoice_date: date, total: inv.total == null ? null : inv.total, lines: inv.lines.map(clean), source: inv.source || '', created_by: who };
