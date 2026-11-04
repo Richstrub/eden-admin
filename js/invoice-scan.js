@@ -334,11 +334,8 @@
       add({ v: '', text: '— Not in inventory (skip) —', cls: 'is-cskip' });
       at = -1;
     }
-    // the list floats over the dialog (the table scrolls sideways, which would cut it off)
-    function place() { var r = inp.getBoundingClientRect(), below = window.innerHeight - r.bottom; list.style.left = r.left + 'px'; list.style.width = Math.max(r.width, 300) + 'px'; if (below < 260 && r.top > below) { list.style.top = ''; list.style.bottom = (window.innerHeight - r.top + 4) + 'px'; list.style.maxHeight = Math.min(360, r.top - 16) + 'px'; } else { list.style.bottom = ''; list.style.top = (r.bottom + 4) + 'px'; list.style.maxHeight = Math.min(360, below - 16) + 'px'; } }
-    function onScroll(e) { if (!list.hidden && !list.contains(e.target)) place(); }
-    function open() { build(); list.hidden = false; inp.setAttribute('aria-expanded', 'true'); place(); document.addEventListener('scroll', onScroll, true); window.addEventListener('resize', place); }
-    function close() { list.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.value = label(); document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', place); }
+    function open() { build(); list.hidden = false; inp.setAttribute('aria-expanded', 'true'); }   // the list opens right under the box, inside the line
+    function close() { list.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.value = label(); }
     function pick(o) { close(); inp.blur(); onChange(o.v); }
     function hi(n) { if (!opts.length) return; at = (n + opts.length) % opts.length; opts.forEach(function (o, k) { o.el.classList.toggle('on', k === at); }); opts[at].el.scrollIntoView({ block: 'nearest' }); }
     inp.addEventListener('focus', function () { inp.select(); open(); });

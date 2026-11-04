@@ -3285,7 +3285,7 @@ tr.mc-none th b{color:#6b665e}
 .is-dl{display:inline-flex;align-items:center;gap:4px}.is-dl input{min-width:0}
 .is-combo{position:relative;min-width:200px;max-width:300px}
 .is-combo input.is-item{width:100%;max-width:none;font:inherit;font-size:.92rem;padding:8px 10px;border:1px solid rgba(42,46,51,.2);border-radius:8px;background:#fff}
-.is-clist{position:fixed;z-index:1000;overflow:auto;background:#fff;border:1px solid rgba(42,46,51,.18);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:4px}
+.is-clist{position:static;margin-top:4px;max-height:300px;overflow:auto;background:#fff;border:1px solid rgba(42,46,51,.18);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:4px}
 .is-chead{margin:8px 8px 2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8a857d}
 .is-copt{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 9px;border-radius:5px;font:inherit;font-size:.92rem;cursor:pointer;color:#2a2e33}
 .is-copt small{display:block;color:#8a857d;font-size:12px}
