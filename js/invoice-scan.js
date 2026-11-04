@@ -299,21 +299,58 @@
   // where a new item of each kind goes: its inventory tab and section, and how the line is received
   var NEW_AS = { food: { cat: 'food', section: '', recv: 'food' }, paper: { cat: 'paper', section: '', recv: 'food' }, spirits: { cat: 'bev', section: '', recv: 'wine' }, wine: { cat: 'bev', section: 'Wine', recv: 'wine' }, beer: { cat: 'bev', section: 'Canned beer', recv: 'other' }, na: { cat: 'bev', section: 'Soft drinks & juice', recv: 'other' } };
   var COFFEE_RE = /\b(coffee|espresso|decaf|tea|chai|matcha|oolong|rooibos|beans?)\b/i;
+  // the inventory item for a line: type to search what's already in the inventory; the "+ New …" choices are always in the list
   function itemSelect(L, onChange) {
-    var sel = h('select', { cls: 'is-item', 'aria-label': 'Inventory item for ' + L.description });
-    sel.appendChild(h('option', { value: '', text: '— Not in inventory (skip) —' }));
-    // a new item, received as the right kind: that sets which boxes the line gets and where the item goes in the inventory
-    sel.appendChild(h('optgroup', { label: 'Add as a new item' }, NEW_KINDS.map(function (k) { return h('option', { value: '__new:' + k[0], text: '+ New ' + k[1] }); })));
-    ['food', 'paper', 'bev'].forEach(function (c) {
-      var list = A.items.filter(function (it) { return it.category === c && it.active !== false; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
-      if (!list.length) return;
-      var og = h('optgroup', { label: CAT_LABEL[c] });
-      list.forEach(function (it) { og.appendChild(h('option', { value: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : '') + (it.vendor ? ' · ' + it.vendor : '') })); });
-      sel.appendChild(og);
+    var cur = L.item === '__new' ? null : L.item ? A.items.filter(function (x) { return x.id === L.item; })[0] : null;
+    var label = function () {
+      if (L.item === '__new') { var k = NEW_KINDS.filter(function (x) { return x[0] === (L.newKind || 'food'); })[0]; return '+ New ' + (k ? k[1] : 'item'); }
+      return cur ? cur.name + (cur.unit ? ' (' + cur.unit + ')' : '') : '';
+    };
+    var wrap = h('div', { cls: 'is-combo' });
+    var inp = h('input', { type: 'text', cls: 'is-item', value: label(), placeholder: 'Search the inventory, or add new', autocomplete: 'off', 'aria-label': 'Inventory item for ' + L.description, role: 'combobox', 'aria-expanded': 'false' });
+    var list = h('div', { cls: 'is-clist', role: 'listbox', hidden: true });
+    wrap.appendChild(inp); wrap.appendChild(list);
+    var opts = [], at = -1;
+    function words(t) { return norm(t).split(' ').filter(Boolean); }
+    function build() {
+      var q = inp.value === label() ? '' : inp.value, w = words(q);
+      opts = [];
+      list.innerHTML = '';
+      var add = function (o) { opts.push(o); var b = h('button', { type: 'button', role: 'option', cls: 'is-copt' + (o.cls ? ' ' + o.cls : ''), tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(o); }); list.appendChild(b); o.el = b; };
+      var head = function (t) { list.appendChild(h('p', { cls: 'is-chead', text: t })); };
+      // what's already in the inventory, best matches first
+      var hits = A.items.filter(function (it) { return it.active !== false; }).map(function (it) {
+        var hay = norm(it.name + ' ' + (it.vendor || '') + ' ' + (it.section || '') + ' ' + (it.pack || ''));
+        var ok = w.every(function (t) { return hay.indexOf(t) >= 0; });
+        return ok ? { it: it, sc: w.length ? (norm(it.name).indexOf(w[0]) === 0 ? 2 : 1) : 0 } : null;
+      }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc || String(a.it.name).localeCompare(String(b.it.name)); });
+      if (hits.length) {
+        head(w.length ? 'In the inventory · ' + hits.length : 'In the inventory');
+        hits.slice(0, w.length ? 40 : 25).forEach(function (x) { var it = x.it; add({ v: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : ''), sub: [CAT_LABEL[it.category], it.section, it.vendor].filter(Boolean).join(' · ') }); });
+        if (hits.length > (w.length ? 40 : 25)) list.appendChild(h('p', { cls: 'is-chead', text: '…type more to narrow it down' }));
+      } else if (w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Nothing in the inventory matches “' + q + '”' }));
+      head('Add as a new item');
+      NEW_KINDS.forEach(function (k) { add({ v: '__new:' + k[0], text: '+ New ' + k[1], cls: 'is-cnew' }); });
+      add({ v: '', text: '— Not in inventory (skip) —', cls: 'is-cskip' });
+      at = -1;
+    }
+    // the list floats over the dialog (the table scrolls sideways, which would cut it off)
+    function place() { var r = inp.getBoundingClientRect(), below = window.innerHeight - r.bottom; list.style.left = r.left + 'px'; list.style.width = Math.max(r.width, 300) + 'px'; if (below < 260 && r.top > below) { list.style.top = ''; list.style.bottom = (window.innerHeight - r.top + 4) + 'px'; list.style.maxHeight = Math.min(360, r.top - 16) + 'px'; } else { list.style.bottom = ''; list.style.top = (r.bottom + 4) + 'px'; list.style.maxHeight = Math.min(360, below - 16) + 'px'; } }
+    function onScroll(e) { if (!list.hidden && !list.contains(e.target)) place(); }
+    function open() { build(); list.hidden = false; inp.setAttribute('aria-expanded', 'true'); place(); document.addEventListener('scroll', onScroll, true); window.addEventListener('resize', place); }
+    function close() { list.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.value = label(); document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', place); }
+    function pick(o) { close(); inp.blur(); onChange(o.v); }
+    function hi(n) { if (!opts.length) return; at = (n + opts.length) % opts.length; opts.forEach(function (o, k) { o.el.classList.toggle('on', k === at); }); opts[at].el.scrollIntoView({ block: 'nearest' }); }
+    inp.addEventListener('focus', function () { inp.select(); open(); });
+    inp.addEventListener('input', function () { list.hidden = false; build(); if (opts.length && words(inp.value).length) hi(0); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (list.hidden) open(); hi(at + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); hi(at - 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (at >= 0 && opts[at]) pick(opts[at]); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); inp.blur(); }
     });
-    sel.value = L.item === '__new' ? '__new:' + (L.newKind || 'food') : L.item || '';
-    sel.addEventListener('change', function () { onChange(sel.value); });
-    return sel;
+    inp.addEventListener('blur', function () { setTimeout(close, 120); });
+    return wrap;
   }
   // several invoices from one upload: check them one after another
   function reviewAll(list, links) {
