@@ -3112,3 +3112,11 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-slot small{display:block;color:#2f6b3a}
 .fn-go{display:inline-block;margin-top:4px;font-size:.82rem;color:var(--ember,#b0703f)}
 @media (max-width:900px){.fn-zone .pr-slots{grid-template-columns:1fr}}
+.fn-capd{border:1px solid var(--line);background:#fffdf9;border-radius:12px;padding:0 16px}
+.fn-capd>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:14px 0}
+.fn-capd>summary::-webkit-details-marker{display:none}
+.fn-capd>summary::before{content:"›";display:inline-block;transition:transform .2s;color:var(--stone);font-size:1.2rem;line-height:1;margin-right:-4px}
+.fn-capd[open]>summary::before{transform:rotate(90deg)}
+.fn-capt{font-weight:400;font-size:1.1rem;color:var(--ink)}
+.fn-capd>summary small{color:var(--stone);font-size:.84rem}
+.fn-capd[open]{padding-bottom:12px}

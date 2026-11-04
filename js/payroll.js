@@ -1072,7 +1072,15 @@
     box.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table fn-captbl' }, [h('thead', null, [h('tr', null, [h('th', { scope: 'col', text: 'Employee' }), h('th', { scope: 'col', cls: 'pr-num', text: 'Paid this year' }), h('th', { scope: 'col', text: 'State base (' + dollars(sB) + ')' }), h('th', { scope: 'col', cls: 'pr-num', text: 'Federal base (' + dollars(fB) + ')' })])]), tb])]));
     var miss = weeksUncounted(weeks, next);
     box.appendChild(h('p', { cls: 'pr-fine', text: (nUnder ? nUnder + (nUnder === 1 ? ' person on staff is' : ' people on staff are') + ' still under the state base: at most ' + money(r2(left)) + ' more state unemployment this year, less if they earn less than the base before December 31.' : 'Everyone on staff has passed the state base for ' + y + ': no more state unemployment until January.') + ' Through the week of ' + wkLabel(latest) + ', drafts included.' + (miss.length ? ' Not counted yet (open once to include): week of ' + miss.map(wkLabel).join(', ') + '.' : '') }));
-    return box;
+    // folded: a line with the gist; click to see everyone
+    var det = h('details', { cls: 'fn-cap fn-capd' }), head = box.querySelector('h2');
+    det.appendChild(h('summary', null, [h('span', { cls: 'fn-capt', text: head ? head.textContent : 'Unemployment wage base' }),
+      h('small', { text: nUnder ? nUnder + (nUnder === 1 ? ' person' : ' people') + ' still under the state base · up to ' + money(r2(left)) + ' more this year' : 'Everyone on staff is past the state base for ' + y })]));
+    if (head) head.remove();
+    while (box.firstChild) det.appendChild(box.firstChild);
+    try { if (localStorage.getItem('eden-cap-open') === '1') det.open = true; } catch (e) {}
+    det.addEventListener('toggle', function () { try { localStorage.setItem('eden-cap-open', det.open ? '1' : '0'); } catch (e) {} });
+    return det;
   }
   /* ----- Past payroll: every week, to open, print, download or email again ----- */
   var PAST = { q: '' };
