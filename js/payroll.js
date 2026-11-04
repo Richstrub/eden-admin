@@ -974,7 +974,7 @@
         var s0 = sm && typeof sm === 'object' ? sm : null;
         if (s0 && rows && rows._loan && rows._loan.total != null) s0.loan = rows._loan.total;   // kept with the week even when its summary is saved again
         if (s0 && rows) { var sp = splitForRow({ week_start: w.week_start, status: w.status, rows: JSON.parse(JSON.stringify(rows)) }, w.week_start); if (sp) { s0.wagesBy = sp.wb; s0.people = sp.people; } }
-        return { week: w.week_start, status: w.status, s: s0 };
+        return { week: w.week_start, status: w.status, s: s0, rows: rows };
       });
       paint(false);
     }, function () { if (my === P.seq) { OV.err = 'Couldn’t reach the database.'; OV.weeks = []; paint(false); } });
@@ -1344,10 +1344,11 @@
       var d = parseDate(r[di]); if (!d) return;
       var net = m0(r[ni]); if (!net) return;
       var wk = iso(sunday(d)), day = d.getDay(), cat = ci >= 0 ? String(r[ci] || '').trim() : '', item = ii >= 0 ? String(r[ii] || '').trim() : '';
-      var w = weeks[wk] = weeks[wk] || { food: [0, 0, 0, 0, 0, 0, 0], bev: [0, 0, 0, 0, 0, 0, 0], bevBy: { beer: 0, wine: 0, spirits: 0, na: 0 }, byCat: {}, cocktails: {}, rows: 0 };
+      var w = weeks[wk] = weeks[wk] || { food: [0, 0, 0, 0, 0, 0, 0], bev: [0, 0, 0, 0, 0, 0, 0], bevBy: { beer: 0, wine: 0, spirits: 0, na: 0 }, byCat: {}, cocktails: {}, items: {}, rows: 0 };
       var isBev = cat && !/uncategori[sz]ed/i.test(cat) ? BEVCAT.test(cat) : (BEV_RE.test(item) || BEVCAT.test(item));
       if (isBev) { w.bev[day] = r2(w.bev[day] + net); var k = bevKind(cat, item); w.bevBy[k] = r2(w.bevBy[k] + net); } else w.food[day] = r2(w.food[day] + net);
       w.byCat[cat || 'Uncategorized'] = r2((w.byCat[cat || 'Uncategorized'] || 0) + net);
+      if (item) { var it0 = w.items[item] = w.items[item] || [0, 0, cat || '', isBev ? 1 : 0]; it0[0] += qi >= 0 ? (m0(r[qi]) || 0) : 1; it0[1] = r2(it0[1] + net); }   // [qty, net sales, category, beverage?]
       if (/cocktail/i.test(cat) && qi >= 0 && !(ei >= 0 && /refund/i.test(r[ei] || ''))) { var nm = (ppi >= 0 && r[ppi] && !/regular/i.test(r[ppi]) ? r[ppi] : item) || item; w.cocktails[nm] = (w.cocktails[nm] || 0) + (m0(r[qi]) || 1); }
       w.rows++; n++;
     });
@@ -1361,7 +1362,7 @@
       keys.forEach(function (k) {
         var x = have[k]; if (!x) { skipped.push(k); return; }
         var rows2 = x.rows || {}, w = weeks[k];
-        rows2._items = { food: w.food, bev: w.bev, bevBy: w.bevBy, byCat: w.byCat, cocktails: w.cocktails, file: fname, at: new Date().toISOString() };
+        rows2._items = { food: w.food, bev: w.bev, bevBy: w.bevBy, byCat: w.byCat, cocktails: w.cocktails, items: w.items, file: fname, at: new Date().toISOString() };
         if (rows2._summary) { rows2._summary.food = sum(w.food); rows2._summary.bev = sum(w.bev); rows2._summary.salesExact = true; rows2._summary.bevBy = w.bevBy; }
         ups.push({ week_start: k, rows: rows2 });
       });
@@ -1471,6 +1472,124 @@
       h('p', { cls: 'fn-note', text: 'Tip-pool hours count as servers & bartenders, kitchen hours as back of house, and hours outside the tip pool (managing) as management; everyone else, and salaries, by their position on Employees. Change a position there, or someone’s tip pool or kitchen rate in Pay rates, to move them.' })]);
     return det;
   }
+  /* ----- Financials: the numbers behind the chart, as tables. Revenue on the left, expenses on the right ----- */
+  var MET = { open: null };
+  try { MET.open = localStorage.getItem('eden-fin-table') || null; } catch (e) {}
+  var DOWN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function pc(v, base) { return base ? (v / base * 100).toFixed(1) + '%' : '–'; }
+  function metrics(ws) {
+    var weeks = ws.slice().reverse();   // oldest first
+    var per = weeks.map(function (w) { var d = cashFlowData([w]); return { w: w, t: d.t, b: d.buy }; });
+    var all = cashFlowData(ws), T = all.t, B = all.buy, NET = T.net;
+    var wl = function (w) { return 'Week of ' + wkLabel(w.week); };
+    // each table: { cols: [label...], rows: [[...]], total: [...], note }  cells: numbers are money unless {p: '12.3%'} / {n: 3}
+    var TABLES = {
+      mix: { side: 'rev', label: 'Sales mix', title: 'Food and beverage sales by week', build: function () {
+        return { cols: ['Week', 'Food', 'Food %', 'Beverage', 'Beverage %', 'Not split', 'Net sales', 'Sales tax', 'Tips'],
+          rows: per.map(function (x) { var t = x.t; return [wl(x.w), t.food, { p: pc(t.food, t.net) }, t.bev, { p: pc(t.bev, t.net) }, t.unsplit, t.net, t.tax, t.tipsIn]; }),
+          total: ['Total', T.food, { p: pc(T.food, NET) }, T.bev, { p: pc(T.bev, NET) }, T.unsplit, NET, T.tax, T.tipsIn] };
+      } },
+      items: { side: 'rev', label: 'Items sold', title: 'Every item sold, from Square’s Item sales detail', build: function () {
+        var by = {}, weeksWith = 0;
+        weeks.forEach(function (w) { var it = w.rows && w.rows._items && w.rows._items.items; if (!it) return; weeksWith++; Object.keys(it).forEach(function (k) { var o = by[k] = by[k] || [0, 0, it[k][2], it[k][3]]; o[0] += +it[k][0] || 0; o[1] = r2(o[1] + (+it[k][1] || 0)); }); });
+        var keys = Object.keys(by).sort(function (a, b) { return by[b][1] - by[a][1]; }), tot = keys.reduce(function (a, k) { return a + by[k][1]; }, 0), qty = keys.reduce(function (a, k) { return a + by[k][0]; }, 0);
+        return { cols: ['Item', 'Category', 'Food / bev', 'Sold', 'Net sales', '% of sales', 'Avg price'],
+          rows: keys.map(function (k) { var o = by[k]; return [k, o[2] || '—', o[3] ? 'Beverage' : 'Food', { n: o[0] }, o[1], { p: pc(o[1], tot) }, o[0] ? r2(o[1] / o[0]) : null]; }),
+          total: keys.length ? ['Total', '', '', { n: qty }, r2(tot), { p: '100%' }, qty ? r2(tot / qty) : null] : null,
+          empty: 'No item sales for these weeks yet. Drop Square’s Item sales detail in the box above (Reports → Item sales → Export → Item sales detail).',
+          note: weeksWith && weeksWith < weeks.length ? 'Items for ' + weeksWith + ' of ' + weeks.length + ' weeks; drop the Item sales detail for the rest (Item sales detail files dropped before today don’t list items: drop them again).' : (!keys.length ? '' : null) };
+      } },
+      bevmix: { side: 'rev', label: 'Beverage mix', title: 'Beverage sales by kind', build: function () {
+        var K = [['beer', 'Beer'], ['wine', 'Wine'], ['spirits', 'Spirits & cocktails'], ['na', 'N/A']], tt = { beer: 0, wine: 0, spirits: 0, na: 0 }, any = 0;
+        var rows = weeks.map(function (w) { var b = w.s.bevBy; if (!b) return null; any++; var sm = K.reduce(function (a, k) { return a + (+b[k[0]] || 0); }, 0); K.forEach(function (k) { tt[k[0]] += +b[k[0]] || 0; }); return [wl(w)].concat(K.map(function (k) { return +b[k[0]] || 0; })).concat([r2(sm)]); }).filter(Boolean);
+        var all0 = K.reduce(function (a, k) { return a + tt[k[0]]; }, 0);
+        return { cols: ['Week'].concat(K.map(function (k) { return k[1]; })).concat(['Beverage total']), rows: rows,
+          total: any ? ['Total'].concat(K.map(function (k) { return r2(tt[k[0]]); })).concat([r2(all0)]) : null,
+          share: any ? ['Share'].concat(K.map(function (k) { return { p: pc(tt[k[0]], all0) }; })).concat([{ p: '100%' }]) : null,
+          empty: 'The beverage mix comes from Square’s Item sales detail: drop it in the box above.' };
+      } },
+      days: { side: 'rev', label: 'Sales by day', title: 'Net sales by day of the week', build: function () {
+        var tot = [0, 0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0, 0];
+        weeks.forEach(function (w) { var n = w.rows && w.rows._sales && w.rows._sales.net; if (!n) return; n.forEach(function (v, i) { if (+v) { tot[i] += +v; cnt[i]++; } }); });
+        var all0 = tot.reduce(function (a, v) { return a + v; }, 0);
+        var rows = [3, 4, 5, 6, 0, 1, 2].filter(function (i) { return cnt[i]; }).map(function (i) { return [DOWN[i], { n: cnt[i] }, r2(tot[i]), cnt[i] ? r2(tot[i] / cnt[i]) : null, { p: pc(tot[i], all0) }]; });
+        return { cols: ['Day', 'Days open', 'Net sales', 'Average day', '% of sales'], rows: rows, total: rows.length ? ['Total', { n: cnt.reduce(function (a, v) { return a + v; }, 0) }, r2(all0), null, { p: '100%' }] : null, empty: 'No daily sales for these weeks.' };
+      } },
+      labor: { side: 'exp', label: 'Labor', title: 'Labor by week (payroll invoice less tips)', build: function () {
+        return { cols: ['Week', 'Back of house', 'Servers & bartenders', 'Management', 'Commission', 'Payroll taxes & fees', 'Total labor', 'Labor %'],
+          rows: per.map(function (x) { var t = x.t; return [wl(x.w), t.boh, t.foh, t.mgmt, t.comm, t.ptax, t.cost, { p: pc(t.cost, t.net) }]; }),
+          total: ['Total', T.boh, T.foh, T.mgmt, T.comm, T.ptax, T.cost, { p: pc(T.cost, NET) }],
+          share: ['% of net sales', { p: pc(T.boh, NET) }, { p: pc(T.foh, NET) }, { p: pc(T.mgmt, NET) }, { p: pc(T.comm, NET) }, { p: pc(T.ptax, NET) }, { p: pc(T.cost, NET) }, ''] };
+      } },
+      vendors: { side: 'exp', label: 'Vendors', title: 'Scanned invoices by vendor', build: function () {
+        var by = {}, gname = { bfood: 'Food', bbev: 'Beverage', bpaper: 'Paper goods', bother: 'Other' };
+        B.list.forEach(function (x) { var o = by[x.vendor] = by[x.vendor] || { n: 0, total: 0, kinds: {} }; o.n++; o.total += x.total; o.kinds[gname[x.top] || 'Other'] = 1; });
+        var keys = Object.keys(by).sort(function (a, b) { return by[b].total - by[a].total; }), tot = keys.reduce(function (a, k) { return a + by[k].total; }, 0);
+        return { cols: ['Vendor', 'Mostly', 'Invoices', 'Total', '% of invoices', '% of net sales'],
+          rows: keys.map(function (k) { var o = by[k]; return [k, Object.keys(o.kinds).join(', '), { n: o.n }, r2(o.total), { p: pc(o.total, tot) }, { p: pc(o.total, NET) }]; }),
+          total: keys.length ? ['Total', '', { n: B.list.length }, r2(tot), { p: '100%' }, { p: pc(tot, NET) }] : null,
+          empty: 'No scanned invoices are dated in these weeks.' };
+      } },
+      cogs: { side: 'exp', label: 'Food & bev cost', title: 'Purchases from invoices, and prime cost (purchases + labor)', build: function () {
+        return { cols: ['Week', 'Food purchases', 'Food cost %', 'Beverage purchases', 'Bev cost %', 'Paper & other', 'Labor', 'Prime cost', 'Prime %'],
+          rows: per.map(function (x) { var t = x.t, b = x.b, pr = r2(b.bfood + b.bbev + t.cost); return [wl(x.w), b.bfood, { p: pc(b.bfood, t.food || t.net) }, b.bbev, { p: pc(b.bbev, t.bev || t.net) }, r2(b.bpaper + b.bother), t.cost, pr, { p: pc(pr, t.net) }]; }),
+          total: (function () { var pr = r2(B.bfood + B.bbev + T.cost); return ['Total', B.bfood, { p: pc(B.bfood, T.food || NET) }, B.bbev, { p: pc(B.bbev, T.bev || NET) }, r2(B.bpaper + B.bother), T.cost, pr, { p: pc(pr, NET) }]; })(),
+          note: 'Food cost % is food purchases ÷ food sales; beverage cost % is beverage purchases ÷ beverage sales; prime % is prime cost ÷ net sales. Invoices count on their invoice date.' };
+      } },
+      square: { side: 'exp', label: 'Square & fixed', title: 'Square card fees, loan repayments and fixed costs', build: function () {
+        return { cols: ['Week', 'Card fees', 'Fees % of sales', 'Loan repayment', 'Fixed costs', 'Total'],
+          rows: per.map(function (x) { var t = x.t, b = x.b; return [wl(x.w), x.w.s.cardFees == null ? { t: 'not in' } : t.fees, { p: pc(t.fees, t.net) }, t.loan, b.bfixed, r2(t.fees + t.loan + b.bfixed)]; }),
+          total: ['Total', T.fees, { p: pc(T.fees, NET) }, T.loan, B.bfixed, r2(T.fees + T.loan + B.bfixed)],
+          note: B.fixed.length ? 'Fixed costs: ' + B.fixed.map(function (f) { return f.vendor + ' ' + money(f.total) + ' on ' + wkLabel(f.date); }).join(', ') + '.' : 'Rent ($6,000) counts in the week with the 1st of the month.' };
+      } }
+    };
+    var box = h('div', { cls: 'fn-met' });
+    var panel = h('div', { cls: 'fn-metp' });
+    function cell(v, cls) {
+      if (v == null || v === '') return h('td', { cls: cls, text: v == null ? '–' : '' });
+      if (typeof v === 'number') return h('td', { cls: 'num ' + (cls || ''), text: money(v) });
+      if (v.p != null) return h('td', { cls: 'num pct ' + (cls || ''), text: v.p });
+      if (v.n != null) return h('td', { cls: 'num ' + (cls || ''), text: Number(v.n).toLocaleString('en-US', { maximumFractionDigits: 2 }) });
+      if (v.t != null) return h('td', { cls: 'dim ' + (cls || ''), text: v.t });
+      return h('td', { cls: cls, text: String(v) });
+    }
+    function csvCell(v) { var x = v == null ? '' : typeof v === 'number' ? r2(v).toFixed(2) : v.p != null ? v.p : v.n != null ? v.n : v.t != null ? v.t : String(v); x = String(x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }
+    function paintPanel() {
+      panel.innerHTML = ''; panel.hidden = !MET.open || !TABLES[MET.open];
+      if (panel.hidden) return;
+      var tb = TABLES[MET.open], d = tb.build();
+      var span = weeks.length === 1 ? wl(weeks[0]) : wkLabel(weeks[0].week) + ' to ' + wkLabel(iso(addDays(new Date(weeks[weeks.length - 1].week + 'T12:00:00'), 6)));
+      var dl = h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Download CSV', on: { click: function () {
+        var lines = [d.cols].concat(d.rows).concat(d.total ? [d.total] : []).concat(d.share ? [d.share] : []).map(function (r) { return r.map(csvCell).join(','); });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'Eden ' + tb.label + ' ' + weeks[0].week + ' to ' + weeks[weeks.length - 1].week + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+      } } });
+      panel.appendChild(h('div', { cls: 'fn-metph' }, [h('div', null, [h('b', { text: tb.title }), h('small', { text: span + (NET ? ' · net sales ' + money(NET) : '') })]), d.rows.length ? dl : null]));
+      if (!d.rows.length) { panel.appendChild(h('p', { cls: 'an-li-empty', text: d.empty || 'Nothing for these weeks yet.' })); return; }
+      var shown = d.rows.slice(0, 200);
+      panel.appendChild(h('div', { cls: 'fn-tblw' }, [h('table', { cls: 'fn-tbl' }, [
+        h('thead', null, [h('tr', null, d.cols.map(function (c, i) { var v = shown[0] && shown[0][i]; return h('th', { scope: 'col', cls: i && typeof v !== 'string' ? 'num' : '', text: c }); }))]),
+        h('tbody', null, shown.map(function (r) { return h('tr', null, r.map(function (v, i) { return i ? cell(v) : h('th', { scope: 'row', text: String(v) }); })); })),
+        d.total || d.share ? h('tfoot', null, [d.total ? h('tr', null, d.total.map(function (v, i) { return i ? cell(v) : h('th', { scope: 'row', text: v }); })) : null, d.share ? h('tr', { cls: 'share' }, d.share.map(function (v, i) { return i ? cell(v) : h('th', { scope: 'row', text: v }); })) : null]) : null
+      ])]));
+      if (d.rows.length > shown.length) panel.appendChild(h('p', { cls: 'fn-note', text: 'Showing the top ' + shown.length + ' of ' + d.rows.length + '; the CSV has them all.' }));
+      if (d.note) panel.appendChild(h('p', { cls: 'fn-note', text: d.note }));
+    }
+    function btn(k) {
+      var tb = TABLES[k];
+      return h('button', { type: 'button', cls: 'fn-mbtn ' + tb.side, 'aria-expanded': MET.open === k ? 'true' : 'false', on: { click: function () {
+        MET.open = MET.open === k ? null : k; try { if (MET.open) localStorage.setItem('eden-fin-table', MET.open); else localStorage.removeItem('eden-fin-table'); } catch (e) {}
+        box.querySelectorAll('.fn-mbtn').forEach(function (b) { b.setAttribute('aria-expanded', b === this ? String(!!MET.open) : 'false'); }, this);
+        paintPanel();
+      } } }, [h('span', { text: tb.label }), h('i', { 'aria-hidden': 'true', text: '▾' })]);
+    }
+    var keys = Object.keys(TABLES);
+    box.appendChild(h('div', { cls: 'fn-mrow' }, [
+      h('div', { cls: 'fn-mgrp' }, [h('p', { cls: 'fn-mlab', text: 'Revenue' }), h('div', { cls: 'fn-mbtns' }, keys.filter(function (k) { return TABLES[k].side === 'rev'; }).map(btn))]),
+      h('div', { cls: 'fn-mgrp exp' }, [h('p', { cls: 'fn-mlab', text: 'Expenses' }), h('div', { cls: 'fn-mbtns' }, keys.filter(function (k) { return TABLES[k].side === 'exp'; }).map(btn))])
+    ]));
+    box.appendChild(panel); paintPanel();
+    return box;
+  }
   function cashFlow(all) {
     var n = OV.range || 1, ws = all.slice(0, n);
     var cb = chartBox('Cash flow', null);
@@ -1507,6 +1626,7 @@
         })),
         h('p', { cls: 'fn-note', text: 'Each invoice counts on its invoice date. Lines go to food, beverage or paper goods by the inventory item they were matched to when the invoice was scanned; unmatched vendors, delivery and fuel charges go to Other. Fixed costs: rent, $6,000 on the 1st of every month, counted in the period that includes the 1st.' })]));
     }
+    cb.box.appendChild(metrics(ws));
     cb.box.appendChild(h('p', { cls: 'fn-note', text: 'Percentages are of net sales (' + money(d.t.net) + '); “Total costs” adds up the right-hand column, leaving out sales tax and tips (they pass through) and what’s left. Costs line up with sales: Food costs are kitchen (back of house) labor and food purchases; Beverage & service are servers & bartenders and beverage purchases; Overhead is management, payroll taxes, commission, paper goods, other and fixed costs. From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + (d.buy.inv ? '. Invoices are the ones scanned in Inventory, by invoice date.' : OV.invErr ? '. Invoices couldn’t be loaded (run supabase/invoices.sql, or sign in as someone with inventory access).' : '. No scanned invoices are dated in this period yet: invoices scanned in Inventory will show here by their date.') + (d.buy.bfixed ? '' : ' Rent ($6,000) counts in any period that includes the 1st of a month.') }));

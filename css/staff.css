@@ -3143,3 +3143,33 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 @media (max-width: 640px) { .an-visits li { grid-template-columns: 1fr; gap: 2px; } }
 
 .fn-sk-zero { fill: #a19c94; font-style: italic; }
+
+/* Financials: metric tables under the cash flow chart */
+.fn-met { margin: 18px 0 6px; }
+.fn-mrow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+.fn-mgrp.exp { text-align: right; }
+.fn-mgrp.exp .fn-mbtns { justify-content: flex-end; }
+.fn-mlab { margin: 0 0 6px; font-size: 12px; color: #8a857d; letter-spacing: .02em; }
+.fn-mbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.fn-mbtn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(42,46,51,.18); background: #fff; color: #2a2e33; font: inherit; font-size: 14px; cursor: pointer; }
+.fn-mbtn i { font-style: normal; font-size: 11px; color: #8a857d; transition: transform .15s; }
+.fn-mbtn.rev { border-left: 3px solid #4f8f86; }
+.fn-mbtn.exp { border-left: 3px solid #b0703f; }
+.fn-mbtn:hover { background: #faf8f4; }
+.fn-mbtn[aria-expanded="true"] { background: #2a2e33; color: #fff; border-color: #2a2e33; }
+.fn-mbtn[aria-expanded="true"] i { transform: rotate(180deg); color: #fff; }
+.fn-metp { margin-top: 12px; border: 1px solid rgba(42,46,51,.14); border-radius: 8px; background: #fff; padding: 14px 16px; }
+.fn-metph { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.fn-metph small { display: block; color: #8a857d; font-size: 12px; margin-top: 2px; }
+.fn-tblw { overflow-x: auto; }
+.fn-tbl { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fn-tbl th, .fn-tbl td { padding: 6px 10px; border: 1px solid rgba(42,46,51,.1); white-space: nowrap; text-align: left; }
+.fn-tbl thead th { background: #f4f1ec; font-weight: 600; font-size: 12px; position: sticky; top: 0; }
+.fn-tbl tbody th { font-weight: 500; }
+.fn-tbl tbody tr:nth-child(even) { background: #fbfaf7; }
+.fn-tbl .num { text-align: right; }
+.fn-tbl .pct { color: #6b665e; }
+.fn-tbl .dim { color: #a19c94; font-style: italic; text-align: right; }
+.fn-tbl tfoot th, .fn-tbl tfoot td { font-weight: 600; background: #f4f1ec; }
+.fn-tbl tfoot tr.share th, .fn-tbl tfoot tr.share td { font-weight: 500; background: #faf8f4; }
+@media (max-width: 640px) { .fn-mrow { grid-template-columns: 1fr; } .fn-mgrp.exp { text-align: left; } .fn-mgrp.exp .fn-mbtns { justify-content: flex-start; } }
