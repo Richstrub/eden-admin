@@ -125,6 +125,7 @@
     var bar = h('div', { cls: 'ck-bar' }, [
       h('p', { cls: 'ck-lede', text: C.list.length ? C.list.filter(function (b) { return b.active !== false; }).length + ' cocktails · costs from the inventory’s prices' : 'No cocktail builds yet.' }),
       h('div', { cls: 'ck-tools' }, [
+        C.list.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Print builds', title: 'A printable spec sheet of every cocktail on the menu', on: { click: function () { printBuilds(active()); } } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Monthly tally', on: { click: tallyDialog } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add cocktails from the menu', on: { click: fromMenu } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'New build', on: { click: function () { edit({ id: uid(), name: '', ingredients: [{ qty: 1.5, unit: 'oz', item: '' }, { qty: null, unit: 'oz', item: '' }], _new: true }); } } }) : null
@@ -147,6 +148,7 @@
       })),
       b.method ? h('p', { cls: 'ck-method', text: b.method }) : null,
       h('footer', null, [h('span', { text: 'Cost ' + money(c.cost) + (c.missing ? ' (+' + c.missing + ' without a price)' : '') }),
+        h('button', { type: 'button', cls: 'sc-link ck-edit', text: 'Print', on: { click: function () { printBuilds([b]); } } }),
         canEdit() ? h('button', { type: 'button', cls: 'sc-link ck-edit', text: 'Edit', on: { click: function () { edit(JSON.parse(JSON.stringify(b))); } } }) : null])
     ]);
   }
@@ -290,6 +292,30 @@
       '<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
     var w = window.open('', '_blank');
     if (!w) { status('Allow pop-ups for the staff site to print the sheet.', 'err'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+  // bar spec sheet: every build with its pours, glass, ice, garnish and method (two to a page side by side)
+  function printBuilds(list) {
+    if (!list.length) { status('No cocktail builds to print.', 'err'); return; }
+    var cards = list.map(function (b) {
+      var m = menuFor(b);
+      var meta = [['Glass', b.glass], ['Ice', b.ice], ['Garnish', b.garnish]].filter(function (x) { return x[1]; }).map(function (x) { return '<span><b>' + x[0] + '</b> ' + esc(x[1]) + '</span>'; }).join('');
+      var pours = (b.ingredients || []).map(function (g) { var q = (qtyText(g.qty) + ' ' + (g.qty != null ? g.unit || '' : '')).trim(); return '<tr><td class="q">' + esc(q) + '</td><td>' + esc(g.item) + '</td></tr>'; }).join('');
+      return '<section class="card"><h2>' + esc(b.name) + (m && m.price ? '<em>$' + esc(m.price) + '</em>' : '') + '</h2>' + (meta ? '<div class="meta">' + meta + '</div>' : '') +
+        '<table>' + pours + '</table>' + (b.method ? '<p class="method">' + esc(b.method).replace(/\n/g, '<br>') + '</p>' : '') + '</section>';
+    }).join('');
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden cocktail builds</title><style>' +
+      '@page{size:letter;margin:.5in}body{font:11pt/1.35 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0}' +
+      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:14px}header h1{font:600 18pt Georgia,serif;margin:0}header span{font-size:9pt;color:#555}' +
+      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{border:1px solid #111;border-radius:6px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid}' +
+      '.card h2{font:600 14pt Georgia,serif;margin:0 0 6px;display:flex;justify-content:space-between;gap:8px}.card h2 em{font:500 11pt -apple-system,Helvetica,Arial,sans-serif;font-style:normal}' +
+      '.meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:9.5pt;margin-bottom:6px}.meta b{font-size:7.5pt;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-right:3px}' +
+      'table{width:100%;border-collapse:collapse;font-size:10.5pt}td{padding:3px 0;border-top:1px solid #ddd;vertical-align:top}td.q{width:.85in;font-weight:600;white-space:nowrap}' +
+      '.method{font-size:9.5pt;margin:8px 0 0;color:#222}' + (list.length === 1 ? '.grid{grid-template-columns:1fr;max-width:4.5in}' : '') +
+      '</style></head><body><header><h1>Eden · Cocktail builds</h1><span>' + esc(new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })) + '</span></header>' +
+      '<div class="grid">' + cards + '</div><script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
+    var w = window.open('', '_blank');
+    if (!w) { status('Allow pop-ups for the staff site to print.', 'err'); return; }
     w.document.open(); w.document.write(html); w.document.close();
   }
   function enterCounts(iso) {
