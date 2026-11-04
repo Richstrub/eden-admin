@@ -356,8 +356,9 @@
         var ok = w.every(function (t) { return hay.indexOf(t) >= 0; });
         return ok ? { it: it, sc: w.length ? (norm(it.name).indexOf(w[0]) === 0 ? 2 : 1) : 0 } : null;
       }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc || String(a.it.name).localeCompare(String(b.it.name)); });
-      if (hits.length) {
-        head(w.length ? 'In the inventory · ' + hits.length : 'In the inventory');
+      if (!w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Type to search the inventory' }));   // nothing from the inventory until you type
+      else if (hits.length) {
+        head('In the inventory · ' + hits.length);
         hits.slice(0, w.length ? 40 : 25).forEach(function (x) { var it = x.it; add({ v: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : ''), sub: [CAT_LABEL[it.category], it.section, it.vendor].filter(Boolean).join(' · ') }); });
         if (hits.length > (w.length ? 40 : 25)) list.appendChild(h('p', { cls: 'is-chead', text: '…type more to narrow it down' }));
       } else if (w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Nothing in the inventory matches “' + q + '”' }));
