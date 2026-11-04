@@ -1228,7 +1228,7 @@
     var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), afterPay = r2(inT - t.tax - t.tips - t.fees - t.loan - payOut), left = r2(afterPay - buy.total);
     var nodes = [
       { id: 'food', label: 'Food sales', col: 0, color: CF.teal }, { id: 'bev', label: 'Beverage sales', col: 0, color: CF.plum }, { id: 'sales', label: 'Net sales (not split)', col: 0, color: '#7fb0a8' },
-      { id: 'tax', label: 'Sales tax collected', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
+      { id: 'tax', label: 'Sales tax', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
       // every flow ends in the last column: sales tax, tips and what's left go straight there
       { id: 'square', label: 'Square', col: 2, color: '#6f6a8f' },
@@ -1288,7 +1288,7 @@
       });
     });
     var lastCol = cols.length - 1, pctOf = function (v) { return opt.base ? ' · ' + (v / opt.base * 100).toFixed(1) + '%' : ''; };
-    var showPct = function (n) { return opt.base && (n.col >= (opt.pctFrom != null ? opt.pctFrom : lastCol) || (opt.pctAlso || []).indexOf(n.id) >= 0); };
+    var showPct = function (n) { return opt.base && (opt.pctSkip || []).indexOf(n.id) < 0 && (n.col >= (opt.pctFrom != null ? opt.pctFrom : lastCol) || (opt.pctAlso || []).indexOf(n.id) >= 0); };
     nodes.forEach(function (n) {
       svg.appendChild(svgEl('rect', { x: n.x, y: n.y, width: nw, height: n.h, rx: 2, fill: n.color }));
       var tx = n.x + nw + 8, anchor = 'start', cy = n.y + n.h / 2, pc = showPct(n) ? pctOf(n.v) : '';
@@ -1468,7 +1468,7 @@
     var bt = d.buy.total, what = bt ? 'payroll & costs' : 'payroll';
     cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips)' + (d.buy.inv ? ' · invoices ' + money(d.buy.inv) + ' (' + pctTxt(d.buy.inv / d.t.net) + ')' : '') + (d.buy.bfixed ? ' · fixed costs ' + money(d.buy.bfixed) : '') + ' · ' + (d.left >= 0 ? money(d.left) + ' (' + pctTxt(d.left / d.t.net) + ') left after ' + what : what + ' came to ' + money(-d.left) + ' more than came in') }));
     if (d.t.noFees) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: 'Card processing fees aren’t in for ' + d.t.noFees + ' of these ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' (they were imported before fees were read), so the Square band is only the loan there. Drop ' + (d.t.noFees === 1 ? 'that week’s' : 'those weeks’') + ' Transactions CSV into Weekly payroll again to add them.' }));
-    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctFrom: 2, totLabel: 'Total costs', totSkip: ['taxout', 'tipsout', 'left', 'later'] })); cb.box.appendChild(wrap);
+    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctFrom: 0, pctSkip: ['in'], totLabel: 'Total costs', totSkip: ['taxout', 'tipsout', 'left', 'later'] })); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
     if (d.buy.list.length || d.buy.fixed.length) {
       var gname = {}; BUY.forEach(function (b) { gname[b[0]] = b[1]; });
