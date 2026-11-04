@@ -304,6 +304,9 @@
   var NEW_KINDS = [['food', 'food item'], ['paper', 'paper good'], ['spirits', 'spirit'], ['wine', 'wine'], ['beer', 'beer'], ['na', 'non-alcoholic drink']];
   // where a new item of each kind goes: its inventory tab and section, and how the line is received
   var NEW_AS = { food: { cat: 'food', section: '', recv: 'food' }, paper: { cat: 'paper', section: '', recv: 'food' }, spirits: { cat: 'bev', section: '', recv: 'wine' }, wine: { cat: 'bev', section: 'Wine', recv: 'wine' }, beer: { cat: 'bev', section: 'Canned beer', recv: 'other' }, na: { cat: 'bev', section: 'Soft drinks & juice', recv: 'other' } };
+  var KEG_RE = /\b(keg|kegs|bbl|sixtel|1\/6|1\/4|1\/2|half barrel|quarter barrel|pony keg|\d+(\.\d+)?\s*-?\s*gal(lon)?s?\s*keg|50\s*l|20\s*l)\b/i;
+  // keg sizes: [key, label, US fl oz]
+  var KEGS = [['sixtel', '1/6 barrel · 5.16 gal', 660.5], ['quarter', '1/4 barrel · 7.75 gal', 992], ['half', '1/2 barrel · 15.5 gal', 1984], ['50l', '50 L · 13.2 gal', 1690.7], ['20l', '20 L · 5.3 gal', 676.3], ['custom', 'Other size…', null]];
   var COFFEE_RE = /\b(coffee|espresso|decaf|tea|chai|matcha|oolong|rooibos|beans?)\b/i;
   // the inventory item for a line: type to search what's already in the inventory; the "+ New …" choices are always in the list
   function itemSelect(L, onChange) {
@@ -384,11 +387,13 @@
     // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
     function kindOf(L, it) {
       if (!it && L.item === '__new' && L.newKind === 'na') return COFFEE_RE.test(L.description) ? 'coffee' : 'other';   // coffee and tea by weight; soda, juice, water by the case
+      if (!it && L.item === '__new' && L.newKind === 'beer' && (KEG_RE.test(L.description + ' ' + (L.pack || '')) || /keg/i.test(L.unit || ''))) return 'keg';
       if (!it && L.item === '__new' && L.newKind && NEW_AS[L.newKind]) return NEW_AS[L.newKind].recv;
       var x = it || { category: catGuess(L) }, cat = x.category, sec = String((x && x.section) || '') + ' ' + L.description;
       if (cat === 'paper') return 'food';   // paper goods: a case of so many
       if (cat !== 'bev') return 'food';
       if (/coffee|tea\b|espresso|matcha/i.test(sec)) return 'coffee';
+      if (/keg/i.test((it && it.unit) || L.unit || '') || (/draught|draft|keg/i.test(sec) && !/\bcans?\b/i.test(sec)) || KEG_RE.test(L.description)) return 'keg';   // draught beer: by the keg, priced down to the pint
       if (/beer|draught|draft|ipa|lager|pils|stout|cider|seltzer|soda|soft|juice|water|tonic|ginger|cola|can\b|keg/i.test(sec)) return 'other';
       return 'wine';
     }
@@ -414,6 +419,40 @@
     function sizeFields(L, it, changed) {
       var k = kindOf(L, it), p = String(L.pack || '').toLowerCase().trim(), m;
       var n = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n' });
+      if (k === 'keg') {   // draught beer: number of kegs · keg size · price per keg = price per pint
+        var t0 = (L.description + ' ' + (L.pack || '')).toLowerCase(), gm = t0.match(/(\d+(?:\.\d+)?)\s*-?\s*gal/), ks;
+        if (L.keg == null) {
+          ks = /1\/6|sixtel/.test(t0) ? 'sixtel' : /1\/4|quarter|pony/.test(t0) ? 'quarter' : /1\/2|half/.test(t0) ? 'half' : /50\s*l\b/.test(t0) ? '50l' : /20\s*l\b/.test(t0) ? '20l' : null;
+          var g = gm ? +gm[1] : null;
+          if (!ks && g) ks = Math.abs(g - 5.16) < 0.3 ? 'sixtel' : Math.abs(g - 7.75) < 0.3 ? 'quarter' : Math.abs(g - 15.5) < 0.5 ? 'half' : 'custom';
+          L.keg = { size: ks || 'sixtel', gal: ks === 'custom' ? g : null };
+          L.unit = 'keg'; if (L.qty == null) L.qty = 1;
+        }
+        var K = L.keg, kOz = function () { var x = KEGS.filter(function (y) { return y[0] === K.size; })[0]; return K.size === 'custom' ? (K.gal ? K.gal * 128 : null) : x[2]; };
+        var pint = (window.EdenCosting && window.EdenCosting.settings.draught_oz) || 16;
+        var kq = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n', value: L.qty == null ? '' : String(L.qty), 'aria-label': 'Kegs received' });
+        var ksel = sel(KEGS.map(function (y) { return [y[0], y[1]]; }), K.size, 'Keg size');
+        var kg = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n', value: K.gal || '', placeholder: 'gal', 'aria-label': 'Keg size in gallons', hidden: K.size !== 'custom' });
+        var kp = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', value: L.unit_price == null ? '' : String(r2(L.unit_price)), 'aria-label': 'Price per keg' });
+        var ppt = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', 'aria-label': 'Price per pint' });
+        var oz0 = kOz(); ppt.value = L.unit_price != null && oz0 ? String(Math.round(L.unit_price / (oz0 / pint) * 100) / 100) : '';
+        var kc = function () {
+          var x = KEGS.filter(function (y) { return y[0] === K.size; })[0];
+          L.unit = 'keg'; L.pack = K.size === 'custom' ? (K.gal ? K.gal + ' gal' : '') : x[1].replace(' · ', ' ');
+          if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price);
+          if (!it && L.item === '__new') L.per = 1;
+          changed();
+        };
+        kq.addEventListener('change', function () { L.qty = num(kq.value); kc(); });
+        ksel.addEventListener('change', function () { K.size = ksel.value; kg.hidden = K.size !== 'custom'; if (K.size === 'custom' && !K.gal) { kg.focus(); return; } kc(); });
+        kg.addEventListener('change', function () { K.gal = num(kg.value); kc(); });
+        kp.addEventListener('change', function () { L.unit_price = num(kp.value); kc(); });
+        ppt.addEventListener('change', function () { var v = num(ppt.value), o = kOz(); if (v != null && o) { L.unit_price = r2(v * o / pint); kc(); } });
+        if (L.pack == null || L.pack === '') { var x0 = KEGS.filter(function (y) { return y[0] === K.size; })[0]; L.pack = K.size === 'custom' ? (K.gal ? K.gal + ' gal' : '') : x0[1].replace(' · ', ' '); }
+        return [h('label', null, ['Received ', kq, ' keg' + (L.qty === 1 ? '' : 's')]), h('label', null, ['· Size ', ksel]), kg,
+          h('label', null, ['· $', kp, ' / keg']), h('label', null, ['= $', ppt, ' / ' + pint + ' oz pint']),
+          oz0 ? h('span', { cls: 'is-u', text: Math.round(oz0 / pint) + ' pints a keg' }) : null];
+      }
       if (k === 'wine') {   // receiving wine and spirits: number received · case or bottle · bottle size · price each · price per oz
         var ML = function (t) { var q = String(t || '').toLowerCase().match(/(\d+(?:\.\d+)?)\s*(ml|l|lt|liter|litre)\b/); return q ? (/ml/.test(q[2]) ? +q[1] : +q[1] * 1000) : null; };
         if (L.rcv == null) {   // first time: fill in what the invoice says
@@ -596,7 +635,8 @@
         if (L.item === '__new') {
           var as = NEW_AS[L.newKind] || null;
           if (as && L.newKind === 'na' && COFFEE_RE.test(L.description)) as = { cat: 'bev', section: 'Coffee & tea', recv: 'coffee' };
-          it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
+          if (as && L.newKind === 'beer' && L.keg) as = { cat: 'bev', section: 'Draught beer', recv: 'keg' };
+          it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : L.keg ? 'keg' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
