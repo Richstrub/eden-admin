@@ -3263,3 +3263,20 @@ tr.mc-none th b{color:#6b665e}
 .is-size input.is-n{width:54px}
 .is-size select{font:inherit;font-size:.82rem;padding:3px 4px;border:1px solid rgba(42,46,51,.2);border-radius:4px;background:#fff}
 .is-size.is-miss input.is-n{border-color:#c9965a;background:#fff8ee}
+/* Inventory: monthly count entry and reports */
+.iv-me-modal .sc-card{width:min(760px,100%)}
+.iv-me{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:0 12px 12px}
+.iv-me-cat{font-family:var(--serif);font-weight:400;font-size:1.3rem;margin:16px 0 6px;position:sticky;top:0;background:#fff;padding:6px 0;z-index:1}
+.iv-me-t{width:100%;border-collapse:collapse;font-size:.95rem}
+.iv-me-t td{padding:5px 6px;border-bottom:1px solid rgba(42,46,51,.07);vertical-align:middle}
+.iv-me-sub td{font-family:var(--serif);font-size:1.1rem;padding-top:12px;border-bottom:1.5px solid var(--ink)}
+.iv-me-sec td{background:#f4f1ec;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6b665e;font-weight:600}
+.iv-me-n small{color:var(--stone);margin-left:6px;font-size:12px}
+.iv-me-u,.iv-me-l{color:var(--stone);font-size:12px;white-space:nowrap}
+.iv-me-c{width:96px}
+.iv-me-c input{width:88px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;text-align:right}
+.iv-me-c input.bad{border-color:#b33;background:#fff4f2}
+.iv-rlist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.iv-rbtn{width:100%;text-align:left;display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font:inherit}
+.iv-rbtn:hover{border-color:var(--ink)}
+.iv-rbtn span{color:var(--stone);font-size:.9rem}

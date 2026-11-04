@@ -175,6 +175,8 @@
         window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
         window.EdenInvoiceScan && window.EdenInvoiceScan.vendors ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Vendors', title: 'Spending and delivery charges by vendor, from scanned invoices', on: { click: function () { window.EdenInvoiceScan.vendors(scanApi()); } } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
+        h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Enter monthly count', title: 'Type in the month’s count for Food, Paper goods and Beverages, then see the report', on: { click: monthlyStart } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Reports', title: 'A report for every inventory count', on: { click: reportsList } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', title: 'A blank sheet to count on, for Food, Paper goods and Beverages', on: { click: countSheet } }),
         h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } }),
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
@@ -726,6 +728,178 @@
     return { text: qty(need) + ' ' + (it.unit || ''), note: it.order_unit ? 'by the ' + it.order_unit : '' };
   }
   /* ---------- printable count sheet: every item by section, with boxes to write the count in ---------- */
+  /* ---------- the monthly count: every item on one page, in the order of the printed sheet, then a report ---------- */
+  function sheetOrder(cid) {
+    var order = SECTIONS[cid] || [], SO = ['beer', 'wine', 'liquor', 'na'];
+    return I.items.filter(function (it) { return it.category === cid && it.active !== false; }).sort(function (a, b) {
+      var sa = cid === 'bev' ? SO.indexOf(subOf(a)) : 0, sb2 = cid === 'bev' ? SO.indexOf(subOf(b)) : 0;
+      var ia = order.indexOf(a.section), ib = order.indexOf(b.section); if (ia < 0) ia = 999; if (ib < 0) ib = 999;
+      return sa - sb2 || ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
+    });
+  }
+  var SUBN = { beer: 'Beer', wine: 'Wine', liquor: 'Liquor', na: 'N/A (non-alcoholic)' };
+  function monthlyStart() {
+    flush();
+    var d = new Date(), last = new Date(d.getFullYear(), d.getMonth(), 0);   // the last day of last month, early in a month
+    var date = h('input', { type: 'date', value: d.getDate() <= 7 ? iso(last) : iso(d) });
+    var boxes = CATS.map(function (c) { var cb = h('input', { type: 'checkbox', value: c.id, checked: true }); return [cb, h('label', { cls: 'sc-check' }, [cb, ' ' + c.label])]; });
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var m = modal('Enter the monthly count', [
+      h('p', { cls: 'sc-sub', text: 'Type in what’s on hand from the count sheets, in the same order as the printed sheet. Counts already entered for that date are filled in. When you save, you get the inventory report.' }),
+      lbl('Count date', date),
+      h('div', { cls: 'iv-cs-opts' }, [h('b', { text: 'Sheets' })].concat(boxes.map(function (b) { return b[1]; }))), msg
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Start', on: { click: function () {
+        var cats = boxes.filter(function (b) { return b[0].checked; }).map(function (b) { return b[0].value; });
+        if (!date.value) { msg.textContent = 'Pick the count date.'; return; }
+        if (!cats.length) { msg.textContent = 'Pick at least one sheet.'; return; }
+        m.close(); monthlyEntry(date.value, cats);
+      } } })]);
+  }
+  function monthlyEntry(day, cats) {
+    var draft = {}, rowOf = function (cid) { return I.counts.filter(function (c) { return c.category === cid && c.count_date === day; })[0] || null; };
+    cats.forEach(function (cid) { var r = rowOf(cid); draft[cid] = Object.assign({}, (r && r.counts) || {}); });
+    var prevOf = function (cid) { return I.counts.filter(function (c) { return c.category === cid && c.count_date < day && c.counts && Object.keys(c.counts).length; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0] || null; };
+    var total = 0, prog = h('b'), inputs = [];
+    var body = h('div', { cls: 'iv-me' });
+    cats.forEach(function (cid) {
+      var c = catOf(cid), prev = prevOf(cid), items = sheetOrder(cid), curSub = null, curSec = null;
+      total += items.length;
+      body.appendChild(h('h3', { cls: 'iv-me-cat', text: c.label + ' · ' + items.length + (items.length === 1 ? ' item' : ' items') + (prev ? ' · last count ' + dayLabel(prev.count_date) : '') }));
+      var tb = h('tbody');
+      items.forEach(function (it) {
+        if (cid === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; tb.appendChild(h('tr', { cls: 'iv-me-sub' }, h('td', { colspan: '4', text: SUBN[curSub] || curSub }))); }
+        if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; tb.appendChild(h('tr', { cls: 'iv-me-sec' }, h('td', { colspan: '4', text: curSec }))); }
+        var v = draft[cid][it.id], inp = h('input', { type: 'text', inputmode: 'decimal', value: v == null ? '' : String(v), 'aria-label': 'Count for ' + it.name });
+        inp.addEventListener('input', function () { var n = num(inp.value); if (inp.value.trim() === '') delete draft[cid][it.id]; else if (n != null && n >= 0) draft[cid][it.id] = n; inp.classList.toggle('bad', inp.value.trim() !== '' && (n == null || n < 0)); paintProg(); });
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' || (e.key === 'ArrowDown')) { e.preventDefault(); var i = inputs.indexOf(inp); if (inputs[i + 1]) { inputs[i + 1].focus(); inputs[i + 1].select(); } } else if (e.key === 'ArrowUp') { e.preventDefault(); var j = inputs.indexOf(inp); if (inputs[j - 1]) { inputs[j - 1].focus(); inputs[j - 1].select(); } } });
+        inputs.push(inp);
+        var last = prev && prev.counts[it.id] != null ? prev.counts[it.id] : null;
+        tb.appendChild(h('tr', null, [h('td', { cls: 'iv-me-n' }, [h('b', { text: it.name }), it.pack ? h('small', { text: it.pack }) : null]), h('td', { cls: 'iv-me-u', text: it.unit || '' }),
+          h('td', { cls: 'iv-me-l', text: last == null ? '' : 'last ' + (Math.round(last * 100) / 100) + (it.par != null ? ' · par ' + it.par : '') }), h('td', { cls: 'iv-me-c' }, inp)]));
+      });
+      body.appendChild(h('table', { cls: 'iv-me-t' }, tb));
+    });
+    function counted() { return cats.reduce(function (a, cid) { return a + sheetOrder(cid).filter(function (it) { return draft[cid][it.id] != null; }).length; }, 0); }
+    function paintProg() { prog.textContent = counted() + ' of ' + total + ' counted'; }
+    paintProg();
+    var msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var saveBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Save & see the report' });
+    var m = modal('Monthly count · ' + dayLabel(day), [h('p', { cls: 'sc-sub' }, [prog, ' · Enter or ↓ moves to the next item. Leave an item blank if it wasn’t counted; type 0 for none on hand.']), body, msg],
+      [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { if (counted() && !confirm('Close without saving these counts?')) return; m.close(); } } }), saveBtn], true);
+    m.el.classList.add('iv-me-modal');
+    setTimeout(function () { if (inputs[0]) inputs[0].focus(); }, 50);
+    saveBtn.addEventListener('click', function () {
+      if (body.querySelector('input.bad')) { msg.textContent = 'Fix the counts in red (numbers only).'; return; }
+      saveBtn.disabled = true; msg.textContent = 'Saving…';
+      var rows = cats.map(function (cid) { var r = rowOf(cid); return { id: (r && r.id) || cid + ':' + day, category: cid, count_date: day, counts: draft[cid], counted_by: I.ctx.name || (r && r.counted_by) || '' }; });
+      sb().from('inventory_counts').upsert(rows, { onConflict: 'id' }).then(function (res) {
+        if (res.error) { saveBtn.disabled = false; msg.textContent = isPerm(res.error) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection and try again.'; return; }
+        rows.forEach(function (row) { var i = I.counts.findIndex(function (c) { return c.id === row.id || (c.category === row.category && c.count_date === row.count_date); }); if (i < 0) I.counts.push(row); else I.counts[i] = row; });
+        I.counts.sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; });
+        m.close(); status('Count saved for ' + dayLabel(day) + '.', 'ok'); I.date = day; render(); report(day);
+      });
+    });
+  }
+  // every date that has a count, newest first
+  function reportsList() {
+    flush();
+    var dates = {}; I.counts.forEach(function (c) { if (c.counts && Object.keys(c.counts).length) (dates[c.count_date] = dates[c.count_date] || []).push(c.category); });
+    var keys = Object.keys(dates).sort().reverse();
+    var m = modal('Inventory reports', [
+      h('p', { cls: 'sc-sub', text: 'A report for each count: what’s on hand and its value, what changed since the count before, what was bought in between (from scanned invoices) and what was used.' }),
+      keys.length ? h('ul', { cls: 'iv-rlist' }, keys.map(function (k) { return h('li', null, [h('button', { type: 'button', cls: 'iv-rbtn', on: { click: function () { m.close(); report(k); } } }, [h('b', { text: dayLabel(k) }), h('span', { text: dates[k].map(function (c) { return catOf(c).label; }).join(', ') })])]); })) : h('p', { cls: 'sc-sub', text: 'No counts yet. Use Enter monthly count, or type counts on the Inventory page.' })
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Close', on: { click: function () { m.close(); } } })]);
+  }
+  function report(day) {
+    var w = window.open('', '_blank');
+    if (!w) { status('Allow pop-ups for the staff site to open the report.', 'err'); return; }
+    w.document.write('<!doctype html><title>Inventory report</title><p style="font:14px sans-serif;padding:24px">Making the report…</p>');
+    var prevDay = I.counts.filter(function (c) { return c.count_date < day && c.counts && Object.keys(c.counts).length; }).map(function (c) { return c.count_date; }).sort().reverse()[0] || null;
+    var invP = prevDay ? sb().from('inventory_invoices').select('invoice_date,vendor,total,lines,fees_total').gt('invoice_date', prevDay).lte('invoice_date', day).then(function (r) { return r.error ? null : r.data || []; }, function () { return null; }) : Promise.resolve(null);
+    var salesP = prevDay ? sb().from('payroll_weeks').select('week_start,summary:rows->_summary').gte('week_start', iso(new Date(parseDay(prevDay).getTime() + 864e5 * -6))).lte('week_start', day).then(function (r) { return r.error ? null : r.data || []; }, function () { return null; }) : Promise.resolve(null);
+    Promise.all([invP, salesP]).then(function (res) { writeReport(w, day, prevDay, res[0], res[1]); });
+  }
+  function writeReport(w, day, prevDay, invs, weeks) {
+    var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    var q = function (v) { return v == null ? '' : String(Math.round(v * 100) / 100); };
+    var M = function (v) { return v == null ? '—' : (v < 0 ? '−' : '') + money(Math.abs(v)); };
+    var P = function (v) { return v == null || !isFinite(v) ? '—' : (v * 100).toFixed(1) + '%'; };
+    var byId = {}; I.items.forEach(function (it) { byId[it.id] = it; });
+    var rowFor = function (cid, d) { return d ? I.counts.filter(function (c) { return c.category === cid && c.count_date === d; })[0] || null : null; };
+    // purchases between the two counts, by category (lines by the item they were matched to; the rest with the invoice's main category)
+    var buy = { food: 0, paper: 0, bev: 0 }, buyN = 0;
+    (invs || []).forEach(function (v) {
+      var g = { food: 0, paper: 0, bev: 0 }, loose = 0;
+      (v.lines || []).forEach(function (L) { var a = +L.extended || 0, it = L.item_id && byId[L.item_id]; if (it && g[it.category] != null) g[it.category] += a; else loose += a; });
+      var top = Object.keys(g).sort(function (a, b) { return g[b] - g[a]; })[0]; g[top] += loose;
+      var lsum = g.food + g.paper + g.bev, tot = +v.total > 0 ? +v.total : lsum + (+v.fees_total || 0);
+      Object.keys(g).forEach(function (k) { buy[k] += lsum ? g[k] * tot / lsum : 0; }); buyN++;
+    });
+    // food and beverage sales in the weeks between the counts
+    var sales = null;
+    if (weeks && weeks.length && prevDay) {
+      sales = { food: 0, bev: 0, net: 0, weeks: 0 };
+      weeks.forEach(function (x) { var sm = x.summary; if (!sm) return; var end = iso(new Date(parseDay(x.week_start).getTime() + 6 * 864e5)); if (end <= prevDay || x.week_start > day) return; sales.food += +sm.food || 0; sales.bev += +sm.bev || 0; sales.net += +sm.net || 0; sales.weeks++; });
+      if (!sales.weeks) sales = null;
+    }
+    var cats = CATS.filter(function (c) { return rowFor(c.id, day); });
+    var sum = [], detail = '', below = [], nocost = [], notCounted = [], moves = [];
+    cats.forEach(function (c) {
+      var cur = rowFor(c.id, day), prev = rowFor(c.id, prevDay), items = sheetOrder(c.id);
+      var val = 0, pval = 0, counted = 0, subs = {};
+      var rows = '', curSub = null, curSec = null;
+      items.forEach(function (it) {
+        var n = cur.counts[it.id], pn = prev && prev.counts[it.id] != null ? prev.counts[it.id] : null, cost = it.cost == null || it.cost === '' ? null : +it.cost;
+        if (n != null) counted++; else notCounted.push(it);
+        var v = n != null && cost != null ? n * cost : null, pv = pn != null && cost != null ? pn * cost : null;
+        if (v != null) { val += v; if (c.id === 'bev') subs[subOf(it)] = (subs[subOf(it)] || 0) + v; }
+        if (pv != null) pval += pv;
+        if (n != null && cost == null) nocost.push(it);
+        if (n != null && it.par != null && n < +it.par) below.push({ it: it, n: n });
+        if (v != null || pv != null) moves.push({ it: it, d: (v || 0) - (pv || 0) });
+        if (c.id === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; rows += '<tr class="sub"><td colspan="7">' + esc(SUBN[curSub] || curSub) + '</td></tr>'; }
+        if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; rows += '<tr class="sec"><td colspan="7">' + esc(curSec) + '</td></tr>'; }
+        rows += '<tr' + (n == null ? ' class="nc"' : '') + '><td>' + esc(it.name) + (it.pack ? ' <small>' + esc(it.pack) + '</small>' : '') + '</td><td>' + esc(it.unit) + '</td><td class="r">' + (n == null ? 'not counted' : q(n)) + '</td><td class="r">' + q(pn) + '</td><td class="r">' + (cost == null ? '—' : M(cost)) + '</td><td class="r">' + (v == null ? '—' : M(v)) + '</td><td class="r">' + (it.par != null && n != null && n < +it.par ? 'below par ' + q(+it.par) : '') + '</td></tr>';
+      });
+      var used = prev ? pval + buy[c.id] - val : null;
+      var sl = sales ? (c.id === 'food' ? sales.food : c.id === 'bev' ? sales.bev : sales.net) : null;
+      sum.push({ c: c, val: val, pval: prev ? pval : null, buy: prevDay ? buy[c.id] : null, used: used, sales: sl, counted: counted, total: items.length, subs: subs });
+      detail += '<section class="cat"><h2>' + esc(c.label) + '</h2><table><thead><tr><th>Item</th><th>Unit</th><th class="r">Count</th><th class="r">Last' + (prevDay ? '<small>' + esc(prevDay.slice(5).replace('-', '/')) + '</small>' : '') + '</th><th class="r">Cost</th><th class="r">Value</th><th class="r"></th></tr></thead><tbody>' + rows + '</tbody><tfoot><tr><td colspan="5">' + esc(c.label) + ' on hand</td><td class="r">' + M(val) + '</td><td></td></tr></tfoot></table></section>';
+    });
+    var T = sum.reduce(function (a, x) { a.val += x.val; a.pval += x.pval || 0; a.buy += x.buy || 0; a.used += x.used || 0; return a; }, { val: 0, pval: 0, buy: 0, used: 0 });
+    var sumRows = sum.map(function (x) { return '<tr><td><b>' + esc(x.c.label) + '</b><small>' + x.counted + ' of ' + x.total + ' counted</small></td><td class="r">' + M(x.val) + '</td><td class="r">' + M(x.pval) + '</td><td class="r">' + (x.pval == null ? '—' : M(x.val - x.pval)) + '</td><td class="r">' + M(x.buy) + '</td><td class="r"><b>' + M(x.used) + '</b></td><td class="r">' + (x.used != null && x.sales ? P(x.used / x.sales) : '—') + '</td></tr>'; }).join('');
+    var bevSub = sum.filter(function (x) { return x.c.id === 'bev'; })[0];
+    moves.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d); });
+    var list = function (title, arr, fn) { return arr.length ? '<div class="box"><h3>' + title + ' · ' + arr.length + '</h3><ul>' + arr.slice(0, 30).map(fn).join('') + (arr.length > 30 ? '<li>…and ' + (arr.length - 30) + ' more</li>' : '') + '</ul></div>' : ''; };
+    var who = cats.map(function (c) { return rowFor(c.id, day).counted_by; }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ');
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden inventory report ' + esc(day) + '</title><style>' +
+      '@page{size:letter;margin:.5in}body{font:10.5pt/1.35 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0 auto;max-width:7.5in;padding:20px}' +
+      'header{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px}h1{font:600 20pt Georgia,serif;margin:0}header span{font-size:9.5pt;color:#555}' +
+      '.tools{margin:0 0 14px}.tools button{font:inherit;padding:6px 12px;border:1px solid #111;background:#fff;border-radius:4px;cursor:pointer;margin-right:6px}@media print{.tools{display:none}}' +
+      'table{width:100%;border-collapse:collapse;margin-bottom:10px}th{font-size:8pt;text-transform:uppercase;letter-spacing:.05em;text-align:left;border-bottom:1.5px solid #111;padding:4px 6px}th small{display:block;text-transform:none;letter-spacing:0;font-weight:400}' +
+      'td{padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top}td small{display:block;color:#666;font-size:8pt}.r{text-align:right;white-space:nowrap}' +
+      'tfoot td{font-weight:700;border-top:1.5px solid #111;border-bottom:0}tr.sec td{background:#eee;font-weight:700;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em}tr.sub td{font:600 12pt Georgia,serif;padding-top:10px;border-bottom:1.5px solid #111}tr.nc td{color:#999}' +
+      'h2{font:600 15pt Georgia,serif;margin:22px 0 6px}h3{font-size:10pt;margin:0 0 6px}.cat{break-before:page;page-break-before:always}' +
+      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.box{border:1px solid #ccc;border-radius:6px;padding:10px 12px;break-inside:avoid}.box ul{margin:0;padding-left:16px;font-size:9.5pt}' +
+      '.note{font-size:9pt;color:#555}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '</style></head><body><header><div><h1>Eden · Inventory report</h1><span>Count of ' + esc(dayLabel(day)) + (who ? ' · counted by ' + esc(who) : '') + (prevDay ? ' · compared with ' + esc(dayLabel(prevDay)) : ' · the first count, nothing to compare with yet') + '</span></div><span>' + esc(new Date().toLocaleDateString()) + '</span></header>' +
+      '<div class="tools"><button onclick="print()">Print</button><button onclick="dl()">Download CSV</button></div>' +
+      '<table><thead><tr><th></th><th class="r">On hand</th><th class="r">Last count</th><th class="r">Change</th><th class="r">Bought<small>invoices between</small></th><th class="r">Used<small>last + bought − now</small></th><th class="r">Cost %<small>used ÷ sales</small></th></tr></thead><tbody>' + sumRows + '</tbody>' +
+      '<tfoot><tr><td>Total</td><td class="r">' + M(T.val) + '</td><td class="r">' + (prevDay ? M(T.pval) : '—') + '</td><td class="r">' + (prevDay ? M(T.val - T.pval) : '—') + '</td><td class="r">' + (prevDay ? M(T.buy) : '—') + '</td><td class="r">' + (prevDay ? M(T.used) : '—') + '</td><td class="r">' + (sales && prevDay ? P(T.used / sales.net) : '—') + '</td></tr></tfoot></table>' +
+      '<p class="note">On hand = count × the item’s cost in the inventory. Bought comes from invoices scanned in Inventory dated after the last count and up to this one' + (invs ? ' (' + buyN + ' invoice' + (buyN === 1 ? '' : 's') + ')' : '') + '. Used is the cost of what went out: food and beverage cost for the period' + (sales ? '; cost % uses food and beverage sales from ' + sales.weeks + ' payroll week' + (sales.weeks === 1 ? '' : 's') + ' in between (paper goods against all net sales)' : '') + '. Items not counted, or with no cost, aren’t in the totals.</p>' +
+      (bevSub && Object.keys(bevSub.subs).length ? '<div class="box"><h3>Beverages on hand</h3><ul>' + ['beer', 'wine', 'liquor', 'na'].filter(function (k) { return bevSub.subs[k]; }).map(function (k) { return '<li>' + SUBN[k] + ': ' + M(bevSub.subs[k]) + '</li>'; }).join('') + '</ul></div>' : '') +
+      '<div class="grid">' + list('Below par', below, function (x) { return '<li>' + esc(x.it.name) + ': ' + q(x.n) + ' ' + esc(x.it.unit || '') + ' (par ' + q(+x.it.par) + ')</li>'; }) +
+      list('Biggest changes in value', moves.filter(function (x) { return Math.abs(x.d) >= 0.5; }).slice(0, 12), function (x) { return '<li>' + esc(x.it.name) + ': ' + (x.d > 0 ? '+' : '−') + money(Math.abs(x.d)) + '</li>'; }) +
+      list('Counted but no cost yet', nocost, function (it) { return '<li>' + esc(it.name) + '</li>'; }) +
+      list('Not counted', notCounted, function (it) { return '<li>' + esc(it.name) + ' <span style="color:#777">(' + esc(catOf(it.category).label) + ')</span></li>'; }) + '</div>' +
+      detail + '</body></html>';
+    var csv = [['Category', 'Section', 'Item', 'Pack', 'Unit', 'Count', 'Last count', 'Cost', 'Value']];
+    cats.forEach(function (c) { var cur = rowFor(c.id, day), prev = rowFor(c.id, prevDay); sheetOrder(c.id).forEach(function (it) { var n = cur.counts[it.id], pn = prev && prev.counts[it.id] != null ? prev.counts[it.id] : ''; csv.push([c.label, it.section || '', it.name, it.pack || '', it.unit || '', n == null ? '' : n, pn, it.cost == null ? '' : it.cost, n != null && it.cost != null && it.cost !== '' ? (n * it.cost).toFixed(2) : '']); }); });
+    var csvText = csv.map(function (r) { return r.map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\n');
+    w.document.open(); w.document.write(html); w.document.close();
+    w.dl = function () { var a = w.document.createElement('a'); a.href = URL.createObjectURL(new Blob([csvText], { type: 'text/csv' })); a.download = 'Eden inventory ' + day + '.csv'; w.document.body.appendChild(a); a.click(); a.remove(); };
+  }
   function countSheet() {
     flush();
     var boxes = CATS.map(function (c) { var n = I.items.filter(function (it) { return it.category === c.id && it.active !== false; }).length; var cb = h('input', { type: 'checkbox', value: c.id }); cb.checked = c.id === I.cat; return [cb, h('label', { cls: 'sc-check' }, [cb, ' ' + c.label + ' (' + n + ')'])]; });
@@ -781,7 +955,11 @@
       'td.c,th.c{width:.85in;text-align:center}td.c{border:1.5px solid #111;background:#fff}td.nt,th.nt{width:1.6in}' +
       'tr.sec td{background:#eee;font-weight:700;font-size:8.5pt;text-transform:uppercase;letter-spacing:.06em;height:auto;padding:5px 6px;border-bottom:1px solid #111}' +
       'tr.sub td{font:600 13pt Georgia,serif;height:auto;padding:12px 6px 4px;border-bottom:2px solid #111}' +
-      '</style></head><body>' + pages + '<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
+      '.backside{break-before:page;page-break-before:always;break-after:page;page-break-after:always;height:9.5in;display:flex;align-items:center;justify-content:center;color:#999;font-size:9pt}' +
+      '@media screen{body{width:7.6in;margin:0 auto}}' +
+      '</style></head><body>' + pages +
+      // printed two-sided, each sheet starts on the front of a new piece of paper: after a sheet with an odd number of pages, add a blank back
+      '<script>window.onload=function(){var H=10.1*96,ps=[].slice.call(document.querySelectorAll(".page"));ps.forEach(function(p,i){if(i===ps.length-1)return;var th=p.querySelector("thead"),hh=th?th.offsetHeight:0,h=p.offsetHeight,n=Math.ceil(h/H);n=Math.ceil((h+(n-1)*hh)/H);if(n%2===1){var b=document.createElement("div");b.className="backside";b.textContent="This side intentionally left blank";p.parentNode.insertBefore(b,p.nextSibling);}});setTimeout(function(){window.print()},250)}<\/script></body></html>';
     var w = window.open('', '_blank');
     if (!w) return false;
     w.document.open(); w.document.write(html); w.document.close();
