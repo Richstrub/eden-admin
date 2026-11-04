@@ -484,7 +484,7 @@
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
-      tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [nci, h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
+      tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
       tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: old == null ? 'No cost yet' : cost(old) }),
         ch != null ? h('span', { cls: 'is-ch ' + (ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : ''), text: (ch > 0 ? '+' : '') + Math.round(ch * 100) + '%' }) : null,
         big ? h('span', { cls: 'is-note', text: 'Big change: check the units' }) : null] : isNew ? h('span', { cls: 'is-u', text: 'New item' }) : null));

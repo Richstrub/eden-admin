@@ -3282,3 +3282,4 @@ tr.mc-none th b{color:#6b665e}
 .iv-rbtn span{color:var(--stone);font-size:.9rem}
 .is-size input.is-pr{width:70px;text-align:right}
 .is-perv{display:block;font-size:1.05rem;padding:6px 2px}
+.is-dl{display:inline-flex;align-items:center;gap:4px}.is-dl input{min-width:0}
