@@ -377,6 +377,10 @@
           var u0 = canon(L.unit), cs = BIG.test(u0) || (!!L.cases && !L.bottles) || (!L.unit && !L.bottles);
           L.rcv = { unit: cs ? 'case' : 'bottle', qty: L.cases && L.bottles ? null : L.qty != null ? L.qty : cs ? L.cases : L.bottles, bpc: L.bottles_per_case || packCount(p) || (cs ? 12 : null), ml: L.bottle_ml || ML(p) || 750 };
           if (L.rcv.qty == null && L.cases && L.bottles && L.rcv.bpc) { L.rcv.unit = 'bottle'; L.rcv.qty = L.cases * L.rcv.bpc + L.bottles; }
+          // the line takes these straight away, so the bottles per case here and the item's units always agree
+          if (L.rcv.unit === 'case' && L.rcv.bpc) L.bottles_per_case = L.rcv.bpc;
+          if (!L.pack) L.pack = (L.rcv.unit === 'case' && L.rcv.bpc ? L.rcv.bpc + '/' : '') + (L.rcv.ml % 1000 === 0 ? L.rcv.ml / 1000 + 'L' : L.rcv.ml + 'ml');
+          if (it && !L.sized) L.per = guessPer(L, it);
         }
         if (!it && L.item === '__new' && !L.sized) L.per = L.rcv.unit === 'case' ? (L.rcv.bpc || 1) : 1;
         var R = L.rcv, ozOne = function () { return R.ml / 29.5735 * (R.unit === 'case' ? (R.bpc || 0) : 1); };
@@ -444,6 +448,8 @@
     function paintRow(L) {
       var tr = L.tr; tr.innerHTML = '';
       var it = L.item && L.item !== '__new' ? item(L.item) : null, isNew = L.item === '__new';
+      if (isNew && !L.newKind) L.newKind = guessKind(L);
+      if (L.item && L.rcv == null && kindOf(L, it) === 'wine') sizeFields(L, it, function () {});   // fill in the receiving boxes first, so the units and cost below use them
       var nc = L.costOver != null ? L.costOver : newCost(L);
       var old = it && it.cost != null ? +it.cost : null, ch = old && nc != null ? (nc - old) / old : null;
       var use = h('input', { type: 'checkbox', checked: !!L.use && !!L.item, disabled: !L.item, 'aria-label': 'Use this line' });
@@ -460,7 +466,8 @@
       tr.appendChild(h('td', { cls: 'is-use' }, use));
       // the case size, for receiving: fill it in when the reader couldn't make it out
       var sizeBox = sizeFields(L, it, function () { if (it) L.per = guessPer(L, it); L.costOver = null; L.sized = true; paintRow(L); });
-      var noSize = !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
+      var recvWine = kindOf(L, it) === 'wine';
+      var noSize = !recvWine && !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
       tr.appendChild(h('td', { cls: 'is-line' }, [
         h('b', { text: L.description }),
         h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
@@ -473,7 +480,7 @@
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
-      tr.appendChild(h('td', { cls: 'is-conv' }, L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
+      tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [nci, h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
       tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: old == null ? 'No cost yet' : cost(old) }),
         ch != null ? h('span', { cls: 'is-ch ' + (ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : ''), text: (ch > 0 ? '+' : '') + Math.round(ch * 100) + '%' }) : null,
