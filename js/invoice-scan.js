@@ -99,6 +99,29 @@
   }
   function lineKey(line) { return line.code ? 'code:' + norm(line.code) : 'desc:' + norm(line.description); }
   function vendorKey(v) { return norm(v); }
+  // how a line was received, kept with its link so the next invoice from that vendor starts out the same way
+  function recvOf(L) {
+    var o = { unit: L.unit || '', pack: L.pack || '', bpc: L.bottles_per_case || null, ml: L.bottle_ml || null, set_unit: L.setUnit || null, keg: L.keg || null, rcv_unit: L.rcv ? L.rcv.unit : null, at: new Date().toISOString() };
+    return o;
+  }
+  function saveLinks(rows) {
+    return A.sb.from('inventory_item_links').upsert(rows, { onConflict: 'vendor_key,line_key' }).then(function (r) {
+      if (r.error && /recv/.test(r.error.message || '')) return A.sb.from('inventory_item_links').upsert(rows.map(function (x) { var y = Object.assign({}, x); delete y.recv; return y; }), { onConflict: 'vendor_key,line_key' });   // invoice-receiving.sql not run yet
+      return r;
+    });
+  }
+  // a line the vendor has sent before: fill in what was set last time where this invoice doesn't say (or the reader had to guess)
+  function restore(L, rv) {
+    if (!rv) return;
+    var guessed = !L.unit || /not printed|assumed/i.test(L.note || '');
+    if (rv.unit && guessed) L.unit = rv.unit;
+    if (!L.pack && rv.pack) L.pack = rv.pack;
+    if (!L.bottles_per_case && rv.bpc) L.bottles_per_case = rv.bpc;
+    if (!L.bottle_ml && rv.ml) L.bottle_ml = rv.ml;
+    if (rv.keg && !L.keg) L.keg = rv.keg;
+    if (rv.set_unit && (guessed || normU(canon(L.unit)) === normU(rv.unit))) L.unit = rv.unit;
+    L.remembered = true;
+  }
   function match(inv, links) {
     var vk = vendorKey(inv.vendor), byKey = {};
     links.forEach(function (l) { byKey[l.vendor_key + '|' + l.line_key] = l; });
@@ -106,7 +129,7 @@
     inv.lines.forEach(function (L) {
       var link = byKey[vk + '|' + lineKey(L)] || (L.code ? byKey[vk + '|desc:' + norm(L.description)] : null);
       var it = link && items.filter(function (x) { return x.id === link.item_id; })[0];
-      if (it) { L.item = it.id; L.per = +link.per_unit || 1; L.how = 'remembered'; L.use = true; return; }
+      if (it) { restore(L, link.recv); L.item = it.id; L.per = +link.per_unit || 1; L.how = 'remembered'; L.use = true; return; }
       var best = null, bs = 0;
       items.forEach(function (x) { var s = score(L, x, inv.vendor); if (s > bs) { bs = s; best = x; } });
       if (best && bs >= 0.5) { L.item = best.id; L.per = guessPer(L, best); L.how = 'suggested'; L.use = false; }
@@ -589,7 +612,7 @@
         if (/^__new:/.test(v)) { L.newKind = v.slice(6); v = '__new'; L.rcv = null; }
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
-      }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
+      }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' + (L.remembered ? ', with how it was received' : '') }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
       tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: L.setUnit ? (it.cost != null ? cost(+it.cost) + ' / ' + (it.unit || 'unit') : 'No cost yet') : old == null ? 'No cost yet' : cost(old) }),
@@ -643,7 +666,7 @@
           changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {});
         }
         L.newCost = c;
-        linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString() };
+        linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString(), recv: recvOf(L) };
       });
       var upd = Object.keys(changed).map(function (k) { return changed[k]; });
       var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, bottle_ml: L.bottle_ml || null, cases: L.cases, bottles: L.bottles, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
@@ -662,7 +685,7 @@
           use.forEach(function (L) { hist.push({ item_id: L.item, invoice_id: invId, price_date: date || undefined, vendor: vendor, invoice_line: L.description, invoice_price: L.unit_price, invoice_unit: L.unit || '', per_unit: L.per, unit_cost: L.newCost, old_cost: L.old }); });
           return Promise.all([
             A.sb.from('inventory_prices').insert(hist),
-            A.sb.from('inventory_item_links').upsert(Object.keys(linkRows).map(function (k) { return linkRows[k]; }), { onConflict: 'vendor_key,line_key' })
+            saveLinks(Object.keys(linkRows).map(function (k) { return linkRows[k]; }))
           ]);
         });
       }).then(function (res) {
