@@ -542,12 +542,22 @@
     wrap.appendChild(P.pane);
     el.appendChild(wrap);
     // drop a Square export anywhere on the Payroll page
-    el.addEventListener('dragover', function (ev) { if (P.sub === 'week' && !final() && hasFiles(ev)) { ev.preventDefault(); el.classList.add('pr-drop'); } });
+    el.addEventListener('dragover', function (ev) { if (P.sub === 'week' && hasFiles(ev)) { ev.preventDefault(); el.classList.add('pr-drop'); } });
     el.addEventListener('dragleave', function (ev) { if (ev.target === el || !el.contains(ev.relatedTarget)) el.classList.remove('pr-drop'); });
     el.addEventListener('drop', function (ev) {
       el.classList.remove('pr-drop');
-      if (P.sub !== 'week' || final() || !hasFiles(ev)) return;
-      ev.preventDefault(); if (ev.dataTransfer.files.length) readSquare(ev.dataTransfer.files);
+      if (P.sub !== 'week' || !hasFiles(ev)) return;
+      ev.preventDefault(); if (!ev.dataTransfer.files.length) return;
+      if (!final()) { readSquare(ev.dataTransfer.files); return; }
+      // a final week stays locked: a Transactions CSV only adds its card fees (and the food/beverage estimate) for Financials
+      var fs = [].slice.call(ev.dataTransfer.files).filter(function (f) { return /\.csv$/i.test(f.name); });
+      if (!fs.length) { status('This week is final and locked. Reopen it to change it.', 'err'); return; }
+      status('Reading ' + fs.map(function (f) { return f.name; }).join(', ') + '…', 'dirty');
+      Promise.all(fs.map(function (f) { return f.text().then(function (t) {
+        var head = t.slice(0, 3000).toLowerCase();
+        if (/transaction id/.test(head) && /\bfees\b/.test(head)) return txFeesFile(t, f.name);
+        return f.name + ': this week is final and locked, so only a Transactions CSV can be added (for its card fees). Reopen the week to change anything else.';
+      }).catch(function (e) { return e.message; }); })).then(function (msgs) { var m = msgs.join(' '); status(m + (/locked|couldn/i.test(m) ? '' : ' Pay and tips weren’t changed.'), /locked|couldn|no payments/i.test(m) ? 'err' : 'ok'); load(); });
     });
   }
   function hasFiles(ev) { return ev.dataTransfer && [].slice.call(ev.dataTransfer.types || []).indexOf('Files') >= 0; }
@@ -1394,7 +1404,7 @@
     var zone = h('div', { cls: 'pr-zone fn-zone', tabindex: '0', role: 'button', 'aria-label': 'Drop Square reports here, or press to choose them' }, [
       h('p', { cls: 'pr-zoneh', text: 'Drag Square reports here' }),
       h('div', { cls: 'pr-slots' }, [
-        slot(1, nTx, 'Sales, tax, tips & card fees: Transactions CSV', ['Square Dashboard → Payments & invoices → Transactions', 'Pick the week, Sunday to Saturday', 'Export → Transactions CSV', 'Drop it in Weekly payroll with the week’s timecards (not here)'], nTx + (nTx === 1 ? ' week' : ' weeks') + ' in.',
+        slot(1, nTx, 'Sales, tax, tips & card fees: Transactions CSV', ['Square Dashboard → Payments & invoices → Transactions', 'Pick the week, Sunday to Saturday', 'Export → Transactions CSV', 'Drop it in Weekly payroll with the week’s timecards. For weeks already done (or final), drop it here to add card fees: one file can cover many weeks'], nTx + (nTx === 1 ? ' week' : ' weeks') + ' in.',
           h('a', { cls: 'sc-link fn-go', href: '#payroll', text: 'Go to Weekly payroll →', on: { click: function (ev) { ev.stopPropagation(); } } })),
         slot(2, nItems, 'Food vs beverage: Item sales detail', ['Square Dashboard → Reports → Item sales', 'Pick the dates (one week or many)', 'Export → Item sales detail', 'Drop it here'], nItems + (nItems === 1 ? ' week has' : ' weeks have') + ' the exact split.'),
         slot(3, nLoan, 'Square Loan repayments: loan activity', ['Square Dashboard → Banking → Loans', 'Loan details', 'Download', 'Drop it here'], nLoan + (nLoan === 1 ? ' week has' : ' weeks have') + ' repayments.')
@@ -1408,7 +1418,7 @@
       Promise.all(files.map(function (f) { return f.text().then(function (t) {
         var head = t.slice(0, 3000).toLowerCase();
         if (/category/.test(head) && /net sales|gross sales/.test(head)) return itemsFile(t, f.name);
-        if (/transaction id/.test(head) && /\btip\b/.test(head)) return f.name + ': that’s the Transactions CSV. Drop it in Weekly payroll with the week’s timecards (it brings in sales, tax, tips and card fees).';
+        if (/transaction id/.test(head) && /\bfees\b/.test(head)) return txFeesFile(t, f.name);
         if (/date/.test(head) && /amount|payment|repaid|repayment|withheld/.test(head)) return loanFile(t, f.name);
         return f.name + ': not a file this box reads. Use Item sales detail or the Square Loans activity export.';
       }).catch(function (e) { return e.message; }); })).then(function (msgs) {
@@ -1795,6 +1805,32 @@
     });
     if (!food && !bev) return { food: r2(net), bev: 0 };
     var f = r2(net * food / (food + bev)); return { food: f, bev: r2(net - f) };
+  }
+  /* A Transactions CSV dropped on Financials (or on a week that's final): adds what the cash flow needs (card fees, tips
+     collected, the food/beverage estimate) to every week in the file. Pay, the tip pool, net sales and tax aren't touched. */
+  function txFeesFile(text, fname) {
+    var rows = parseCSV(text), H = (rows[0] || []).map(function (x) { return String(x).trim().toLowerCase(); });
+    var di = H.indexOf('date'), ti = H.indexOf('tip'); if (ti < 0) ti = H.indexOf('tips');
+    var st = H.indexOf('transaction status'), ni = H.indexOf('net sales'), de = H.indexOf('description'), fe = H.indexOf('fees');
+    if (di < 0 || fe < 0) return Promise.reject(new Error(fname + ': couldn’t find the Date and Fees columns of a Transactions CSV.'));
+    var m0 = function (v) { v = String(v || '').trim(); var neg = /^\(.*\)$/.test(v) || /^-/.test(v); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : (neg ? -n : n); };
+    var weeks = {}, z = function () { return [0, 0, 0, 0, 0, 0, 0]; };
+    rows.slice(1).forEach(function (r) {
+      var d = parseDate(r[di]); if (!d) return;
+      if (st >= 0 && /fail|cancel|void/i.test(r[st] || '')) return;
+      var wk = iso(sunday(d)), i = d.getDay(), w = weeks[wk] = weeks[wk] || { fees: z(), tips: z(), food: z(), bev: z() };
+      w.fees[i] = r2(w.fees[i] - m0(r[fe]));
+      if (ti >= 0) w.tips[i] = r2(w.tips[i] + m0(r[ti]));
+      if (ni >= 0) { var sp = splitCheck(de >= 0 ? r[de] : '', m0(r[ni])); w.food[i] = r2(w.food[i] + sp.food); w.bev[i] = r2(w.bev[i] + sp.bev); }
+    });
+    var keys = Object.keys(weeks).sort();
+    if (!keys.length) return Promise.reject(new Error(fname + ': no payments found.'));
+    var tot = 0;
+    return saveToWeeks(keys, fname, function (rows2, k) {
+      var w = weeks[k], sm = rows2._summary, sl = rows2._sales;
+      if (sl) { sl.fees = w.fees; if (!sl.tips) sl.tips = w.tips; if (!sl.food) { sl.food = w.food; sl.bev = w.bev; } }
+      if (sm) { sm.cardFees = sum(w.fees); tot += sm.cardFees; if (sm.tipsIn == null) sm.tipsIn = sum(w.tips); if (sm.food == null) { sm.food = sum(w.food); sm.bev = sum(w.bev); } }
+    }, 'card fees').then(function (m) { return m.replace(/: card fees for/, ': ' + money(r2(tot)) + ' in card fees for'); });
   }
   // Square → Transactions → Export → Transactions CSV for the week: every payment's tip, added up by date
   function txFile(text, fname) {
