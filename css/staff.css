@@ -3120,3 +3120,7 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-capt{font-weight:400;font-size:1.1rem;color:var(--ink)}
 .fn-capd>summary small{color:var(--stone);font-size:.84rem}
 .fn-capd[open]{padding-bottom:12px}
+
+.fn-sk-rule { stroke: rgba(42,46,51,.25); stroke-width: 1; }
+.fn-sk-tot { font-weight: 600; }
+.fn-sk-warn { margin: 6px 0 0; padding: 8px 12px; border-radius: 8px; background: #f6ecd9; color: #6b4d1c; font-size: 13px; line-height: 1.4; }

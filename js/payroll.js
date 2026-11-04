@@ -1234,12 +1234,13 @@
     ].concat(BUY.map(function (b) { return ['buy', b[0], buy.total > Math.max(0, afterPay) && buy.total ? buy[b[0]] * Math.max(0, afterPay) / buy.total : buy[b[0]]]; })).map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
     return { nodes: nodes, links: links, t: t, left: left, total: inT, buy: buy };
   }
-  function sankey(cb, nodes, links, W, H) {
+  function sankey(cb, nodes, links, W, H, opt) {
+    opt = opt || {};   // opt.base: show each last-column node (and opt.pctAlso ids) as a % of it, with a total under the column
     var byId = {}; nodes.forEach(function (n) { n.inV = 0; n.outV = 0; n.ins = []; n.outs = []; byId[n.id] = n; });
     links.forEach(function (l) { var a = byId[l.s], b = byId[l.t]; a.outV += l.v; b.inV += l.v; a.outs.push(l); b.ins.push(l); });
     nodes = nodes.filter(function (n) { n.v = Math.max(n.inV, n.outV); return n.v > 0; });
     var cols = []; nodes.forEach(function (n) { (cols[n.col] = cols[n.col] || []).push(n); });
-    var nw = 10, pad = 16, T = 8, usable = H - T * 2, L = 6, R = 230;   // the last column's labels sit to its right
+    var nw = 10, pad = 16, T = 8, foot = opt.base ? 34 : 0, usable = H - T * 2 - foot, L = 6, R = opt.base ? 280 : 230;   // the last column's labels sit to its right
     var maxTot = 0, maxN = 0; cols.forEach(function (c) { if (!c) return; maxTot = Math.max(maxTot, c.reduce(function (a, n) { return a + n.v; }, 0)); maxN = Math.max(maxN, c.length); });
     var k = (usable - pad * (maxN - 1)) / maxTot, nc = cols.length;
     cols.forEach(function (c, ci) {
@@ -1271,15 +1272,22 @@
         oy += w;
       });
     });
+    var lastCol = cols.length - 1, pctOf = function (v) { return opt.base ? ' · ' + (v / opt.base * 100).toFixed(1) + '%' : ''; };
+    var showPct = function (n) { return opt.base && (n.col === lastCol || (opt.pctAlso || []).indexOf(n.id) >= 0); };
     nodes.forEach(function (n) {
       svg.appendChild(svgEl('rect', { x: n.x, y: n.y, width: nw, height: n.h, rx: 2, fill: n.color }));
-      var tx = n.x + nw + 8, anchor = 'start', cy = n.y + n.h / 2;
+      var tx = n.x + nw + 8, anchor = 'start', cy = n.y + n.h / 2, pc = showPct(n) ? pctOf(n.v) : '';
       var t1 = svgEl('text', { x: tx, y: cy - (n.h >= 26 ? 3 : 0) + (n.h >= 26 ? 0 : 4), class: 'fn-sk-l', 'text-anchor': anchor });
-      t1.textContent = n.h >= 26 ? n.label : n.label + ' · ' + money(n.v);
+      t1.textContent = n.h >= 26 ? n.label : n.label + ' · ' + money(n.v) + pc;
       svg.appendChild(t1);
-      if (n.h >= 26) { var t2 = svgEl('text', { x: tx, y: cy + 13, class: 'fn-sk-v', 'text-anchor': anchor }); t2.textContent = money(n.v); svg.appendChild(t2); }
+      if (n.h >= 26) { var t2 = svgEl('text', { x: tx, y: cy + 13, class: 'fn-sk-v', 'text-anchor': anchor }); t2.textContent = money(n.v) + pc; svg.appendChild(t2); }
       if (n.note && n.h >= 40) { var t3 = svgEl('text', { x: tx, y: cy + 28, class: 'fn-sk-n', 'text-anchor': anchor }); t3.textContent = n.note; svg.appendChild(t3); }
     });
+    if (opt.base && cols[lastCol]) {
+      var lc = cols[lastCol], tot = lc.reduce(function (a, n) { return a + n.v; }, 0), bx = lc[0].x, by = Math.min(H - 6, lc[lc.length - 1].y + lc[lc.length - 1].h + 26);
+      svg.appendChild(svgEl('line', { x1: bx, x2: bx + nw + 8 + 230, y1: by - 16, y2: by - 16, class: 'fn-sk-rule' }));
+      var tt = svgEl('text', { x: bx + nw + 8, y: by, class: 'fn-sk-l fn-sk-tot', 'text-anchor': 'start' }); tt.textContent = (opt.totLabel || 'Total') + ' · ' + money(tot) + pctOf(tot); svg.appendChild(tt);
+    }
     return svg;
   }
   /* ----- Financials: drop Square's Item sales detail for the exact food / beverage split ----- */
@@ -1443,8 +1451,9 @@
     var d = cashFlowData(ws);
     if (!d.t.net) { cb.box.appendChild(h('p', { cls: 'an-sub', text: 'No sales for this period yet: drop the week’s Transactions CSV into Weekly payroll.' })); return cb.box; }
     var bt = d.buy.total, what = bt ? 'payroll & costs' : 'payroll';
-    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips)' + (d.buy.inv ? ' · invoices ' + money(d.buy.inv) + ' (' + pctTxt(d.buy.inv / d.t.net) + ')' : '') + (d.buy.bfixed ? ' · fixed costs ' + money(d.buy.bfixed) : '') + ' · ' + (d.left >= 0 ? money(d.left) + ' left after ' + what : what + ' came to ' + money(-d.left) + ' more than came in') }));
-    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 520 : 420)); cb.box.appendChild(wrap);
+    cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: span + ' · ' + money(d.total) + ' came in · true labor ' + pctTxt(d.t.cost / d.t.net) + ' of net sales (payroll invoice less tips)' + (d.buy.inv ? ' · invoices ' + money(d.buy.inv) + ' (' + pctTxt(d.buy.inv / d.t.net) + ')' : '') + (d.buy.bfixed ? ' · fixed costs ' + money(d.buy.bfixed) : '') + ' · ' + (d.left >= 0 ? money(d.left) + ' (' + pctTxt(d.left / d.t.net) + ') left after ' + what : what + ' came to ' + money(-d.left) + ' more than came in') }));
+    if (d.t.noFees) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: 'Card processing fees aren’t in for ' + d.t.noFees + ' of these ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' (they were imported before fees were read), so the Square band is only the loan there. Drop ' + (d.t.noFees === 1 ? 'that week’s' : 'those weeks’') + ' Transactions CSV into Weekly payroll again to add them.' }));
+    var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctAlso: ['left'], totLabel: 'Total out' })); cb.box.appendChild(wrap);
     cb.box.appendChild(whoWhere(ws));
     if (d.buy.list.length || d.buy.fixed.length) {
       var gname = {}; BUY.forEach(function (b) { gname[b[0]] = b[1]; });
@@ -1457,7 +1466,7 @@
         })),
         h('p', { cls: 'fn-note', text: 'Each invoice counts on its invoice date. Lines go to food, beverage or paper goods by the inventory item they were matched to when the invoice was scanned; unmatched vendors, delivery and fuel charges go to Other. Fixed costs: rent, $6,000 on the 1st of every month, counted in the period that includes the 1st.' })]));
     }
-    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
+    cb.box.appendChild(h('p', { cls: 'fn-note', text: 'Percentages on the right are of net sales (' + money(d.t.net) + '); “Total out” adds up the right-hand column. From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
       '. Wages: kitchen hours are back of house, hours outside the tip pool (managing) are management, tip-pool hours are servers & bartenders, salaries go by position' + (d.t.estSplit ? ' (' + d.t.estSplit + (d.t.estSplit === 1 ? ' older week is' : ' older weeks are') + ' split by each person’s position; open ' + (d.t.estSplit === 1 ? 'it' : 'them') + ' in Weekly payroll to split exactly)' : '') +
       '. Payroll is the payroll company’s invoice less tips' + (d.t.inv < ws.length ? ' (weeks without an invoice count pay only)' : '') + (d.t.est ? '; ' + d.t.est + (d.t.est === 1 ? ' week uses' : ' weeks use') + ' the estimated invoice' : '') + (d.buy.inv ? '. Invoices are the ones scanned in Inventory, by invoice date.' : OV.invErr ? '. Invoices couldn’t be loaded (run supabase/invoices.sql, or sign in as someone with inventory access).' : '. No scanned invoices are dated in this period yet: invoices scanned in Inventory will show here by their date.') + (d.buy.bfixed ? '' : ' Rent ($6,000) counts in any period that includes the 1st of a month.') }));
     return cb.box;
