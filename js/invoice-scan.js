@@ -295,10 +295,14 @@
   }
 
   /* ---------- 2. check each line ---------- */
+  var NEW_KINDS = [['food', 'food item'], ['paper', 'paper good'], ['spirits', 'spirit'], ['wine', 'wine'], ['beer', 'beer']];
+  // where a new item of each kind goes: its inventory tab and section, and how the line is received
+  var NEW_AS = { food: { cat: 'food', section: '', recv: 'food' }, paper: { cat: 'paper', section: '', recv: 'food' }, spirits: { cat: 'bev', section: '', recv: 'wine' }, wine: { cat: 'bev', section: 'Wine', recv: 'wine' }, beer: { cat: 'bev', section: 'Canned beer', recv: 'other' } };
   function itemSelect(L, onChange) {
     var sel = h('select', { cls: 'is-item', 'aria-label': 'Inventory item for ' + L.description });
     sel.appendChild(h('option', { value: '', text: '— Not in inventory (skip) —' }));
-    sel.appendChild(h('option', { value: '__new', text: '+ Add as a new item' }));
+    // a new item, received as the right kind: that sets which boxes the line gets and where the item goes in the inventory
+    sel.appendChild(h('optgroup', { label: 'Add as a new item' }, NEW_KINDS.map(function (k) { return h('option', { value: '__new:' + k[0], text: '+ New ' + k[1] }); })));
     ['food', 'paper', 'bev'].forEach(function (c) {
       var list = A.items.filter(function (it) { return it.category === c && it.active !== false; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
       if (!list.length) return;
@@ -306,7 +310,7 @@
       list.forEach(function (it) { og.appendChild(h('option', { value: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : '') + (it.vendor ? ' · ' + it.vendor : '') })); });
       sel.appendChild(og);
     });
-    sel.value = L.item || '';
+    sel.value = L.item === '__new' ? '__new:' + (L.newKind || 'food') : L.item || '';
     sel.addEventListener('change', function () { onChange(sel.value); });
     return sel;
   }
@@ -338,6 +342,7 @@
 
     // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
     function kindOf(L, it) {
+      if (!it && L.item === '__new' && L.newKind && NEW_AS[L.newKind]) return NEW_AS[L.newKind].recv;
       var x = it || { category: catGuess(L) }, cat = x.category, sec = String((x && x.section) || '') + ' ' + L.description;
       if (cat === 'paper') return 'food';   // paper goods: a case of so many
       if (cat !== 'bev') return 'food';
@@ -354,6 +359,13 @@
       if (/\b(beer|ipa|lager|ale|stout|pils|cider|seltzer|soda|juice|coffee|tea|kombucha|tonic)\b/i.test(t) || /brewing|brewery|roast/i.test(v)) return 'bev';
       return DRINKV.test(v) ? 'bev' : newCatGuess();
     }
+    function guessKind(L) {   // the kind a new item most likely is
+      if (catGuess(L) !== 'bev') return /\b(napkin|towel|glove|foil|film|wrap|container|lid|cup|straw|bag|liner|bleach|sanitizer|soap|detergent|chemical|paper|plate|fork|knife|spoon|to.?go)\b/i.test(L.description) ? 'paper' : 'food';
+      var t = L.description + ' ' + (L.pack || '');
+      if (/\b(beer|ipa|lager|ale|stout|pils|porter|cider|seltzer|keg|sixtel)\b/i.test(t) || /brewing|brewery/i.test((f && f.vendor && f.vendor.value) || '')) return 'beer';
+      if (/\b(wine|cabernet|merlot|pinot|riesling|chardonnay|sauvignon|syrah|zinfandel|malbec|ros[ée]|sparkling|champagne|prosecco|cava|cr[eé]mant|blanc|rouge|red blend|white blend)\b/i.test(t) || /winery|vineyard|cellars/i.test((f && f.vendor && f.vendor.value) || '')) return 'wine';
+      return 'spirits';
+    }
     function newCatGuess() { var c = {}; inv.lines.forEach(function (L) { var x = L.item && L.item !== '__new' ? item(L.item) : null; if (x) c[x.category] = (c[x.category] || 0) + 1; }); return Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })[0] || A.cat || 'food'; }
     function sel(opts, val, label) { var e = h('select', { 'aria-label': label }, opts.map(function (o) { return h('option', { value: o[0], text: o[1] }); })); e.value = val; return e; }
     function sizeFields(L, it, changed) {
@@ -366,6 +378,7 @@
           L.rcv = { unit: cs ? 'case' : 'bottle', qty: L.cases && L.bottles ? null : L.qty != null ? L.qty : cs ? L.cases : L.bottles, bpc: L.bottles_per_case || packCount(p) || (cs ? 12 : null), ml: L.bottle_ml || ML(p) || 750 };
           if (L.rcv.qty == null && L.cases && L.bottles && L.rcv.bpc) { L.rcv.unit = 'bottle'; L.rcv.qty = L.cases * L.rcv.bpc + L.bottles; }
         }
+        if (!it && L.item === '__new' && !L.sized) L.per = L.rcv.unit === 'case' ? (L.rcv.bpc || 1) : 1;
         var R = L.rcv, ozOne = function () { return R.ml / 29.5735 * (R.unit === 'case' ? (R.bpc || 0) : 1); };
         var qn = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n', value: R.qty == null ? '' : String(R.qty), 'aria-label': 'Number received' });
         var us = sel([['case', 'Case'], ['bottle', 'Bottle']], R.unit, 'Case or bottle');
@@ -383,6 +396,7 @@
           var size = R.ml % 1000 === 0 ? R.ml / 1000 + 'L' : R.ml + 'ml';
           L.pack = (R.unit === 'case' && R.bpc ? R.bpc + '/' : '') + size;
           if (L.unit_price != null && R.qty != null) L.extended = r2(L.unit_price * R.qty);
+          if (!it && L.item === '__new') { L.per = R.unit === 'case' ? (R.bpc || 1) : 1; L.costOver = null; }   // a new wine or spirit is counted by the bottle
           changed();
         };
         qn.addEventListener('change', function () { R.qty = num(qn.value); commit(); });
@@ -437,7 +451,8 @@
       per.addEventListener('change', function () { var v = num(per.value); if (v > 0) { L.per = flip ? 1 / v : v; L.costOver = null; } paintRow(L); });
       var nci = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-cost', value: nc == null ? '' : String(nc), disabled: !L.item, 'aria-label': 'New cost per counting unit' });
       nci.addEventListener('change', function () { var v = num(nci.value); L.costOver = v; paintRow(L); });
-      var unitName = isNew ? (canon(L.unit) || 'unit') : it ? (it.unit || 'unit') : '';
+      if (isNew && !L.newKind) L.newKind = guessKind(L);
+      var unitName = isNew ? (NEW_AS[L.newKind] && NEW_AS[L.newKind].recv === 'wine' ? 'bottle' : canon(L.unit) || 'unit') : it ? (it.unit || 'unit') : '';
       var big = ch != null && Math.abs(ch) >= 0.5;
       tr.className = 'is-row' + (L.use && L.item ? ' is-on' : '') + (big ? ' is-big' : '');
       tr.appendChild(h('td', { cls: 'is-use' }, use));
@@ -450,7 +465,9 @@
         h('span', { cls: 'is-size' + (noSize ? ' is-miss' : '') }, sizeBox.concat([noSize ? h('em', { text: 'Size not read: add it' }) : null])),
         L.note ? h('span', { cls: 'is-note', text: L.note }) : null
       ]));
+      if (isNew && !L.newKind) L.newKind = guessKind(L);
       tr.appendChild(h('td', { cls: 'is-it' }, [itemSelect(L, function (v) {
+        if (/^__new:/.test(v)) { L.newKind = v.slice(6); v = '__new'; L.rcv = null; }
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
@@ -497,7 +514,8 @@
       use.forEach(function (L) {
         var c = r4(L.costOver != null ? L.costOver : newCost(L)), it;
         if (L.item === '__new') {
-          it = Object.assign({ id: A.uid(), category: newCat || catGuess(L), section: '', name: L.description, unit: canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
+          var as = NEW_AS[L.newKind] || null;
+          it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: as && as.recv === 'wine' ? 'bottle' : canon(L.unit), pack: L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
