@@ -44,23 +44,44 @@ revoke all on function public.log_staff_visit(text, text, boolean) from public, 
 grant execute on function public.log_staff_visit(text, text, boolean) to authenticated;
 
 -- the Owner's view: every visit in the period, and everyone who has a login (with Supabase's own last sign-in)
-create or replace function public.staff_activity(p_from timestamptz, p_to timestamptz) returns jsonb
-language sql stable security definer set search_path = public, auth as $$
-  select case when coalesce(public.staff_role(), '') <> 'owner' then null else jsonb_build_object(
-    'visits', coalesce((select jsonb_agg(jsonb_build_object('email', v.email, 'site', v.site, 'device', v.device, 'signed_in', v.signed_in,
-                 'pages', v.pages, 'start', v.started_at, 'last', v.last_seen) order by v.started_at desc)
-               from public.staff_visits v where v.started_at >= p_from and v.started_at < p_to), '[]'::jsonb),
-    'people', coalesce((select jsonb_agg(jsonb_build_object('email', lower(u.email),
-                 'name', coalesce((select e.name from public.employees e where lower(trim(e.email)) = lower(u.email) limit 1),
-                                  (select s.name from public.staff s where s.user_id = u.id), u.email),
-                 'position', (select e.position from public.employees e where lower(trim(e.email)) = lower(u.email) limit 1),
-                 'role', (select s.role from public.staff s where s.user_id = u.id),
-                 'last_sign_in', u.last_sign_in_at,
-                 'last_seen', (select max(v.last_seen) from public.staff_visits v where v.user_id = u.id)))
-               from auth.users u
-               where lower(u.email) in (select lower(trim(e.email)) from public.employees e where coalesce(e.email, '') <> '')
-                  or u.id in (select s.user_id from public.staff s where coalesce(s.role, '') <> 'hub')), '[]'::jsonb)
-  ) end
-$$;
+create or replace function public.staff_activity(p_from timestamptz, p_to timestamptz)
+returns jsonb language plpgsql stable security definer set search_path = public, auth as $$
+declare
+  v jsonb;
+  p jsonb;
+begin
+  if coalesce(public.staff_role(), '') <> 'owner' then return null; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'email', x.email, 'site', x.site, 'device', x.device,
+           'signed_in', x.signed_in, 'pages', x.pages,
+           'start', x.started_at, 'last', x.last_seen)
+         order by x.started_at desc), '[]'::jsonb)
+    into v
+    from public.staff_visits x
+   where x.started_at >= p_from and x.started_at < p_to;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'email', lower(u.email),
+           'name', coalesce(
+              (select e.name from public.employees e
+                where lower(trim(e.email)) = lower(u.email) limit 1),
+              (select s.name from public.staff s where s.user_id = u.id),
+              u.email),
+           'position', (select e.position from public.employees e
+                         where lower(trim(e.email)) = lower(u.email) limit 1),
+           'role', (select s.role from public.staff s where s.user_id = u.id),
+           'last_sign_in', u.last_sign_in_at,
+           'last_seen', (select max(y.last_seen) from public.staff_visits y
+                          where y.user_id = u.id))), '[]'::jsonb)
+    into p
+    from auth.users u
+   where lower(u.email) in (select lower(trim(e.email)) from public.employees e
+                             where coalesce(e.email, '') <> '')
+      or u.id in (select s.user_id from public.staff s
+                   where coalesce(s.role, '') <> 'hub');
+
+  return jsonb_build_object('visits', v, 'people', p);
+end $$;
 revoke all on function public.staff_activity(timestamptz, timestamptz) from public, anon;
 grant execute on function public.staff_activity(timestamptz, timestamptz) to authenticated;
