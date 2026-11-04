@@ -1132,9 +1132,10 @@
      later split "Left after payroll" into food, beverage, rent and so on. */
   var CF = { teal: '#4f8f86', grey: '#9d9a94', sand: '#c9a24b', blue: '#5b8fc9', ember: '#b0703f', red: '#c9645a', green: '#5d7a64', plum: '#8a6fa8' };
   function cashFlowData(ws) {
-    var t = { exact: 0, net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
+    var t = { loan: 0, exact: 0, net: 0, food: 0, bev: 0, unsplit: 0, tax: 0, tipsIn: 0, tips: 0, fees: 0, comm: 0, cost: 0, ptax: 0, mgmt: 0, boh: 0, foh: 0, est: 0, inv: 0, estSplit: 0, noSplit: 0 };
     ws.forEach(function (w) {
       var x = w.s, net = x.net || 0;
+      t.loan += x.loan || 0;
       t.net += net; t.tax += x.tax || 0; t.tips += x.tips || 0; t.tipsIn += x.tipsIn != null ? x.tipsIn : (x.tips || 0); t.fees += x.cardFees || 0; t.comm += x.comm || 0;
       if (x.food != null && x.bev != null) {
         // item sales are net of discounts the same way, but may differ from the Transactions CSV by refunds or timing: scale to its net sales
@@ -1157,12 +1158,12 @@
       t.mgmt += wb.mgmt || 0; t.boh += wb.boh || 0; t.foh += wb.foh || 0;
     });
     Object.keys(t).forEach(function (k) { t[k] = r2(t[k]); });
-    var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), left = r2(inT - t.tax - t.tips - t.fees - payOut);
+    var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), left = r2(inT - t.tax - t.tips - t.fees - t.loan - payOut);
     var nodes = [
       { id: 'food', label: 'Food sales', col: 0, color: CF.teal }, { id: 'bev', label: 'Beverage sales', col: 0, color: CF.plum }, { id: 'sales', label: 'Net sales (not split)', col: 0, color: '#7fb0a8' },
       { id: 'tax', label: 'Sales tax collected', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
-      { id: 'taxout', label: 'Sales tax (to NYS)', col: 2, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 2, color: CF.sand }, { id: 'feesout', label: 'Card fees (Square)', col: 2, color: '#a8a39a' },
+      { id: 'taxout', label: 'Sales tax (to NYS)', col: 2, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 2, color: CF.sand }, { id: 'feesout', label: 'Card fees (Square)', col: 2, color: '#a8a39a' }, { id: 'loanout', label: 'Square Loan repayment', col: 2, color: '#7d6b9e' },
       { id: 'pay', label: 'Payroll', col: 2, color: CF.ember }, { id: 'left', label: left >= 0 ? 'Left after payroll' : 'Payroll over sales', col: 2, color: left >= 0 ? CF.green : CF.red },
       { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'boh', label: 'Back of house', col: 3, color: CF.ember }, { id: 'foh', label: 'Servers & bartenders', col: 3, color: '#d39a6a' },
       { id: 'comm', label: 'Commission', col: 3, color: '#d39a6a' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red },
@@ -1170,7 +1171,7 @@
     ];
     var links = [
       ['food', 'in', t.food], ['bev', 'in', t.bev], ['sales', 'in', t.unsplit], ['tax', 'in', t.tax], ['tips', 'in', t.tipsIn],
-      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'feesout', t.fees], ['in', 'pay', payOut], ['in', 'left', Math.max(0, left)],
+      ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips], ['in', 'feesout', t.fees], ['in', 'loanout', t.loan], ['in', 'pay', payOut], ['in', 'left', Math.max(0, left)],
       ['pay', 'mgmt', t.mgmt], ['pay', 'boh', t.boh], ['pay', 'foh', t.foh], ['pay', 'comm', t.comm], ['pay', 'ptax', t.ptax], ['left', 'later', Math.max(0, left)]
     ].map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
     return { nodes: nodes, links: links, t: t, left: left, total: inT };
@@ -1275,20 +1276,73 @@
       });
     });
   }
+  // Square Loans → loan → All activity → Export: each repayment (taken out of card sales), added up by week
+  function loanFile(text, fname) {
+    var rows = parseCSV(text), hi = -1, H = [];
+    for (var i = 0; i < Math.min(rows.length, 15); i++) { var r = rows[i].map(function (x) { return String(x).trim().toLowerCase(); }); if (r.some(function (c) { return /date/.test(c); }) && r.some(function (c) { return /amount|payment|repaid|repayment|withheld|paid/.test(c); })) { hi = i; H = r; break; } }
+    if (hi < 0) return Promise.reject(new Error(fname + ': couldn’t find the Date and Amount columns of a loan activity file.'));
+    var di = H.findIndex(function (c) { return /date/.test(c); }), ai = H.indexOf('amount');
+    if (ai < 0) ai = H.findIndex(function (c) { return /repayment|repaid|payment|withheld|paid|amount/.test(c) && !/balance|remaining/.test(c); });
+    var dsi = H.findIndex(function (c) { return /description|type|activity|details/.test(c); });
+    var m0 = function (v) { v = String(v || '').trim(); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : n; };
+    var weeks = {}, n = 0;
+    rows.slice(hi + 1).forEach(function (r) {
+      var d = parseDate(r[di]); if (!d) return;
+      var desc = dsi >= 0 ? String(r[dsi] || '') : '';
+      if (/disburs|funded|loan deposit|advance deposit|refund/i.test(desc)) return;   // the loan money coming in, not a repayment
+      var a = m0(r[ai]); if (!a) return;
+      var wk = iso(sunday(d)), w = weeks[wk] = weeks[wk] || { days: [0, 0, 0, 0, 0, 0, 0] };
+      w.days[d.getDay()] = r2(w.days[d.getDay()] + a); n++;
+    });
+    var keys = Object.keys(weeks).sort();
+    if (!keys.length) return Promise.reject(new Error(fname + ': no repayments found.'));
+    return saveToWeeks(keys, fname, function (rows2, k) {
+      var t = sum(weeks[k].days); rows2._loan = { days: weeks[k].days, total: t, file: fname, at: new Date().toISOString() };
+      if (rows2._summary) rows2._summary.loan = t;
+    }, 'loan repayments');
+  }
+  // put something into each week's payroll row (the Financials overview reads it from there)
+  function saveToWeeks(keys, fname, put, what) {
+    return sb().from('payroll_weeks').select('week_start,rows').in('week_start', keys).then(function (res) {
+      if (res.error) throw new Error('Couldn’t read the payroll weeks.');
+      var have = {}; (res.data || []).forEach(function (x) { have[x.week_start] = x; });
+      var ups = [], skipped = [];
+      keys.forEach(function (k) { var x = have[k]; if (!x) { skipped.push(k); return; } var rows2 = x.rows || {}; put(rows2, k); ups.push({ week_start: k, rows: rows2 }); });
+      return (ups.length ? sb().from('payroll_weeks').upsert(ups, { onConflict: 'week_start' }) : Promise.resolve({})).then(function (u) {
+        if (u && u.error) throw new Error('Couldn’t save to the payroll weeks.');
+        return fname + ': ' + what + ' for ' + (ups.length ? ups.length + (ups.length === 1 ? ' week' : ' weeks') + ' (' + ups.map(function (u) { return wkLabel(u.week_start); }).join(', ') + ')' : 'no weeks') +
+          (skipped.length ? '. Not saved for ' + skipped.map(function (k) { return 'week of ' + wkLabel(k); }).join(', ') + ': that week isn’t in Weekly payroll yet. Drop its Square files there first, then this file again.' : '.');
+      });
+    });
+  }
   function salesZone() {
     var file = h('input', { type: 'file', accept: '.csv,text/csv', multiple: true, hidden: true });
-    var last = (OV.weeks || []).filter(function (w) { return w.s && w.s.salesExact; }).length;
-    var zone = h('div', { cls: 'pr-zone fn-zone', tabindex: '0', role: 'button', 'aria-label': 'Drop Square’s Item sales detail here, or press to choose it' }, [
-      h('p', { cls: 'pr-zoneh', text: 'Drag Square’s Item sales report here' }),
-      h('div', { cls: 'pr-slots' }, [h('div', { cls: 'pr-slot' + (last ? ' done' : '') }, [h('span', { cls: 'pr-slotn', text: last ? '✓' : '1' }),
-        h('div', null, [h('b', { text: 'Item sales detail: exact food & beverage sales' }), h('small', { text: last ? last + (last === 1 ? ' week has' : ' weeks have') + ' the exact split. Drop another to add more weeks.' : 'Reports → Item sales → pick the dates (any number of weeks) → Export → Item sales detail' })])])]),
-      h('p', { cls: 'pr-zonef', text: 'or click here to choose the file. Each week goes into that week’s payroll; dropping it again replaces it.' })
+    var W = OV.weeks || [], nTx = W.filter(function (w) { return w.s && w.s.net; }).length, nItems = W.filter(function (w) { return w.s && w.s.salesExact; }).length, nLoan = W.filter(function (w) { return w.s && w.s.loan != null; }).length;
+    var slot = function (n, done, title, steps, doneTxt, extra) {
+      return h('div', { cls: 'pr-slot fn-slot' + (done ? ' done' : '') }, [h('span', { cls: 'pr-slotn', text: done ? '✓' : String(n) }),
+        h('div', null, [h('b', { text: title }), h('ol', { cls: 'fn-steps' }, steps.map(function (t) { return h('li', { text: t }); })), done ? h('small', { text: doneTxt }) : null, extra || null])]);
+    };
+    var zone = h('div', { cls: 'pr-zone fn-zone', tabindex: '0', role: 'button', 'aria-label': 'Drop Square reports here, or press to choose them' }, [
+      h('p', { cls: 'pr-zoneh', text: 'Drag Square reports here' }),
+      h('div', { cls: 'pr-slots' }, [
+        slot(1, nTx, 'Sales, tax, tips & card fees: Transactions CSV', ['Square Dashboard → Payments & invoices → Transactions', 'Pick the week, Sunday to Saturday', 'Export → Transactions CSV', 'Drop it in Weekly payroll with the week’s timecards (not here)'], nTx + (nTx === 1 ? ' week' : ' weeks') + ' in.',
+          h('a', { cls: 'sc-link fn-go', href: '#payroll', text: 'Go to Weekly payroll →', on: { click: function (ev) { ev.stopPropagation(); } } })),
+        slot(2, nItems, 'Food vs beverage: Item sales detail', ['Square Dashboard → Reports → Item sales', 'Pick the dates (one week or many)', 'Export → Item sales detail', 'Drop it here'], nItems + (nItems === 1 ? ' week has' : ' weeks have') + ' the exact split.'),
+        slot(3, nLoan, 'Square Loan repayments: loan activity', ['Square Dashboard → Capital (or Square Loans)', 'Your loan → View details → All activity', 'Export (top right)', 'Drop it here'], nLoan + (nLoan === 1 ? ' week has' : ' weeks have') + ' repayments.')
+      ]),
+      h('p', { cls: 'pr-zonef', text: 'or click here to choose files. Drop several at once; each is recognized by its columns. Every week goes into that week’s payroll, and dropping a file again replaces it.' })
     ]);
     function take(files) {
       files = [].slice.call(files || []).filter(function (f) { return /\.csv$/i.test(f.name) || /csv|text/.test(f.type); });
       if (!files.length) return;
       status('Reading ' + files.map(function (f) { return f.name; }).join(', ') + '…', 'dirty');
-      Promise.all(files.map(function (f) { return f.text().then(function (t) { return itemsFile(t, f.name); }).catch(function (e) { return e.message; }); })).then(function (msgs) {
+      Promise.all(files.map(function (f) { return f.text().then(function (t) {
+        var head = t.slice(0, 3000).toLowerCase();
+        if (/category/.test(head) && /net sales|gross sales/.test(head)) return itemsFile(t, f.name);
+        if (/transaction id/.test(head) && /\btip\b/.test(head)) return f.name + ': that’s the Transactions CSV. Drop it in Weekly payroll with the week’s timecards (it brings in sales, tax, tips and card fees).';
+        if (/date/.test(head) && /amount|payment|repaid|repayment|withheld/.test(head)) return loanFile(t, f.name);
+        return f.name + ': not a file this box reads. Use Item sales detail or the Square Loans activity export.';
+      }).catch(function (e) { return e.message; }); })).then(function (msgs) {
         status(msgs.join(' '), /couldn|isn’t|not saved|no sales|instead/i.test(msgs.join(' ')) ? 'err' : 'ok');
         loadOverview();
       });

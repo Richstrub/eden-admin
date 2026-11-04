@@ -3106,3 +3106,9 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .fn-whog{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:10px}
 .fn-whog ul{list-style:none;margin:6px 0 0;padding:0}.fn-whog li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid rgba(15,18,21,.06)}
 @media (max-width:760px){.fn-whog{grid-template-columns:1fr}}
+.fn-zone .pr-slots{grid-template-columns:repeat(3,1fr);max-width:none}
+.fn-slot b{display:block;margin-bottom:4px}
+.fn-steps{margin:4px 0 4px 16px;padding:0;font-size:.8rem;color:#4a4e53;line-height:1.45}
+.fn-slot small{display:block;color:#2f6b3a}
+.fn-go{display:inline-block;margin-top:4px;font-size:.82rem;color:var(--ember,#b0703f)}
+@media (max-width:900px){.fn-zone .pr-slots{grid-template-columns:1fr}}
