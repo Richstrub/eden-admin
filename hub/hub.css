@@ -265,3 +265,8 @@ button{font:inherit;color:inherit}
 .hb-calbar:active{transform:scale(.99)}
 .hb-tempbar.warn{border-color:rgba(217,178,95,.55);background:rgba(217,178,95,.12);color:#f3e2bd}
 .hb-tempbar.warn::before{background:var(--gold)}
+
+/* prep list laid out in explicit columns (hub.js), so Dessert stacks right under Small Plates */
+.hb-pcols.hb-pcols-x{columns:auto;display:flex;align-items:flex-start}
+.hb-pcol{flex:1 1 0;min-width:0}
+.hb-pcol+.hb-pcol{margin-left:calc(var(--u)*2)}

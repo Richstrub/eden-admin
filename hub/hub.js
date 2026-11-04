@@ -315,9 +315,21 @@ if (!Element.prototype.replaceChildren) {
     var des = groups.filter(function (g) { return /dessert/i.test(g); }), sm = groups.findIndex(function (g) { return /small/i.test(g); });
     if (des.length && sm >= 0) { groups = groups.filter(function (g) { return des.indexOf(g) < 0; }); groups.splice.apply(groups, [groups.findIndex(function (g) { return /small/i.test(g); }) + 1, 0].concat(des)); }
     box.appendChild(cols);
+    // how many columns the screen gets (3, 2 or 1, from hub.css), then lay them out by hand so Dessert sits
+    // directly under Small Plates in the same column, with no gap, and the other sections fill the other columns
+    var n = parseInt(getComputedStyle(cols).columnCount, 10) || 1;
+    cols.className = 'hb-pcols hb-pcols-x';
+    var colEls = [], heights = [];
+    for (var ci = 0; ci < n; ci++) { colEls.push(h('div', { cls: 'hb-pcol' })); heights.push(0); cols.appendChild(colEls[ci]); }
+    var group = function (g) { return h('div', { cls: 'hb-pgroup' }, [h('h4', { text: g + ' · ' + by[g].length }),
+      h('ul', by[g].map(function (l) { return h('li', [h('span', { cls: 'hb-box', 'aria-hidden': 'true' }), h('span', { text: l.label }), l.dish ? h('small', { text: l.dish }) : null]); }))]); };
+    var stack = n > 1 && sm >= 0 ? groups.filter(function (g) { return /small/i.test(g) || des.indexOf(g) >= 0; }) : [];
+    if (stack.length) { stack.forEach(function (g) { colEls[0].appendChild(group(g)); heights[0] += by[g].length + 2; }); }
     groups.forEach(function (g) {
-      cols.appendChild(h('div', { cls: 'hb-pgroup' }, [h('h4', { text: g + ' · ' + by[g].length }),
-        h('ul', by[g].map(function (l) { return h('li', [h('span', { cls: 'hb-box', 'aria-hidden': 'true' }), h('span', { text: l.label }), l.dish ? h('small', { text: l.dish }) : null]); }))]));
+      if (stack.indexOf(g) >= 0) return;
+      var first = stack.length ? 1 : 0, k = first;   // the shortest column (Small Plates' column is kept for Dessert)
+      for (var j = first + 1; j < n; j++) if (heights[j] < heights[k]) k = j;
+      colEls[k].appendChild(group(g)); heights[k] += by[g].length + 2;
     });
     box.scrollTop = keep;   // a refresh doesn't jump the list back to the top
   }
