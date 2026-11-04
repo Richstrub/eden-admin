@@ -219,7 +219,7 @@
       if (window.EdenCal) window.EdenCal.show({ sb: sb, el: $('viewCalendar'), status: status, name: staffName, canEdit: isMgr(), focus: calFocus });
     } else if (v === 'recipes') {
       status('');
-      if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr() });
+      if (window.EdenRecipes) window.EdenRecipes.show({ sb: sb, el: $('viewRecipes'), status: status, name: staffName, canEdit: isMgr(), getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'todo') {
       status('');
       if (window.EdenNotes) window.EdenNotes.showTodo({ sb: sb, el: $('viewTodo'), status: status, name: staffName });

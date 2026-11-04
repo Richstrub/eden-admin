@@ -191,10 +191,15 @@
     el.innerHTML = '';
     var app = isApp();
     var wrap = h('div', { cls: 'rc-in' + (app ? ' rc-app' : '') }); el.appendChild(wrap);
+    var ck = R.tab === 'cocktails' && window.EdenCocktails;
     wrap.appendChild(h('div', { cls: 'rc-title' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow', text: app ? 'Kitchen' : 'Kitchen & Bar' }), h('h1', { cls: 'sc-week', text: 'Recipes' })]),
-      canEdit() && !R.missing ? h('button', { type: 'button', cls: 'ed-btn', text: 'New recipe', on: { click: function () { startEdit(blank()); } } }) : null
+      h('div', null, [h('p', { cls: 'sc-eyebrow', text: app ? 'Kitchen' : 'Kitchen & Bar' }), h('h1', { cls: 'sc-week', text: ck ? 'Cocktail builds' : 'Recipes' })]),
+      !ck && canEdit() && !R.missing ? h('button', { type: 'button', cls: 'ed-btn', text: 'New recipe', on: { click: function () { startEdit(blank()); } } }) : null
     ]));
+    if (window.EdenCocktails) wrap.appendChild(h('div', { cls: 'sc-tabs rc-tabs', role: 'tablist' }, [['recipes', 'Recipes'], ['cocktails', 'Cocktail builds']].map(function (t) {
+      return h('button', { type: 'button', role: 'tab', 'aria-selected': (R.tab || 'recipes') === t[0] ? 'true' : 'false', text: t[1], on: { click: function () { if ((R.tab || 'recipes') !== t[0]) { R.tab = t[0]; render(); } } } });
+    })));
+    if (ck) { var ckEl = h('div', { cls: 'ck-in' }); wrap.appendChild(ckEl); window.EdenCocktails.mount({ sb: R.ctx.sb, status: R.ctx.status, name: R.ctx.name, canEdit: canEdit(), getMenu: R.ctx.getMenu }, ckEl); return; }
     wrap.appendChild(h('p', { cls: 'rc-status', role: 'status' }));
     if (!R.loaded) { wrap.appendChild(h('p', { cls: 'sc-empty', text: 'Loading recipes…' })); return; }
     if (R.missing) {

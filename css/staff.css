@@ -3063,3 +3063,33 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 @media (max-width:600px){.iv-pboxes{grid-template-columns:1fr}.iv-prow{grid-template-columns:80px 1fr}.iv-pn{display:none}}
 @media print{.iv-pricing,.iv-subtabs{display:none!important}}
 .iv-poff .sc-link,.iv-olist .sc-link{border:0;background:none;padding:0;font:inherit;color:var(--ember,#b8652d);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+/* Recipes → Cocktail builds (js/cocktails.js) */
+.rc-tabs{margin:4px 0 18px}
+.ck-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.ck-lede{margin:0;color:var(--stone);font-size:.9rem}.ck-tools{display:flex;gap:8px;flex-wrap:wrap}
+.ck-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.ck-card{background:#fff;border:1px solid rgba(15,18,21,.08);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.ck-card.off{opacity:.55}
+.ck-card header{display:flex;justify-content:space-between;gap:10px}
+.ck-card h3{margin:0;font-family:var(--serif);font-weight:500;font-size:1.3rem}
+.ck-sub{margin:2px 0 0;color:var(--stone);font-size:.82rem}
+.ck-price{text-align:right;white-space:nowrap}.ck-price b{display:block;font-weight:600}.ck-price span{font-size:.8rem;color:#2f6b3a}.ck-price span.hi{color:#a3392b}
+.ck-pours{list-style:none;margin:0;padding:0;font-size:.92rem}
+.ck-pours li{display:grid;grid-template-columns:72px 1fr auto;gap:8px;padding:4px 0;border-top:1px solid rgba(15,18,21,.05)}
+.ck-pours .q{font-variant-numeric:tabular-nums;color:#4a4e53}.ck-pours .l{color:var(--ember,#b8652d);font-size:.6rem;align-self:center}
+.ck-method{margin:0;font-size:.84rem;color:#4a4e53}
+.ck-card footer{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:var(--stone);margin-top:auto}
+.ck-edit{border:0;background:none;color:var(--ember,#b8652d);cursor:pointer;font:inherit;text-decoration:underline;text-underline-offset:3px}
+.sc-modal.ck-modal .sc-card{width:min(900px,100%)}
+.ck-head{margin:12px 0 4px}.ck-head b{display:block}.ck-head span{font-size:.82rem;color:var(--stone)}
+.ck-row{display:grid;grid-template-columns:70px 100px 1fr 1fr 32px;gap:8px;align-items:center;margin:6px 0}
+.ck-row input,.ck-row select{font:inherit;font-size:.9rem;padding:7px 8px;min-width:0}
+.ck-labels{margin-bottom:0}.ck-labels span{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--stone)}
+.ck-active{display:flex;gap:8px;align-items:center;font-size:.88rem;margin:10px 0}
+.ck-steps{display:grid;gap:8px;margin-top:12px}
+.ck-counts{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 18px;margin:8px 0 12px}
+.ck-count{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid rgba(15,18,21,.06)}
+.ck-count input{width:80px;text-align:right;font:inherit;padding:6px 8px}
+.ck-use td small{color:var(--stone)}.ck-use .r{text-align:right;white-space:nowrap}.ck-from{font-size:.8rem;color:#4a4e53}
+.ck-use tfoot td{font-weight:600;padding:9px 10px;border-top:1px solid rgba(15,18,21,.12)}
+@media (max-width:700px){.ck-row{grid-template-columns:60px 84px 1fr 32px}.ck-row .ck-inv{grid-column:1/4}.ck-labels{display:none}}
