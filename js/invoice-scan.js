@@ -32,6 +32,15 @@
     oz: 'oz', btl: 'bottle', bottle: 'bottle', bottles: 'bottle', bt: 'bottle', bu: 'bunch', bunch: 'bunch', bn: 'bunch', dz: 'dozen', doz: 'dozen', dozen: 'dozen',
     gal: 'gal', gallon: 'gal', qt: 'qt', quart: 'qt', keg: 'keg', bx: 'box', box: 'box', bag: 'bag', bg: 'bag', pk: 'pack', pack: 'pack', can: 'can', roll: 'roll', rl: 'roll', sleeve: 'sleeve', slv: 'sleeve' };
   function canon(u) { var k = norm(u).replace(/\s/g, ''); return UNIT[k] || UNIT[k.replace(/s$/, '')] || k; }
+  // a measurement as typed: lower case, singular, the usual spellings
+  function normU(u) { u = String(u || '').toLowerCase().trim().replace(/\s+/g, ' '); u = /(ch|sh|x)es$/.test(u) ? u.slice(0, -2) : /[^s]s$/.test(u) && u.length > 2 ? u.slice(0, -1) : u; return u.replace('#', 'lb').replace(/^(ea|ct|count|pc|piece)$/, 'each').replace(/^(dz|doz)$/, 'dozen').replace(/^(gram|gr)$/, 'g').replace(/^pound$/, 'lb').replace(/^(kilo|kilogram)$/, 'kg').replace(/^ounce$/, 'oz'); }
+  var KNOWN_U = /^(each|lb|oz|kg|g|gal|qt|pt|dozen|bunch|ml|l|cup|tsp|tbsp|fl oz|can|bottle|case|box|bag|pack|keg)$/;
+  // measurements typed in for case sizes before (flat, tray, sleeve…), from the inventory's items
+  function learnedUnits() {
+    var seen = {};
+    (A.items || []).forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:\/|x|×)?\s*([a-z][a-z ]*)$/); if (m) { var u = normU(m[1]); if (u && !KNOWN_U.test(u) && u.length <= 20) seen[u] = 1; } });
+    return Object.keys(seen).sort();
+  }
   function packCount(p) { var m = String(p || '').match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x\b|×|-?ct\b|count\b|pk\b|pack\b|dz\b|doz|lbs?\b|#|ea\b|each\b)/i); return m ? +m[1] : null; }
   // counting units in one invoice unit: a case of 6/#10 cans counted by the can is 6; counted by the case, 1
   var BIG = /^(case|box|keg|bag|sleeve|pack)$/;
@@ -45,7 +54,12 @@
     if (!iu || iu === lu) return 1;
     if (flipped(line, it)) return 1 / (packCount(it.pack) || perCase(line) || 12);
     if (BIG.test(iu)) return 1;
-    if (lu === 'case' || lu === 'box' || lu === 'pack') return perCase(line) || packCount(it.pack) || 1;
+    if (lu === 'case' || lu === 'box' || lu === 'pack' || !lu) {
+      // a case size in the item's own counting unit ("12 flats", "5 kg" for an item counted by the kg)
+      var pm = String(line.pack || '').toLowerCase().match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#][a-z ]*)$/);
+      if (pm && (normU(pm[2]) === normU(it.unit) || canon(pm[2]) === iu)) return +pm[1];
+      if (lu) return perCase(line) || packCount(it.pack) || 1;
+    }
     return 1;
   }
   // how the item is ordered, from the confirmed line: by the bottle or by the case (and how many in a case)
@@ -353,13 +367,27 @@
         return isCase ? [h('label', null, ['Case of ', n, ' bottles,']), h('label', null, ['each ', s1]), c1] : [h('label', null, ['Bottle size ', s1]), c1];
       }
       var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
-      var uv = units[0][0];
-      if ((m = p.match(/^(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#]+)/))) { n.value = m[1]; var u2 = m[2].replace(/s$/, '').replace('#', 'lb').replace(/^(ea|ct|count|pc)$/, 'each').replace(/^(dz|doz)$/, 'dozen').replace(/^gram$/, 'g'); if (units.some(function (o) { return o[0] === u2; })) uv = u2; }
+      if (k === 'food') {   // measurements typed in before (from the inventory's case sizes), then "Other…"
+        learnedUnits().forEach(function (u) { if (!units.some(function (o) { return o[0] === u; })) units.push([u, u]); });
+        units.push(['__other', 'Other…']);
+      }
+      var uv = units[0][0], cu = '';
+      if ((m = p.match(/^(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#][a-z# ]*)/))) {
+        n.value = m[1]; var u2 = normU(m[2]);
+        if (units.some(function (o) { return o[0] === u2; })) uv = u2; else if (k === 'food' && u2) { uv = '__other'; cu = u2; }
+      }
       n.setAttribute('aria-label', k === 'coffee' ? 'Case size' : 'How many in a case'); n.placeholder = k === 'coffee' ? '5' : '24';
       var s2 = sel(units, uv, 'Unit');
-      var upd2 = function () { var cnt = num(n.value); L.pack = cnt ? cnt + ' ' + s2.value : ''; L.bottles_per_case = k === 'other' && cnt ? cnt : L.bottles_per_case; changed(); };
-      n.addEventListener('change', upd2); s2.addEventListener('change', upd2);
-      return [h('label', null, [k === 'coffee' ? 'Case size ' : 'Case holds ', n]), s2];
+      var c2 = h('input', { type: 'text', cls: 'is-pk', value: cu, placeholder: 'e.g. flat, tray, sleeve', 'aria-label': 'Other measurement', hidden: uv !== '__other' });
+      var upd2 = function () {
+        c2.hidden = s2.value !== '__other';
+        var cnt = num(n.value), u = s2.value === '__other' ? normU(c2.value) : s2.value;
+        if (s2.value === '__other' && !u) return;
+        L.pack = cnt ? cnt + ' ' + u : ''; L.bottles_per_case = k === 'other' && cnt ? cnt : L.bottles_per_case; changed();
+      };
+      n.addEventListener('change', upd2); c2.addEventListener('change', upd2);
+      s2.addEventListener('change', function () { if (s2.value === '__other') { c2.hidden = false; c2.focus(); } else upd2(); });
+      return [h('label', null, [k === 'coffee' ? 'Case size ' : 'Case holds ', n]), s2, c2];
     }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {

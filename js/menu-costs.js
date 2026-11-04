@@ -21,7 +21,9 @@
 
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’'`]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
   function u0(u) { return String(u || '').trim().toLowerCase().replace(/\.$/, ''); }
-  function dim(u) { u = u0(u); return VOL[u] ? 'vol' : WT[u] ? 'wt' : /^(dz|doz|dozen)$/.test(u) ? 'dozen' : EACH.test(u) || !u ? 'each' : 'other'; }
+  // a measurement typed in for a case size (flat, tray, sleeve…) matches only itself
+  function nu(u) { u = u0(u).replace(/\s+/g, ' '); return /(ch|sh|x)es$/.test(u) ? u.slice(0, -2) : /[^s]s$/.test(u) && u.length > 3 ? u.slice(0, -1) : u; }
+  function dim(u) { u = u0(u); return VOL[u] ? 'vol' : WT[u] ? 'wt' : /^(dz|doz|dozen)$/.test(u) ? 'dozen' : EACH.test(u) || !u ? 'each' : 'u:' + nu(u); }
   function base(q, u) { u = u0(u); return VOL[u] ? q * VOL[u] : WT[u] ? q * WT[u] : /^(dz|doz|dozen)$/.test(u) ? q * 12 : q; }
   // "oz" in a recipe means fluid ounces when the other side is a volume (a quart of stock), weight otherwise
   function ozAs(u, other) { return u0(u) === 'oz' && other === 'vol' ? 'fl oz' : u; }
@@ -41,9 +43,10 @@
     if ((m = p.match(/(\d+(?:\.\d+)?)\s*(fl oz|oz|lb|lbs|kg|g|qt|gal|l|ml|pt)\b/))) { var sd2 = dim(m[2]); return { dim: sd2, amt: base(+m[1], m[2]) }; }
     if ((m = p.match(/(\d+(?:\.\d+)?)\s*(dz|doz|dozen)\b/))) return { dim: 'each', amt: +m[1] * 12 };
     if ((m = p.match(/(\d+)\s*(ct|count|ea|each|pc|pcs)\b/))) return { dim: 'each', amt: +m[1] };
+    if ((m = p.match(/^(\d+(?:\.\d+)?)\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/)) && dim(m[2]).indexOf('u:') === 0) return { dim: dim(m[2]), amt: +m[1] };   // "12 flats"
     if (/^(case|cs)s?$/.test(u) && +it.per_case) return { dim: 'each', amt: +it.per_case };
     if (/^(bottle|btl|can|jar|bag|box|tub)s?$/.test(u) && window.EdenCosting && /ml|\bl\b|liter/.test(p)) return { dim: 'vol', amt: window.EdenCosting.bottleMl(it) };
-    return { dim: 'each', amt: 1 };
+    return { dim: d.indexOf('u:') === 0 && !/^u:(case|cs|box|bag|pack)$/.test(d) ? d : 'each', amt: 1 };
   }
 
   var D = { inv: [], invById: {}, recipes: [], recById: {}, builds: [], loaded: false, p: null, sb: null };
@@ -97,7 +100,7 @@
     if (!u0(u) || u0(u) === u0(yu)) return q / yq;
     u = ozAs(u, dim(yu)); yu = ozAs(yu, dim(u));
     var a = dim(u), b = dim(yu);
-    if (a === b && a !== 'other') return base(q, u) / base(yq, yu);
+    if (a === b) return base(q, u) / base(yq, yu);
     return null;
   }
   function recipeCost(r, depth) {
@@ -297,6 +300,11 @@
 
   window.EdenMenuCost = {
     load: load, show: show, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
+      var seen = {};
+      D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });
+      return Object.keys(seen).sort();
+    },
     rows: rows, key: key, norm: norm, money: money, pct: pct, data: D, tabKind: tabKind, TARGET: TARGET,
     _test: { contents: contents, amountOf: amountOf, dim: dim }
   };

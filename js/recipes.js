@@ -175,6 +175,8 @@
   function canEdit() { return !!(R.ctx && R.ctx.canEdit); }
   // costs and menu links: the Owner and Managers on the staff site (not the staff page)
   function costs() { return !!(R.ctx && R.ctx.costs && window.EdenMenuCost); }
+  // recipe units, plus measurements entered as case sizes in Inventory (flat, tray…), so ingredients can be costed in them
+  function allUnits(extra) { var u = UNIT_LIST.concat(extra || []); if (window.EdenMenuCost && window.EdenMenuCost.data.loaded) window.EdenMenuCost.units().forEach(function (x) { if (u.indexOf(x) < 0) u.push(x); }); return u; }
   function MC() { return window.EdenMenuCost; }
   function cmoney(n) { return n == null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2); }
   function invLabel(it) { return it.name + (it.pack ? ' · ' + it.pack : '') + (it.cost != null && it.cost !== '' ? ' · $' + (+it.cost).toFixed(2) + '/' + (it.unit || 'each') : ' · no price'); }
@@ -398,7 +400,7 @@
         canEdit() ? h('td', null, [h('button', { type: 'button', cls: 'rc-mini rc-del', 'aria-label': 'Disconnect from ' + l.name, text: '✕', on: { click: function () { links.splice(i, 1); x.menu_links = links; saveLinks(x, render); } } })]) : null
       ]);
     }))]));
-    sec.appendChild(h('datalist', { id: 'rcUnitsV' }, UNIT_LIST.concat(['portions', 'servings']).map(function (v) { return h('option', { value: v }); })));
+    sec.appendChild(h('datalist', { id: 'rcUnitsV' }, allUnits(['portions', 'servings']).map(function (v) { return h('option', { value: v }); })));
     if (links.length) sec.appendChild(h('p', { cls: 'rc-fine', text: 'The cost % here is this recipe alone. A dish made of several recipes adds them all up on Menu costs.' }));
     if (canEdit()) sec.appendChild(h('div', { cls: 'rc-eadd' }, [
       h('button', { type: 'button', cls: 'ed-btn small', text: 'Connect to a menu item', on: { click: function () { pickMenu(x); } } }),
@@ -422,7 +424,7 @@
     var q = h('input', { type: 'text', inputmode: 'decimal', value: '1', 'aria-label': 'Amount per plate' });
     var u = h('input', { type: 'text', list: 'rcUnitsD', value: x.yield_unit || 'portion', 'aria-label': 'Unit' });
     return { q: q, u: u, el: h('label', { cls: 'sc-f' }, [h('span', { text: 'How much goes on one plate' }), h('div', { cls: 'rc-yrow' }, [q, u]),
-      h('datalist', { id: 'rcUnitsD' }, UNIT_LIST.concat(['portion', 'portions', 'servings']).map(function (v) { return h('option', { value: v }); })),
+      h('datalist', { id: 'rcUnitsD' }, allUnits(['portion', 'portions', 'servings']).map(function (v) { return h('option', { value: v }); })),
       h('small', { cls: 'rc-fine', text: x.yield_qty ? 'The recipe makes ' + fmtAmount(x.yield_qty, normUnit(x.yield_unit)) + ' ' + (x.yield_unit || '') + '.' : 'Give the recipe a base yield to cost a plate’s share.' })]) };
   }
   function pickMenu(x) {
@@ -509,7 +511,7 @@
       h('label', { cls: 'sc-f' }, [h('span', { text: 'Time (optional)' }), time]),
       h('label', { cls: 'sc-f' }, [h('span', { text: 'Allergens (optional)' }), alg]),
       h('datalist', { id: 'rcCats' }, categories().concat(['Sauces', 'Dressings', 'Stocks', 'Proteins', 'Vegetables', 'Starches', 'Pastry', 'Bread', 'Pickles', 'Bar', 'Syrups']).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (c) { return h('option', { value: c }); })),
-      h('datalist', { id: 'rcUnits' }, UNIT_LIST.concat(['portions', 'servings', 'batch']).map(function (u) { return h('option', { value: u }); }))
+      h('datalist', { id: 'rcUnits' }, allUnits(['portions', 'servings', 'batch']).map(function (u) { return h('option', { value: u }); }))
     ]));
     // ingredients
     var rows = h('div', { cls: 'rc-erows' });
