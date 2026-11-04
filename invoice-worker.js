@@ -11,7 +11,8 @@ import { PDFDocument } from './lib/pdf-lib-1.17.1.esm.min.js';   // MIT, github.
 const MODEL = 'claude-sonnet-5-5';
 const MAX_FILES = 8, MAX_BYTES = 20 * 1024 * 1024;
 // Claude takes up to 32 MB per request (base64 makes a file a third bigger), so a big PDF is read a few pages at a time
-const CHUNK_BYTES = 9 * 1024 * 1024, CHUNK_PAGES = 20;
+// and a long stack a few pages at a time too, so every invoice's lines fit in one answer
+const CHUNK_BYTES = 9 * 1024 * 1024, CHUNK_PAGES = 8;
 
 function json(obj, status) { return new Response(JSON.stringify(obj), { status: status || 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
 
@@ -91,7 +92,7 @@ export async function invoiceRoute(req, env, rpc) {
   }
   if (bytes > 45 * 1024 * 1024) return json({ error: 'size', message: 'That file is over 45 MB. Scan at 200–300 dpi in grayscale, or send fewer pages.' }, 413);
   let out;
-  if (content.length === 1 && content[0].type === 'document' && bytes > CHUNK_BYTES) out = await readPdf(env, unb64(content[0].source.data));
+  if (content.length === 1 && content[0].type === 'document') out = await readPdf(env, unb64(content[0].source.data));
   else if (bytes > MAX_BYTES) return json({ error: 'size', message: 'Those photos are too large together. Send fewer at a time.' }, 413);
   else out = await readInvoice(env, content);
   if (!out.ok) return json({ error: out.error, message: out.message }, out.status || 502);
@@ -143,27 +144,44 @@ export async function readInvoice(env, content) {
 // a PDF of any size: small ones in one go; big ones split into groups of pages, each read on its own, then put back together
 // (page numbers refer to the whole file; an invoice cut in two at a split is joined back up by its vendor and number)
 export async function readPdf(env, buf) {
-  if (buf.byteLength <= CHUNK_BYTES) return readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(buf) } }]);
+  const one = () => readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(buf) } }]);
   let src;
-  try { src = await PDFDocument.load(buf, { ignoreEncryption: true }); } catch (e) { return { ok: false, error: 'read', status: 422, message: 'That PDF couldn’t be opened.' }; }
+  try { src = await PDFDocument.load(buf, { ignoreEncryption: true }); } catch (e) { return buf.byteLength <= CHUNK_BYTES ? one() : { ok: false, error: 'read', status: 422, message: 'That PDF couldn’t be opened.' }; }
   const total = src.getPageCount(), per = buf.byteLength / Math.max(1, total);
-  const step = Math.max(1, Math.min(CHUNK_PAGES, Math.floor(CHUNK_BYTES / per)));
+  if (buf.byteLength <= CHUNK_BYTES && total <= CHUNK_PAGES) return one();
   if (per > 22 * 1024 * 1024) return { ok: false, error: 'size', status: 413, message: 'A single page of this scan is over 22 MB. Scan at 200–300 dpi in grayscale (not 600 dpi color) and try again.' };
-  let all = [], usage = { input_tokens: 0, output_tokens: 0 }, lastErr = null;
-  for (let start = 0; start < total; start += step) {
-    const idx = []; for (let i = start; i < Math.min(total, start + step); i++) idx.push(i);
-    const doc = await PDFDocument.create();
-    (await doc.copyPages(src, idx)).forEach(p => doc.addPage(p));
-    const part = await doc.save();
-    const out = await readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(part) } }]);
-    if (!out.ok) { if (out.error === 'off' || out.error === 'ai') return out; lastErr = out; continue; }   // a group with no invoice in it (blank pages) is fine
-    if (out.usage) { usage.input_tokens += out.usage.input_tokens || 0; usage.output_tokens += out.usage.output_tokens || 0; }
-    out.invoices.forEach(inv => { inv.pages = (inv.pages || []).map(p => p + start); if (!inv.pages.length) inv.pages = idx.map(i => i + 1); all.push(inv); });
+  const step = Math.max(1, Math.min(CHUNK_PAGES, Math.floor(CHUNK_BYTES / per)));
+  const groups = []; for (let start = 0; start < total; start += step) groups.push(start);
+  // read up to three groups at the same time
+  const results = new Array(groups.length);
+  let next = 0;
+  async function worker() {
+    while (next < groups.length) {
+      const gi = next++, start = groups[gi], idx = [];
+      for (let i = start; i < Math.min(total, start + step); i++) idx.push(i);
+      const doc = await PDFDocument.create();
+      (await doc.copyPages(src, idx)).forEach(p => doc.addPage(p));
+      let data = b64(await doc.save());
+      results[gi] = { start, idx, out: await readInvoice(env, [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }]) };
+      data = null;
+    }
   }
-  // join an invoice that ran across a split
+  await Promise.all([worker(), worker(), worker()]);
+  const all = [], usage = { input_tokens: 0, output_tokens: 0 };
+  let lastErr = null;
+  for (const r of results) {
+    const out = r.out;
+    if (!out.ok) { if (out.error === 'off' || out.error === 'ai') return out; lastErr = out; continue; }   // a group of blank pages is fine
+    if (out.usage) { usage.input_tokens += out.usage.input_tokens || 0; usage.output_tokens += out.usage.output_tokens || 0; }
+    out.invoices.forEach((inv, k) => { inv.pages = (inv.pages || []).map(p => p + r.start); if (!inv.pages.length) inv.pages = r.idx.map(i => i + 1); inv._first = k === 0 && inv.pages[0] === r.start + 1 && r.start > 0; all.push(inv); });
+  }
+  // join an invoice that ran across a split: same number, or a continuation page with no number from the same vendor
   const joined = [];
   all.forEach(inv => {
-    const prev = joined[joined.length - 1], same = prev && inv.invoice_no && prev.invoice_no === inv.invoice_no && String(prev.vendor).toLowerCase() === String(inv.vendor).toLowerCase();
+    const prev = joined[joined.length - 1];
+    const sameV = prev && String(prev.vendor).toLowerCase() === String(inv.vendor).toLowerCase();
+    const same = prev && sameV && ((inv.invoice_no && prev.invoice_no === inv.invoice_no) || (inv._first && !inv.invoice_no && prev.pages[prev.pages.length - 1] === inv.pages[0] - 1));
+    delete inv._first;
     if (!same) { joined.push(inv); return; }
     prev.lines = prev.lines.concat(inv.lines); prev.fees = (prev.fees || []).concat(inv.fees || []); prev.pages = prev.pages.concat(inv.pages);
     if (inv.total != null) prev.total = inv.total; if (!prev.date && inv.date) prev.date = inv.date;
@@ -291,7 +309,7 @@ export async function driveRoute(req, env, path, rpc, key) {
   if (path === '/drive/check') {
     const ok = await rpc(env, 'can_inventory', {}, jwt).catch(() => false);
     if (ok !== true) return json({ error: 'denied', message: 'Your login can’t use the inventory.' }, 403);
-    const r = await drivePoll(env, key, 6);
+    const r = await drivePoll(env, key, 1);   // one scan per request (the site asks again for the next), so a big stack isn't cut off
     return json(r, r.error ? 400 : 200);
   }
   if (path === '/drive/file') {   // one scanned file from the folder (only files already in the scanned-invoices list), for the staff site to convert

@@ -420,6 +420,7 @@
     return el;
   }
   function paintBar(el, again) {
+    D.again = again;
     var st = D.st; el.innerHTML = '';
     if (D.missing || !st || st.error) { el.hidden = true; return; }
     if (!st.address) {
@@ -435,7 +436,7 @@
       'Folder “' + st.folder + '” · checked ' + ago(st.last_check) + (st.last_error ? ' · ' + st.last_error : '');
     var check = h('button', { type: 'button', cls: 'ed-btn small', text: D.busy ? 'Checking…' : 'Check now', disabled: D.busy || !st.folder, on: { click: function () {
       D.busy = true; again();
-      post('drive/check').then(function (j) {
+      checkAll().then(function (j) {
         D.busy = false;
         if (!j._ok) A.status(j.message || 'Couldn’t check the folder.', 'err');
         else A.status(j.added || j.failed ? (j.added ? j.added + ' new invoice' + (j.added === 1 ? '' : 's') + ' ready to check.' : '') + (j.failed ? ' ' + j.failed + ' couldn’t be read.' : '') + (j.more ? ' ' + j.more + ' more on the next check.' : '') : 'No new scans.', 'ok');
@@ -483,6 +484,20 @@
       return inv;
     });
   }
+  // the server reads one scan per request: keep asking until the folder is caught up, showing progress
+  function checkAll() {
+    var tot = { _ok: true, added: 0, failed: 0, more: 0 }, n = 0;
+    function step() {
+      n++;
+      return post('drive/check').then(function (j) {
+        if (!j._ok) { if (n === 1) return j; tot.message = j.message; return tot; }
+        tot.added += j.added || 0; tot.failed += j.failed || 0; tot.more = j.more || 0;
+        if (j.more && n < 25) { A.status('Reading scans… ' + (tot.added + tot.failed) + ' done, ' + j.more + ' to go. A big stack takes a minute or two each.', 'dirty'); loadBar().then(function () { if (D.again) D.again(); }); return step(); }
+        return tot;
+      });
+    }
+    return step();
+  }
   // forget this scan (and the other invoices split from it) so the next check reads and files it again
   function readAgain(x, again) {
     var base = String(x.file_id || '').replace(/#\d+$/, '');
@@ -491,7 +506,7 @@
     A.sb.from('inventory_inbox').delete().or('file_id.eq.' + base + ',file_id.like.' + base + '#*').then(function (r) {
       if (r.error) { A.status('Couldn’t reset it. Try again.', 'err'); return; }
       D.inbox = D.inbox.filter(function (y) { return String(y.file_id || '').replace(/#\d+$/, '') !== base; }); again();
-      return post('drive/check').then(function (j) {
+      return checkAll().then(function (j) {
         A.status(!j._ok ? (j.message || 'Couldn’t check the folder.') : j.added ? j.added + ' invoice' + (j.added === 1 ? '' : 's') + ' ready to check.' : 'Nothing new found. If the scan was already filed, it’s in Filed now.', j._ok ? 'ok' : 'err');
         return loadBar();
       }).then(again);

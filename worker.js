@@ -655,7 +655,7 @@ export default {
     // once a day at 9 am: employee reviews coming due (the database makes sure it only sends once)
     ctx.waitUntil(reviewReminders(env).catch(() => null));
     // every 5 minutes: new scans in the scanner's Google Drive folder (Inventory), read and waiting to be checked
-    ctx.waitUntil(drivePoll(env, inqKey(env), 3).catch(() => null));
+    ctx.waitUntil(drivePoll(env, inqKey(env), 1).catch(() => null));
     // every 20 minutes (on the hour, :20 and :40): Pre-shift and the Prep List
     const min = new Date(evt && evt.scheduledTime ? evt.scheduledTime : Date.now()).getUTCMinutes();
     if (min % 20 >= 5) return;
