@@ -3034,3 +3034,30 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .iv-mlinks li{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid rgba(0,0,0,.06)}
 .iv-mlinks select{width:100%;font:inherit;font-size:.86rem;padding:7px 8px;margin-top:4px}
 @media print{.iv-alerts,.iv-vsel{display:none!important}}
+/* Inventory: Beverages sub-tabs, pricing panel */
+.iv-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 16px}
+.iv-subtabs button{font:inherit;font-size:.86rem;padding:6px 12px;border:1px solid var(--line);background:#fff;color:#4a4e53;border-radius:999px;cursor:pointer}
+.iv-subtabs button span{margin-left:6px;font-size:.74rem;color:var(--stone)}
+.iv-subtabs button[aria-selected="true"]{background:var(--ink,#1c1f22);color:#fff;border-color:var(--ink,#1c1f22)}.iv-subtabs button[aria-selected="true"] span{color:#d9d4ca}
+.iv-pricing .iv-pbody{margin-top:12px}
+.iv-pboxes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.iv-pbox{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px 14px;background:#fffdf8}
+.iv-pbox span{display:block;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.iv-pbox b{display:block;font-family:var(--serif);font-weight:500;font-size:1.5rem;margin-top:4px}
+.iv-pbox small{color:var(--stone);font-size:.8rem}
+.iv-plegend{display:flex;gap:16px;font-size:.78rem;color:#4a4e53;margin-bottom:6px}
+.iv-plegend .k::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.iv-plegend .cost::before{background:#b8652d}.iv-plegend .menu::before{background:#5d7a64}
+.iv-prow{display:grid;grid-template-columns:110px 70px 1fr;gap:10px;align-items:center;padding:6px 0;border-top:1px solid rgba(0,0,0,.05)}
+.iv-plabel{font-size:.9rem}.iv-pn{font-size:.76rem;color:var(--stone)}
+.iv-pbars{display:grid;gap:4px}
+.iv-pbar{display:grid;grid-template-columns:1fr 42px;gap:8px;align-items:center}
+.iv-pbar i{display:block;height:10px;border-radius:4px;background:rgba(0,0,0,.06);overflow:hidden}
+.iv-pbar i b{display:block;height:100%;border-radius:4px}
+.iv-pbar.cost i b{background:#b8652d}.iv-pbar.menu i b{background:#5d7a64}
+.iv-pbar em{font-style:normal;font-size:.78rem;font-variant-numeric:tabular-nums;color:#4a4e53;text-align:right}
+.iv-pbar.none i{background:none}.iv-pbar.none em{color:var(--stone)}
+.iv-poff{margin:12px 0 0;font-size:.9rem}
+@media (max-width:600px){.iv-pboxes{grid-template-columns:1fr}.iv-prow{grid-template-columns:80px 1fr}.iv-pn{display:none}}
+@media print{.iv-pricing,.iv-subtabs{display:none!important}}
+.iv-poff .sc-link,.iv-olist .sc-link{border:0;background:none;padding:0;font:inherit;color:var(--ember,#b8652d);cursor:pointer;text-decoration:underline;text-underline-offset:3px}

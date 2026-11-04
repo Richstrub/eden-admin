@@ -1,6 +1,6 @@
 /* Eden staff site: inventory.
  *
- * Three inventories, each its own tab: Food, Paper goods, and Beer, wine & liquor. Each has a list of
+ * Three inventories, each its own tab: Food, Paper goods, and Beverages (Beer, Wine, Liquor, N/A). Each has a list of
  * items (grouped by section, with unit, pack size, vendor, par and cost) and dated counts. Pick a count
  * date, type what's on hand, and it saves as you go; the last count, what to order (par minus on hand)
  * and the value on hand are worked out for you.
@@ -12,12 +12,22 @@
   var CATS = [
     { id: 'food', label: 'Food', short: 'Food' },
     { id: 'paper', label: 'Paper goods', short: 'Paper' },
-    { id: 'bev', label: 'Beer, wine & liquor', short: 'Beverage' }
+    { id: 'bev', label: 'Beverages', short: 'Beverage' }
   ];
+  // Beverages is split into Beer, Wine, Liquor and N/A (non-alcoholic) by each item's section
+  var SUBS = [['all', 'All'], ['beer', 'Beer'], ['wine', 'Wine'], ['liquor', 'Liquor'], ['na', 'N/A']];
+  var NA_RE = /soft|juice|soda|water|coffee|tea\b|n\/a|non.?alc|mocktail|kombucha|lemonade|tonic|ginger beer/i;
+  function subOf(it) {
+    var s = String(it.section || '').toLowerCase();
+    if (NA_RE.test(s)) return 'na';
+    if (/beer|draught|draft|cider|can(ned|s)?\b|keg/.test(s)) return 'beer';
+    if (/wine|sparkling|ros[eé]|red|white|dessert|port|champagne|sake/.test(s)) return 'wine';
+    return 'liquor';
+  }
   var SECTIONS = {
-    food: ['Produce', 'Protein', 'Seafood', 'Dairy & eggs', 'Dry goods', 'Spices', 'Oils & vinegars', 'Bread & bakery', 'Frozen', 'Coffee & tea', 'Soft drinks & juice', 'Menu ingredients'],
+    food: ['Produce', 'Protein', 'Seafood', 'Dairy & eggs', 'Dry goods', 'Spices', 'Oils & vinegars', 'Bread & bakery', 'Frozen', 'Menu ingredients'],
     paper: ['To-go', 'Front of house', 'Kitchen', 'Restroom', 'Cleaning'],
-    bev: ['Draught beer', 'Canned beer', 'Sparkling wine', 'White wine', 'Rosé', 'Red wine', 'Dessert wine', 'Aperitif', 'Bourbon', 'Rye', 'Malt', 'Gin', 'Vodka', 'Agave', 'Rum', 'Specialty', 'Digestif', 'Liqueurs & mixers']
+    bev: ['Draught beer', 'Canned beer', 'Sparkling wine', 'White wine', 'Rosé', 'Red wine', 'Dessert wine', 'Aperitif', 'Bourbon', 'Rye', 'Malt', 'Gin', 'Vodka', 'Agave', 'Rum', 'Specialty', 'Digestif', 'Liqueurs & mixers', 'Soft drinks & juice', 'Coffee & tea', 'Water']
   };
   var UNITS = ['each', 'case', 'lb', 'oz', 'gal', 'qt', 'bottle', 'keg', 'can', 'box', 'bag', 'roll', 'sleeve', 'pack', 'bunch', 'dozen'];
   var PAPER_STARTER = [
@@ -35,7 +45,7 @@
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
   var I = { ctx: null, el: null, cat: 'food', date: iso(new Date()), items: [], counts: [], loaded: false, loading: false, missing: false,
-    saveT: null, saving: false, pending: false, filter: '' };
+    saveT: null, saving: false, pending: false, filter: '', sub: 'all' };
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -66,7 +76,7 @@
 
   function catItems() {
     var order = SECTIONS[I.cat] || [];
-    return I.items.filter(function (it) { return it.category === I.cat; }).sort(function (a, b) {
+    return I.items.filter(function (it) { return it.category === I.cat && (I.cat !== 'bev' || !I.sub || I.sub === 'all' || subOf(it) === I.sub); }).sort(function (a, b) {
       var ia = order.indexOf(a.section), ib = order.indexOf(b.section);
       if (ia === -1) ia = 999; if (ib === -1) ib = 999;
       return ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
@@ -91,6 +101,9 @@
     ]).then(function (res) {
       I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.costCols = res[3]; I.loaded = true; I.missing = false; I.loading = false;
       if (res[4] && window.EdenCosting) window.EdenCosting.setSettings(res[4]);
+      // soft drinks, juice, coffee and tea moved from Food to Beverages → N/A
+      var move = I.items.filter(function (it) { return it.category === 'food' && NA_RE.test(String(it.section || '')); });
+      if (move.length) { move.forEach(function (it) { it.category = 'bev'; }); saveItems(move).then(function () { status('Moved ' + move.length + ' soft drink, juice, coffee and tea item' + (move.length === 1 ? '' : 's') + ' to Beverages → N/A.', 'ok'); }, function () {}); }
       I.settingsOn = !!res[4];
       loadAlerts();
     }, function (e) {
@@ -164,10 +177,19 @@
     ]));
     if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
     var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
+    wrap.appendChild(pricingPanel());
     wrap.appendChild(h('div', { cls: 'sc-tabs iv-tabs', role: 'tablist' }, CATS.map(function (c) {
       return h('button', { type: 'button', role: 'tab', 'aria-selected': c.id === I.cat ? 'true' : 'false', 'data-cat': c.id, on: { click: function () { if (c.id !== I.cat) { flush(); I.cat = c.id; I.filter = ''; render(); } } } },
         [c.label, counts[c.id] ? h('span', { cls: 'sc-count', text: String(counts[c.id]) }) : null]);
     })));
+    if (I.cat === 'bev') {
+      var bevAll = I.items.filter(function (it) { return it.category === 'bev'; });
+      wrap.appendChild(h('div', { cls: 'iv-subtabs', role: 'tablist', 'aria-label': 'Beverages' }, SUBS.map(function (x) {
+        var n = x[0] === 'all' ? bevAll.length : bevAll.filter(function (it) { return subOf(it) === x[0]; }).length;
+        return h('button', { type: 'button', role: 'tab', 'aria-selected': (I.sub || 'all') === x[0] ? 'true' : 'false', on: { click: function () { if (I.sub !== x[0]) { flush(); I.sub = x[0]; I.filter = ''; render(); } } } },
+          [x[1], h('span', { text: String(n) })]);
+      })));
+    }
 
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
@@ -311,7 +333,7 @@
     var cls = big ? 'ed-btn' : 'ed-btn small';
     return [
       I.cat === 'bev' ? h('button', { type: 'button', cls: cls, text: 'Add wines, beers & spirits from the menu', on: { click: fromMenuBev } }) : null,
-      I.cat === 'food' ? h('button', { type: 'button', cls: cls, text: 'Add ingredients, coffee & soft drinks from the menu', on: { click: fromMenuFood } }) : null,
+      I.cat === 'food' ? h('button', { type: 'button', cls: cls, text: 'Add ingredients from the menu (coffee & soft drinks go to Beverages)', on: { click: fromMenuFood } }) : null,
       I.cat === 'paper' ? h('button', { type: 'button', cls: cls, text: 'Add common paper goods', on: { click: paperStarter } }) : null,
       h('label', { cls: 'ed-btn small sc-file' }, ['Import spreadsheet', h('input', { type: 'file', accept: '.xlsx,.xls,.csv', on: { change: function (ev) { var f = ev.target.files[0]; ev.target.value = ''; if (f) importFile(f); } } })]),
       window.EdenCosting && I.settingsOn ? h('button', { type: 'button', cls: cls, text: 'Pour sizes (' + window.EdenCosting.settings.glass_oz + ' oz wine · ' + window.EdenCosting.settings.pour_oz + ' oz spirits)', on: { click: pourSizes } }) : null,
@@ -321,10 +343,10 @@
 
   /* ---------- adding items in bulk ---------- */
   function addMany(list, what) {
-    var have = {}; I.items.forEach(function (it) { if (it.category === I.cat) have[keyOf(it.name)] = 1; });
-    var fresh = list.filter(function (it) { var k = keyOf(it.name); if (!k || have[k]) return false; have[k] = 1; return true; });
+    var have = {}; I.items.forEach(function (it) { have[it.category + '|' + keyOf(it.name)] = 1; });
+    var fresh = list.filter(function (it) { var k = (it.category || I.cat) + '|' + keyOf(it.name); if (!keyOf(it.name) || have[k]) return false; have[k] = 1; return true; });
     if (!fresh.length) { status('Nothing new to add: those items are already on the list.', 'ok'); return Promise.resolve(); }
-    fresh.forEach(function (it, i) { it.id = uid(); it.category = I.cat; it.sort = i; it.par = it.par == null ? null : it.par; it.cost = it.cost == null ? null : it.cost; });
+    fresh.forEach(function (it, i) { it.id = uid(); it.category = it.category || I.cat; it.sort = i; it.par = it.par == null ? null : it.par; it.cost = it.cost == null ? null : it.cost; });
     status('Adding ' + fresh.length + ' items…', 'dirty');
     return saveItems(fresh).then(function () {
       I.items = I.items.concat(fresh); status('Added ' + fresh.length + ' ' + what + '.', 'ok'); render();
@@ -372,10 +394,10 @@
       (t.groups || []).forEach(function (g) {
         var gl = String(g.title || '').toLowerCase();
         var sec = (t.id === 'm-coffee' || /coffee|tea/.test(lab)) ? 'Coffee & tea' : ((t.id === 'm-beer' || /beer|soft/.test(lab)) && /juice|soda|soft|water/.test(gl)) ? 'Soft drinks & juice' : null;
-        if (sec) (g.items || []).filter(shown).forEach(function (it) { out.push({ section: sec, name: it.name, unit: sec === 'Coffee & tea' ? 'bag' : 'case', pack: it.desc || '', vendor: '' }); });
+        if (sec) (g.items || []).filter(shown).forEach(function (it) { out.push({ category: 'bev', section: sec, name: it.name, unit: sec === 'Coffee & tea' ? 'bag' : 'case', pack: it.desc || '', vendor: '' }); });
       });
     });
-    addMany(out, 'items from the menu (kitchen ingredients go in “Menu ingredients”; edit each to move it to its section)');
+    addMany(out, 'items from the menu (kitchen ingredients go in “Menu ingredients”; coffee, tea and soft drinks go in Beverages → N/A)');
   }
   function paperStarter() { addMany(PAPER_STARTER.map(function (r) { return { section: r[0], name: r[1], unit: r[2], pack: '', vendor: '' }; }), 'common paper goods'); }
 
@@ -438,6 +460,75 @@
     return 'by the ' + it.order_unit + (it.order_unit === 'case' && it.per_case ? ' of ' + qty(+it.per_case) : '');
   }
   function scanInvoice() { flush(); window.EdenInvoiceScan.open(scanApi()); }
+
+  /* ---------- pricing coverage: how many items have a cost and a menu price, by category; items not on the menu ---------- */
+  var GROUPS = [['food', 'Food'], ['paper', 'Paper goods'], ['beer', 'Beer'], ['wine', 'Wine'], ['liquor', 'Liquor'], ['na', 'N/A']];
+  function groupOf(it) { return it.category === 'bev' ? subOf(it) : it.category; }
+  function sellable(g) { return g === 'beer' || g === 'wine' || g === 'liquor' || g === 'na'; }
+  function menuText() {   // every word on the menu, for checking kitchen ingredients against it
+    if (I._mt && I._mtAt === I.menuStamp) return I._mt;
+    var t = [];
+    ((menu() || {}).tabs || []).forEach(function (tab) { (tab.groups || []).forEach(function (g) { t.push(g.title || '', g.note || '', g.noteAfter || ''); (g.items || []).forEach(function (m) { if (!m.hidden) t.push(m.name || '', m.desc || ''); }); }); });
+    I._mt = ' ' + t.join(' ').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ') + ' '; I._mtAt = I.menuStamp;
+    return I._mt;
+  }
+  function onMenu(it, list) {
+    if (it.category === 'paper') return null;   // not sold
+    if (it.category === 'bev' && window.EdenCosting && window.EdenCosting.linksFor(it, list).length) return true;   // sold as a glass, bottle, pour…
+    var n = ' ' + String(it.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+    if (n.trim().length < 3) return false;
+    var mt = menuText(); if (mt.indexOf(n) !== -1) return true;
+    var sing = n.replace(/(es|s) $/, ' '); return mt.indexOf(sing) !== -1;
+  }
+  function hasMenuPrice(it, list) { if (!window.EdenCosting) return false; var sv = window.EdenCosting.servings(it, list); return sv.some(function (x) { return x.price; }); }
+  function pricingPanel() {
+    var list = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
+    var items = I.items.filter(function (it) { return it.active !== false; });
+    var rows = GROUPS.map(function (g) {
+      var xs = items.filter(function (it) { return groupOf(it) === g[0]; });
+      var cost = xs.filter(function (it) { return it.cost != null && it.cost !== ''; }).length;
+      var menuP = sellable(g[0]) ? xs.filter(function (it) { return hasMenuPrice(it, list); }).length : null;
+      return { id: g[0], label: g[1], n: xs.length, cost: cost, menu: menuP };
+    }).filter(function (r) { return r.n; });
+    var tot = rows.reduce(function (a, r) { return a + r.n; }, 0), withCost = rows.reduce(function (a, r) { return a + r.cost; }, 0);
+    var bevN = rows.filter(function (r) { return r.menu != null; }).reduce(function (a, r) { return a + r.n; }, 0), withMenu = rows.reduce(function (a, r) { return a + (r.menu || 0); }, 0);
+    var pct = function (a, b) { return b ? Math.round(a / b * 100) : 0; };
+    var off = items.filter(function (it) { return onMenu(it, list) === false; });
+    var box = function (label, a, b, sub) { return h('div', { cls: 'iv-pbox' }, [h('span', { text: label }), h('b', { text: a + ' of ' + b }), h('small', { text: pct(a, b) + '%' + (sub ? ' · ' + sub : '') })]); };
+    var bar = function (v, n, kind) {
+      if (v == null) return h('div', { cls: 'iv-pbar none' }, [h('i'), h('em', { text: '—' })]);
+      var p = pct(v, n);
+      return h('div', { cls: 'iv-pbar ' + kind, title: v + ' of ' + n + ' (' + p + '%)' }, [h('i', null, h('b', { style: 'width:' + p + '%' })), h('em', { text: p + '%' })]);
+    };
+    var open = I.pricingOpen !== false;
+    var body = h('div', { cls: 'iv-pbody', hidden: !open }, [
+      h('div', { cls: 'iv-pboxes' }, [box('Items with a cost', withCost, tot, 'from invoices or typed in'), box('Beverages with a menu price', withMenu, bevN, 'matched to the menu')]),
+      h('div', { cls: 'iv-pchart', role: 'table', 'aria-label': 'Percent of items priced, by category' }, [
+        h('div', { cls: 'iv-plegend' }, [h('span', { cls: 'k cost', text: 'Has a cost' }), h('span', { cls: 'k menu', text: 'Has a menu price' })]),
+      ].concat(rows.map(function (r) {
+        return h('div', { cls: 'iv-prow', role: 'row' }, [h('span', { cls: 'iv-plabel', role: 'rowheader', text: r.label }), h('span', { cls: 'iv-pn', text: r.n + (r.n === 1 ? ' item' : ' items') }),
+          h('div', { cls: 'iv-pbars' }, [bar(r.cost, r.n, 'cost'), bar(r.menu, r.n, 'menu')])]);
+      }))),
+      off.length ? h('p', { cls: 'iv-poff' }, h('button', { type: 'button', cls: 'sc-link', text: off.length + ' item' + (off.length === 1 ? '' : 's') + ' in the inventory aren’t on the menu →', on: { click: function () { notOnMenu(off); } } })) : h('p', { cls: 'iv-poff', text: 'Everything in the inventory is on the menu.' })
+    ]);
+    var tog = h('button', { type: 'button', cls: 'ed-btn small', text: open ? 'Hide' : 'Show', on: { click: function () { I.pricingOpen = body.hidden; body.hidden = !body.hidden; tog.textContent = body.hidden ? 'Show' : 'Hide'; } } });
+    return h('div', { cls: 'is-bar iv-pricing' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: 'Pricing' }), h('span', { text: pct(withCost, tot) + '% of items have a cost · ' + pct(withMenu, bevN) + '% of beverages have a menu price' })]), tog]), body]);
+  }
+  function notOnMenu(off) {
+    var byG = {}; off.forEach(function (it) { (byG[groupOf(it)] = byG[groupOf(it)] || []).push(it); });
+    var text = ['Eden inventory items not on the menu'];
+    var body = [h('p', { cls: 'sc-sub', text: 'Beverages not matched to anything on the menu, and kitchen items whose name isn’t in any dish. Click one to edit it (link it to a menu item, or mark it inactive). Paper goods aren’t sold, so they’re left out.' })];
+    GROUPS.forEach(function (g) {
+      var xs = (byG[g[0]] || []).sort(function (a, b) { return String(a.name).localeCompare(b.name); }); if (!xs.length) return;
+      text.push('', g[1].toUpperCase()); xs.forEach(function (it) { text.push('• ' + it.name + (it.vendor ? ' (' + it.vendor + ')' : '')); });
+      body.push(h('div', { cls: 'iv-ovendor' }, [h('h3', { text: g[1] + ' · ' + xs.length }), h('ul', { cls: 'iv-olist' }, xs.map(function (it) {
+        return h('li', null, [h('button', { type: 'button', cls: 'sc-link', text: it.name, on: { click: function () { m.close(); I.cat = it.category; if (it.category === 'bev') I.sub = subOf(it); render(); editItem(it); } } }), it.section ? h('small', { text: ' ' + it.section + (it.vendor ? ' · ' + it.vendor : '') }) : null]);
+      }))]));
+    });
+    var m = modal('Not on the menu · ' + off.length, body, [h('span', { cls: 'sc-sp' }),
+      h('button', { type: 'button', cls: 'ed-btn small', text: 'Copy list', on: { click: function (ev) { var b = ev.currentTarget; (navigator.clipboard ? navigator.clipboard.writeText(text.join('\n')) : Promise.reject()).then(function () { b.textContent = 'Copied'; }, function () { window.prompt('Copy the list:', text.join('\n')); }); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })], true);
+  }
 
   /* ---------- price changes from invoices (supabase/inventory-costing.sql): an alert until someone marks them seen ---------- */
   function loadAlerts() {

@@ -1417,7 +1417,7 @@
         var tg = invTarget(kind, g);
         var add = document.createElement('div'); add.className = 'ed-ac-opt ed-ac-add'; add.setAttribute('role', 'option');
         var an = document.createElement('span'); an.className = 'ed-ac-name'; an.textContent = '+ Add “' + input.value.trim() + '” to the inventory';
-        var am = document.createElement('span'); am.className = 'ed-ac-meta'; am.textContent = (tg.category === 'bev' ? 'Beer, wine & liquor' : 'Food') + ' · ' + tg.section;
+        var am = document.createElement('span'); am.className = 'ed-ac-meta'; am.textContent = (tg.category === 'bev' ? 'Beverages' : 'Food') + ' · ' + tg.section;
         add.appendChild(an); add.appendChild(am);
         var ai = opts.length - 1;
         add.addEventListener('mousedown', function (e) { e.preventDefault(); choose({ add: true }); });

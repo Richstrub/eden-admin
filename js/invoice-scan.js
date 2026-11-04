@@ -14,7 +14,7 @@
 (function () {
   'use strict';
   var SHEETJS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  var CAT_LABEL = { food: 'Food', paper: 'Paper goods', bev: 'Beer, wine & liquor' };
+  var CAT_LABEL = { food: 'Food', paper: 'Paper goods', bev: 'Beverages' };
   var A = null;   // what the inventory page hands over: { items, saveItems, sb, status, done, modal, h, cat, uid }
 
   function h() { return A.h.apply(null, arguments); }
