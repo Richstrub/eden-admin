@@ -34,12 +34,23 @@
   function canon(u) { var k = norm(u).replace(/\s/g, ''); return UNIT[k] || UNIT[k.replace(/s$/, '')] || k; }
   function packCount(p) { var m = String(p || '').match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x\b|×|-?ct\b|count\b|pk\b|pack\b|dz\b|doz|lbs?\b|#|ea\b|each\b)/i); return m ? +m[1] : null; }
   // counting units in one invoice unit: a case of 6/#10 cans counted by the can is 6; counted by the case, 1
+  var BIG = /^(case|box|keg|bag|sleeve|pack)$/;
+  function perCase(line) { return line.bottles_per_case || packCount(line.pack) || (/(\d+)\s*b\b/i.exec(line.description + ' ' + line.pack) || [])[1] * 1 || null; }
+  // an item counted in cases but priced per bottle: the Units box shows bottles per case, and the cost is price × that
+  function flipped(line, it) { return !!it && BIG.test(canon(it.unit)) && !BIG.test(canon(line.unit)) && !!canon(line.unit); }
   function guessPer(line, it) {
     var iu = canon(it.unit), lu = canon(line.unit);
     if (!iu || iu === lu) return 1;
-    if (/^(case|box|keg|bag|sleeve|pack)$/.test(iu)) return 1;
-    if (lu === 'case' || lu === 'box' || lu === 'pack') return packCount(line.pack) || 1;
+    if (flipped(line, it)) return 1 / (packCount(it.pack) || perCase(line) || 12);
+    if (BIG.test(iu)) return 1;
+    if (lu === 'case' || lu === 'box' || lu === 'pack') return perCase(line) || packCount(it.pack) || 1;
     return 1;
+  }
+  function qtyText(L) {   // "2 cs + 4 btl" when the invoice has Cases and Bottles columns
+    var p = [];
+    if (L.cases) p.push(L.cases + ' cs'); if (L.bottles) p.push(L.bottles + ' btl');
+    var same = L.qty != null && ((canon(L.unit) === 'bottle' && !L.cases && L.qty === L.bottles) || (canon(L.unit) === 'case' && !L.bottles && L.qty === L.cases));
+    return p.length ? p.join(' + ') + (L.qty != null && L.unit && !same ? ' (' + L.qty + ' ' + L.unit + ')' : '') : L.qty != null ? L.qty + (L.unit ? ' ' + L.unit : '') : '';
   }
 
   /* ---------- matching ---------- */
@@ -140,26 +151,35 @@
         var r = rows[i].map(function (c) { return String(c).toLowerCase().trim(); });
         col = {};
         col.code = find(r, /(item|product|vendor|mfr|supc)\s*(#|no\.?|num|number|code)|^sku$|^code$|^item #$|^upc$/);
-        col.desc = find(r, /desc|product name|item name|^product$|^item$|^name$|^wine$|^brand$/);
+        col.desc = find(r, /desc/); if (col.desc < 0) col.desc = find(r, /product name|item name|^product$|^item$|^name$|^wine$|^brand$/);
+        if (col.code < 0) col.code = find(r, /^(item|product|sku|code)$/);
         col.ext = find(r, /ext|amount|line total|^total$|extension/);
-        col.price = find(r, /unit price|case price|^price|^each$|unit cost|^cost$|^rate$|price/, /ext|total/);
+        col.price = find(r, /net bottle|bottle price|net price|unit price|case price|^price|^each$|unit cost|^cost$|^rate$|price/, /ext|total/);
         col.qty = find(r, /qty|quantity|shipped|^ship|^cases$|^count$/, /order/);
         if (col.qty < 0) col.qty = find(r, /qty|quantity/);
+        col.cases = find(r, /^(cases?|cs|case qty|qty cs)$/);
+        col.btls = find(r, /^(btls?|bottles?|bottle qty|qty btl|loose)$/);
+        if (col.qty < 0 && col.cases >= 0) { col.qty = col.cases; col.cases = -1; }
         col.pack = find(r, /pack|size|^uom desc/);
         col.unit = find(r, /^(uom|unit|u\/m|um|unit of measure)$/);
         col.vendor = find(r, /vendor|supplier|distributor/);
         if (col.desc >= 0 && (col.price >= 0 || col.ext >= 0)) hi = i;
       }
+      var hdr = hi >= 0 ? rows[hi].map(function (c) { return String(c).toLowerCase().trim(); }) : [];
       if (hi < 0) throw new Error('Couldn’t find the item and price columns in ' + file.name + '. Take a photo or use the PDF instead.');
       var g = function (r, k) { return col[k] >= 0 ? String(r[col[k]] == null ? '' : r[col[k]]).trim() : ''; };
       var lines = [], vendor = '';
       rows.slice(hi + 1).forEach(function (r) {
         var d = g(r, 'desc'); if (!d || /^(sub)?total|^tax|^freight|^fuel|^delivery|^deposit/i.test(d)) return;
         var qty = num(g(r, 'qty')), price = num(g(r, 'price')), ext = num(g(r, 'ext'));
+        var cs = col.cases >= 0 ? num(g(r, 'cases')) : (col.btls >= 0 ? qty : null), bt = col.btls >= 0 ? num(g(r, 'btls')) : null, perB = /bottle|btl|each|unit/.test(hdr[col.price] || '');
+        var bpc = packCount(g(r, 'pack'));
+        if (bt != null) { qty = perB ? (cs || 0) * (bpc || 12) + (bt || 0) : (cs || 0) + (bt || 0) / (bpc || 12); }
+        if (!qty && !ext) return;
         if (price == null && ext != null && qty) price = r4(ext / qty);
         if (price == null) return;
         if (!vendor) vendor = g(r, 'vendor');
-        lines.push({ code: g(r, 'code'), description: d, pack: g(r, 'pack'), qty: qty, unit: g(r, 'unit') || 'case', unit_price: price, extended: ext != null ? ext : qty != null ? r2(qty * price) : null, note: '' });
+        lines.push({ cases: bt != null ? cs : null, bottles: bt, bottles_per_case: bpc, code: g(r, 'code'), description: d, pack: g(r, 'pack'), qty: qty, unit: g(r, 'unit') || (bt != null && perB ? 'bottle' : 'case'), unit_price: price, extended: ext != null ? ext : qty != null ? r2(qty * price) : null, note: '' });
       });
       if (!lines.length) throw new Error('No item lines found in ' + file.name + '.');
       return { vendor: vendor, invoice_no: '', date: '', total: null, lines: lines, source: 'csv: ' + file.name };
@@ -214,7 +234,7 @@
   }
   function review(inv, links, opts) {
     opts = opts || {}; var savedId = null;
-    inv.lines = (inv.lines || []).filter(function (l) { return l.unit_price != null; });
+    inv.lines = (inv.lines || []).filter(function (l) { return l.unit_price != null && !(!+l.unit_price && !+l.extended); });   // no price, or nothing shipped
     match(inv, links);
     var f = {
       vendor: h('input', { type: 'text', value: inv.vendor || '', placeholder: 'Who is this invoice from?' }),
@@ -233,8 +253,9 @@
       var old = it && it.cost != null ? +it.cost : null, ch = old && nc != null ? (nc - old) / old : null;
       var use = h('input', { type: 'checkbox', checked: !!L.use && !!L.item, disabled: !L.item, 'aria-label': 'Use this line' });
       use.addEventListener('change', function () { L.use = use.checked; tr.classList.toggle('is-on', L.use); count(); });
-      var per = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-per', value: String(L.per), disabled: !L.item, 'aria-label': 'Counting units per invoice unit' });
-      per.addEventListener('change', function () { var v = num(per.value); if (v > 0) { L.per = v; L.costOver = null; } paintRow(L); });
+      var flip = flipped(L, it) || (L.per > 0 && L.per < 1);
+      var per = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-per', value: String(flip ? Math.round(1 / L.per * 100) / 100 : L.per), disabled: !L.item, 'aria-label': flip ? 'Invoice units in one counting unit' : 'Counting units per invoice unit' });
+      per.addEventListener('change', function () { var v = num(per.value); if (v > 0) { L.per = flip ? 1 / v : v; L.costOver = null; } paintRow(L); });
       var nci = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-cost', value: nc == null ? '' : String(nc), disabled: !L.item, 'aria-label': 'New cost per counting unit' });
       nci.addEventListener('change', function () { var v = num(nci.value); L.costOver = v; paintRow(L); });
       var unitName = isNew ? (canon(L.unit) || 'unit') : it ? (it.unit || 'unit') : '';
@@ -243,14 +264,14 @@
       tr.appendChild(h('td', { cls: 'is-use' }, use));
       tr.appendChild(h('td', { cls: 'is-line' }, [
         h('b', { text: L.description }),
-        h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', L.pack, (L.qty != null ? L.qty + ' × ' : '') + money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
+        h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', L.pack, qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
         L.note ? h('span', { cls: 'is-note', text: L.note }) : null
       ]));
       tr.appendChild(h('td', { cls: 'is-it' }, [itemSelect(L, function (v) {
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
-      tr.appendChild(h('td', { cls: 'is-conv' }, L.item ? [per, h('span', { cls: 'is-u', text: unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
+      tr.appendChild(h('td', { cls: 'is-conv' }, L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [nci, h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
       tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: old == null ? 'No cost yet' : cost(old) }),
         ch != null ? h('span', { cls: 'is-ch ' + (ch > 0.005 ? 'up' : ch < -0.005 ? 'down' : ''), text: (ch > 0 ? '+' : '') + Math.round(ch * 100) + '%' }) : null,
@@ -300,7 +321,7 @@
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString() };
       });
       var upd = Object.keys(changed).map(function (k) { return changed[k]; });
-      var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
+      var clean = function (L) { return { code: L.code, description: L.description, pack: L.pack, cases: L.cases, bottles: L.bottles, qty: L.qty, unit: L.unit, unit_price: L.unit_price, extended: L.extended, note: L.note || '', item_id: L.use ? L.item : null, per_unit: L.use ? L.per : null, new_cost: L.use ? L.newCost : null }; };
       A.sb.auth.getSession().then(function (x) {
         var who = (x && x.data && x.data.session && x.data.session.user && x.data.session.user.email) || '';
         return A.sb.from('inventory_invoices').insert({ vendor: vendor, invoice_no: f.no.value.trim(), invoice_date: date, total: inv.total == null ? null : inv.total, lines: inv.lines.map(clean), source: inv.source || '', created_by: who }).select('id').single();

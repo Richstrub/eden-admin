@@ -30,9 +30,12 @@ const TOOL = {
             code: { type: 'string', description: 'Vendor item number / SKU, or empty' },
             description: { type: 'string', description: 'Item description as printed, brand included' },
             pack: { type: 'string', description: 'Pack size as printed, e.g. 6/#10, 4/1 GAL, 12/750ML, 25 LB, or empty' },
-            qty: { type: ['number', 'null'], description: 'Quantity shipped/delivered (not ordered, if both are shown)' },
-            unit: { type: 'string', description: 'What the price is per: case, each, lb, bottle, dozen, bunch, gal, keg…' },
-            unit_price: { type: ['number', 'null'], description: 'Price per one unit (before quantity)' },
+            cases: { type: ['number', 'null'], description: 'Full cases shipped, when the invoice has a Cases column (else null)' },
+            bottles: { type: ['number', 'null'], description: 'Loose bottles/units shipped, when the invoice has a Bottles/Btls/Units column (else null)' },
+            bottles_per_case: { type: ['number', 'null'], description: 'Bottles in a case, from the size or pack (6B = 6, 12/750ML = 12), else null' },
+            qty: { type: ['number', 'null'], description: 'Quantity shipped, counted in the same unit the unit_price is per (not ordered, if both are shown)' },
+            unit: { type: 'string', description: 'What unit_price is per: bottle, case, each, lb, dozen, bunch, gal, keg…' },
+            unit_price: { type: ['number', 'null'], description: 'Net price per one unit (after any discount), the unit named in unit' },
             extended: { type: ['number', 'null'], description: 'Line total' },
             note: { type: 'string', description: 'Anything unclear: hard to read, crossed out, credit, out of stock' }
           },
@@ -48,6 +51,11 @@ const PROMPT = 'This is a vendor invoice for Eden, a restaurant in Syracuse, NY.
   'a wine/spirits distributor invoice or a supply invoice, possibly over several photos (pages, in order). Read every product line. ' +
   'Skip deposits, fuel/delivery charges, taxes and subtotals as lines, but keep credits as lines with negative amounts. ' +
   'If only a line total and quantity are printed, work out unit_price = extended / qty. Use the shipped quantity. ' +
+  'Wine, beer and spirits invoices often have separate Cases and Bottles (Btls) columns: put full cases in cases and loose bottles in bottles, exactly as printed. ' +
+  'The price may be per bottle (a Unit Price, Net Bottle or Bottle Price column) or per case: set unit to bottle or case to match what unit_price is per, ' +
+  'and qty to the quantity in that same unit (a per-bottle price with 1 case of 12 plus 3 bottles is qty 15; a per-case price with 2 cases is qty 2). ' +
+  'Use the net price after discounts; if the printed price times qty is a cent or two off the line total, keep the printed price. ' +
+  'Skip lines where nothing was shipped (backordered, out of stock, zero quantity and zero total). ' +
   'Copy descriptions as printed; do not invent codes or packs. Put anything you are unsure of in note. You must answer by calling the invoice tool once with every line; do not reply with text.';
 
 export async function invoiceRoute(req, env, rpc) {
@@ -103,7 +111,11 @@ export async function readInvoice(env, content) {
   }
   if (!use || !use.input || !Array.isArray(use.input.lines)) return { ok: false, error: 'read', status: 422, message: 'Couldn’t read any lines on that invoice. Try a sharper, flatter photo.' };
   const inv = use.input;
-  inv.lines = inv.lines.filter(l => l && String(l.description || '').trim()).map(l => ({
+  const n = v => typeof v === 'number' && isFinite(v) ? v : null;
+  inv.lines = inv.lines.filter(l => l && String(l.description || '').trim())
+    .filter(l => !(!n(l.extended) && !n(l.qty) && !n(l.cases) && !n(l.bottles)))   // nothing shipped (backordered, out of stock)
+    .map(l => ({
+    cases: n(l.cases), bottles: n(l.bottles), bottles_per_case: n(l.bottles_per_case),
     code: String(l.code || '').trim(), description: String(l.description || '').trim(), pack: String(l.pack || '').trim(),
     qty: typeof l.qty === 'number' ? l.qty : null, unit: String(l.unit || '').trim(), unit_price: typeof l.unit_price === 'number' ? l.unit_price : null,
     extended: typeof l.extended === 'number' ? l.extended : null, note: String(l.note || '').trim()
