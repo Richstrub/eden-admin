@@ -339,9 +339,19 @@
       var big = ch != null && Math.abs(ch) >= 0.5;
       tr.className = 'is-row' + (L.use && L.item ? ' is-on' : '') + (big ? ' is-big' : '');
       tr.appendChild(h('td', { cls: 'is-use' }, use));
+      // what it's sold by and the case size, as read: fill them in when the reader couldn't make them out
+      var su = h('input', { type: 'text', cls: 'is-su', list: 'isUnits', value: L.unit || '', placeholder: 'case', 'aria-label': 'Sold by (case, each, bottle, lb…)' });
+      var pk = h('input', { type: 'text', cls: 'is-pk', value: L.pack || '', placeholder: BIG.test(canon(L.unit)) || !L.unit ? 'e.g. 12/750ml, 6/#10, 25 lb' : 'e.g. 750ml, 5 lb', 'aria-label': 'Case or item size' });
+      var resize = function () {
+        L.unit = su.value.trim(); L.pack = pk.value.trim(); L.bottles_per_case = packCount(L.pack) || L.bottles_per_case || null;
+        if (it) L.per = guessPer(L, it); L.costOver = null; L.sized = true; paintRow(L);
+      };
+      su.addEventListener('change', resize); pk.addEventListener('change', resize);
+      var noSize = !L.pack && (BIG.test(canon(L.unit)) || !L.unit);
       tr.appendChild(h('td', { cls: 'is-line' }, [
         h('b', { text: L.description }),
-        h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', L.pack, qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
+        h('span', { cls: 'is-meta', text: [L.code ? '#' + L.code : '', qtyText(L), money(L.unit_price) + (L.unit ? ' / ' + L.unit : ''), L.extended != null ? '= ' + money(L.extended) : ''].filter(Boolean).join(' · ') }),
+        h('span', { cls: 'is-size' + (noSize ? ' is-miss' : '') }, [h('label', null, ['Sold by ', su]), h('label', null, ['Size ', pk]), noSize ? h('em', { text: 'Size not read: add it' }) : null]),
         L.note ? h('span', { cls: 'is-note', text: L.note }) : null
       ]));
       tr.appendChild(h('td', { cls: 'is-it' }, [itemSelect(L, function (v) {
@@ -372,6 +382,7 @@
       h('div', { cls: 'sc-row3 is-head' }, [lbl('Vendor', f.vendor), lbl('Invoice #', f.no), lbl('Date', f.date)]),
       h('p', { cls: 'sc-small', text: 'Tick each line that’s matched to the right inventory item. Check the units: the new cost is the invoice price ÷ how many of the item’s counting units come in one invoice unit. Lines you tick are remembered for next time.' }),
       sumNote,
+      h('datalist', { id: 'isUnits' }, ['case', 'each', 'bottle', 'can', 'lb', 'oz', 'bag', 'box', 'dozen', 'gal', 'keg', 'bunch', 'pack', 'flat', 'pint', 'quart'].map(function (u) { return h('option', { value: u }); })),
       h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
       msg
     ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: opts.onCancel ? 'Skip to the next invoice' : 'Cancel', on: { click: function () { m.close(); if (opts.onCancel) opts.onCancel(); } } }), applyBtn], true);

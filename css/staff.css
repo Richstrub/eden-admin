@@ -3253,3 +3253,10 @@ tr.mc-none th b{color:#6b665e}
 .rc-ehdr span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .iv-cs-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:10px 0}
 .iv-cs-opts b{width:100%;font-size:12px;color:var(--stone);font-weight:500}
+.is-size{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:5px;font-size:.78rem;color:var(--muted,#7f7a71)}
+.is-size label{display:inline-flex;align-items:center;gap:4px}
+.is-size input{font:inherit;font-size:.82rem;padding:3px 6px;border:1px solid rgba(42,46,51,.2);border-radius:4px;background:#fff;color:var(--ink,#2a2e33)}
+.is-size input.is-su{width:72px}
+.is-size input.is-pk{width:130px}
+.is-size.is-miss input.is-pk{border-color:#c9965a;background:#fff8ee}
+.is-size em{font-style:normal;color:#a5662a;font-weight:500}
