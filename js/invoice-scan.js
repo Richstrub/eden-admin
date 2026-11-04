@@ -41,6 +41,7 @@
     (A.items || []).forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:\/|x|×)?\s*([a-z][a-z ]*)$/); if (m) { var u = normU(m[1]); if (u && !KNOWN_U.test(u) && u.length <= 20) seen[u] = 1; } });
     return Object.keys(seen).sort();
   }
+  function packN(p) { var m = String(p || '').toLowerCase().match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*[a-z#]/); return m ? +m[1] : null; }   // "5 lb" → 5, "12 flats" → 12
   function packCount(p) { var m = String(p || '').match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x\b|×|-?ct\b|count\b|pk\b|pack\b|dz\b|doz|lbs?\b|#|ea\b|each\b)/i); return m ? +m[1] : null; }
   // counting units in one invoice unit: a case of 6/#10 cans counted by the can is 6; counted by the case, 1
   var BIG = /^(case|box|keg|bag|sleeve|pack)$/;
@@ -52,7 +53,7 @@
   function guessPer(line, it) {
     var iu = canon(it.unit), lu = canon(line.unit);
     if (!iu || iu === lu) return 1;
-    if (flipped(line, it)) return 1 / (packCount(it.pack) || perCase(line) || 12);
+    if (flipped(line, it)) return 1 / (packN(line.pack) || perCase(line) || packCount(it.pack) || 12);   // the case size on this invoice first
     if (BIG.test(iu)) return 1;
     if (lu === 'case' || lu === 'box' || lu === 'pack' || !lu) {
       // a case size in the item's own counting unit ("12 flats", "5 kg" for an item counted by the kg)
@@ -479,7 +480,21 @@
       };
       n.addEventListener('change', upd2); c2.addEventListener('change', upd2);
       s2.addEventListener('change', function () { if (s2.value === '__other') { c2.hidden = false; c2.focus(); } else upd2(); });
-      return [h('label', null, [k === 'coffee' ? 'Case size ' : 'Case holds ', n]), s2, c2];
+      // what was received and what it costs, in the invoice's unit (a case, or the lb / each it's priced by)
+      var inner = s2.value === '__other' ? normU(c2.value) : s2.value;
+      var rUnits = [['case', 'case']].concat(units.filter(function (o) { return o[0] !== '__other'; }).map(function (o) { return [o[0], o[1]]; }));
+      var lu = canon(L.unit) === 'cs' ? 'case' : normU(canon(L.unit) || '');
+      if (lu && !rUnits.some(function (o) { return o[0] === lu; })) rUnits.push([lu, lu]);
+      if (inner && !rUnits.some(function (o) { return o[0] === inner; })) rUnits.push([inner, inner]);
+      var rq = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-n', value: L.qty == null ? '' : String(L.qty), 'aria-label': 'Number received' });
+      var ru = sel(rUnits, BIG.test(lu) ? 'case' : lu || 'case', 'Received by');
+      var rp = h('input', { type: 'text', inputmode: 'decimal', cls: 'is-pr', value: L.unit_price == null ? '' : String(r2(L.unit_price)), 'aria-label': 'Price per unit received' });
+      var cnt0 = num(n.value), perCaseTxt = '';
+      if (L.unit_price != null && cnt0 && inner) perCaseTxt = ru.value === 'case' ? '= $' + r2(L.unit_price / cnt0) + ' / ' + inner : ru.value === inner ? '= $' + r2(L.unit_price * cnt0) + ' / case' + (L.qty ? ' · ' + r2(L.qty / cnt0) + (L.qty / cnt0 === 1 ? ' case' : ' cases') + ' received' : '') : '';
+      var recv = function () { L.qty = num(rq.value); L.unit = ru.value; L.unit_price = num(rp.value); if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price); L.costOver = null; changed(); };
+      rq.addEventListener('change', recv); ru.addEventListener('change', recv); rp.addEventListener('change', recv);
+      return [h('label', null, ['Received ', rq]), ru, h('label', null, [k === 'coffee' ? '· Case size ' : '· Case holds ', n]), s2, c2,
+        h('label', null, ['· $', rp, ' / ' + (ru.value === 'case' ? 'case' : ru.value)]), perCaseTxt ? h('span', { cls: 'is-u', text: perCaseTxt }) : null];
     }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {
