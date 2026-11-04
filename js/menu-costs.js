@@ -23,8 +23,10 @@
   function u0(u) { return String(u || '').trim().toLowerCase().replace(/\.$/, ''); }
   // a measurement typed in for a case size (flat, tray, sleeve…) matches only itself
   function nu(u) { u = u0(u).replace(/\s+/g, ' '); return /(ch|sh|x)es$/.test(u) ? u.slice(0, -2) : /[^s]s$/.test(u) && u.length > 3 ? u.slice(0, -1) : u; }
-  function dim(u) { u = u0(u); return VOL[u] ? 'vol' : WT[u] ? 'wt' : /^(dz|doz|dozen)$/.test(u) ? 'dozen' : EACH.test(u) || !u ? 'each' : 'u:' + nu(u); }
-  function base(q, u) { u = u0(u); return VOL[u] ? q * VOL[u] : WT[u] ? q * WT[u] : /^(dz|doz|dozen)$/.test(u) ? q * 12 : q; }
+  // "1/4 lb", "0.5 kg": a fraction of a unit
+  function frac(u) { var m = u0(u).match(/^(?:(\d+)\s*\/\s*(\d+)|(\d*\.\d+))\s*([a-z#][a-z ]*)$/); return m ? { k: m[1] ? +m[1] / +m[2] : +m[3], u: m[4] } : null; }
+  function dim(u) { var f = frac(u); if (f) return dim(f.u); u = u0(u); return VOL[u] ? 'vol' : WT[u] ? 'wt' : /^(dz|doz|dozen)$/.test(u) ? 'dozen' : EACH.test(u) || !u ? 'each' : 'u:' + nu(u); }
+  function base(q, u) { var f = frac(u); if (f) return base(q * f.k, f.u); u = u0(u); return VOL[u] ? q * VOL[u] : WT[u] ? q * WT[u] : /^(dz|doz|dozen)$/.test(u) ? q * 12 : q; }
   // "oz" in a recipe means fluid ounces when the other side is a volume (a quart of stock), weight otherwise
   function ozAs(u, other) { return u0(u) === 'oz' && other === 'vol' ? 'fl oz' : u; }
   function key(m) { return (m.tab || '') + '|' + norm(m.name) + '|' + norm(m.desc); }

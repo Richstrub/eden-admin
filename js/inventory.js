@@ -645,6 +645,20 @@
     document.body.appendChild(back);
     return { el: back, close: close };
   }
+  // what an item is counted in: a list (with 1/4 lb and any unit already in use), or Other… to type one
+  var COUNT_UNITS = ['each', 'lb', '1/4 lb', '1/2 lb', 'oz', 'kg', 'g', 'case', 'bottle', 'keg', 'can', 'gal', 'qt', 'pt', 'box', 'bag', 'roll', 'sleeve', 'pack', 'bunch', 'dozen', 'flat', 'tray', 'quart container'];
+  var GRAMS = { lb: 453.592, '1/4 lb': 113.398, '1/2 lb': 226.796, oz: 28.3495, kg: 1000, g: 1 };
+  function unitPicker(cur, onSwap) {
+    var list = COUNT_UNITS.slice();
+    uniq(I.items.map(function (x) { return x.unit; })).forEach(function (u) { if (list.indexOf(u) < 0) list.push(u); });
+    var sel = h('select', { 'aria-label': 'Counted in (unit)' }, [h('option', { value: '', text: '— Pick a unit —' })].concat(list.map(function (u) { return h('option', { value: u, text: u === '1/4 lb' ? '1/4 lb (quarter pound)' : u === '1/2 lb' ? '1/2 lb (half pound)' : u }); })).concat([h('option', { value: '__other', text: 'Other…' })]));
+    var other = h('input', { type: 'text', placeholder: 'Type the unit', 'aria-label': 'Other unit', hidden: true });
+    if (cur && list.indexOf(cur) < 0) { other.value = cur; other.hidden = false; sel.value = '__other'; } else sel.value = cur;
+    var prev = sel.value;
+    sel.addEventListener('change', function () { other.hidden = sel.value !== '__other'; if (!other.hidden) other.focus(); if (onSwap && GRAMS[prev] && GRAMS[sel.value]) onSwap(GRAMS[sel.value] / GRAMS[prev], sel.value); prev = sel.value; });
+    var el = h('div', { cls: 'iv-unitpick' }, [sel, other]);
+    return { el: el, get value() { return sel.value === '__other' ? other.value : sel.value; }, focus: function () { sel.focus(); } };
+  }
   function lbl(text, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: text }), input]); }
   function datalist(id, vals) { return h('datalist', { id: id }, vals.map(function (v) { return h('option', { value: v }); })); }
   function uniq(list) { var s = {}; return list.filter(function (x) { x = String(x || '').trim(); if (!x || s[x.toLowerCase()]) return false; s[x.toLowerCase()] = 1; return true; }); }
@@ -656,7 +670,12 @@
     var f = {
       name: h('input', { type: 'text', value: it.name || '', placeholder: I.cat === 'bev' ? 'e.g. Tito’s Vodka' : I.cat === 'paper' ? 'e.g. To-go containers, large' : 'e.g. Heavy cream' }),
       section: h('input', { type: 'text', value: it.section || '', list: 'ivSections', placeholder: (SECTIONS[I.cat] || [])[0] || '' }),
-      unit: h('input', { type: 'text', value: it.unit || '', list: 'ivUnits', placeholder: 'e.g. case, lb, bottle' }),
+      unit: unitPicker(it.unit || '', function (k, u) {   // lb → 1/4 lb: $10 a lb becomes $2.50 a 1/4 lb, par 5 becomes 20
+        var c = num(f.cost.value), p = num(f.par.value), said = [];
+        if (c != null) { f.cost.value = String(Math.round(c * k * 10000) / 10000); said.push('cost to ' + money(+f.cost.value) + ' per ' + u); }
+        if (p != null) { f.par.value = qty(Math.round(p / k * 100) / 100); said.push('par to ' + f.par.value); }
+        msg.textContent = said.length ? 'Changed ' + said.join(' and ') + ' to match.' : '';
+      }),
       pack: h('input', { type: 'text', value: it.pack || '', placeholder: 'e.g. 6/#10 cans, 750ml' }),
       vendor: h('input', { type: 'text', value: it.vendor || '', list: 'ivVendors', placeholder: 'Optional' }),
       par: h('input', { type: 'text', inputmode: 'decimal', value: qty(it.par), placeholder: 'How many to keep on hand' }),
@@ -676,7 +695,7 @@
     m = modal(isNew ? 'Add item' : 'Edit item', [
       h('p', { cls: 'sc-sub', text: catOf(I.cat).label }),
       lbl('Item', f.name),
-      h('div', { cls: 'sc-row2' }, [lbl('Section', f.section), lbl('Counted in (unit)', f.unit)]),
+      h('div', { cls: 'sc-row2' }, [lbl('Section', f.section), lbl('Counted in (unit)', f.unit.el)]),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
       h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), lbl('Cost per unit ($)', f.cost)]),
       I.orderCols ? h('div', { cls: 'sc-row2' }, [lbl('Ordered from the vendor', f.ord), lbl('How many in a case', f.pc)]) : null,

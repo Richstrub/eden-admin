@@ -51,19 +51,27 @@
   // an item counted in cases but priced per bottle: the Units box shows bottles per case, and the cost is price × that
   function flipped(line, it) { return !!it && BIG.test(canon(it.unit)) && !BIG.test(canon(line.unit)) && !!canon(line.unit); }
   var WEIGHT = { lb: 453.592, oz: 28.3495, kg: 1000, g: 1 };
-  function wu(u) { u = normU(canon(u) || u); return WEIGHT[u] ? u : null; }
+  function wu(u) { var q = wq(u); if (q) { var m = String(u).toLowerCase().match(/(lb|oz|kg|g)\b/); return m ? m[1] : null; } u = normU(canon(u) || u); return WEIGHT[u] ? u : null; }
+  // grams in one of a weight unit, fractions too: "lb" 453.6, "1/4 lb" 113.4, "0.5 kg" 500
+  function wq(u) {
+    var t = String(u || '').toLowerCase().trim(), m = t.match(/^(?:(\d+)\s*\/\s*(\d+)|(\d*\.?\d+))?\s*(lbs?|pounds?|#|oz|ounces?|kg|kilos?|g|grams?)$/);
+    if (!m) return null;
+    var k = m[1] ? +m[1] / +m[2] : m[3] ? +m[3] : 1, w = normU(m[4] === '#' ? 'lb' : m[4]);
+    w = /^pound/.test(w) ? 'lb' : /^ounce/.test(w) ? 'oz' : /^kilo/.test(w) ? 'kg' : /^gram/.test(w) ? 'g' : w;
+    return WEIGHT[w] ? k * WEIGHT[w] : null;
+  }
   function guessPer(line, it) {
     var iu = canon(it.unit), lu = canon(line.unit);
     if (line.setUnit) return BIG.test(canon(line.unit)) ? (packN(line.pack) || 1) : 1;   // food counted in its own unit now: by the case, the case holds so many of them
     if (!iu || iu === lu) return 1;
-    if (wu(iu) && wu(lu)) return WEIGHT[wu(lu)] / WEIGHT[wu(iu)];   // received in oz, counted by the lb: 1/16
+    if (wq(it.unit) && wq(line.unit)) return wq(line.unit) / wq(it.unit);   // received in oz, counted by the lb: 1/16; by the lb, counted by the 1/4 lb: 4
     if (flipped(line, it)) return 1 / (packN(line.pack) || perCase(line) || packCount(it.pack) || 12);   // the case size on this invoice first
     if (BIG.test(iu)) return 1;
     if (lu === 'case' || lu === 'box' || lu === 'pack' || !lu) {
       // a case size in the item's own counting unit ("12 flats", "5 kg" for an item counted by the kg)
       var pm = String(line.pack || '').toLowerCase().match(/^\s*(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#][a-z ]*)$/);
       if (pm && (normU(pm[2]) === normU(it.unit) || canon(pm[2]) === iu)) return +pm[1];
-      if (pm && wu(pm[2]) && wu(iu)) return +pm[1] * WEIGHT[wu(pm[2])] / WEIGHT[wu(iu)];   // a case of 80 oz, counted by the lb: 5
+      if (pm && wq(pm[2]) && wq(it.unit)) return +pm[1] * wq(pm[2]) / wq(it.unit);   // a case of 80 oz, counted by the lb: 5
       if (lu) return perCase(line) || packCount(it.pack) || 1;
     }
     return 1;
@@ -565,7 +573,7 @@
       var setU = function () {
         var x = it || { unit: '', category: L.newKind || 'food' }, tgt = byUnit ? ru.value : (num(n.value) && (s2.value === '__other' ? normU(c2.value) : s2.value)) || null;
         var isFood = (it ? it.category : (L.newKind === 'food' || !L.newKind ? 'food' : L.newKind)) === 'food';   // food only: paper goods stay by the case
-        L.setUnit = isFood && tgt && normU(canon(x.unit)) !== normU(tgt) && !(wu(x.unit) && wu(tgt)) ? tgt : null;
+        L.setUnit = isFood && tgt && normU(canon(x.unit)) !== normU(tgt) && !(wq(x.unit) && wq(tgt)) ? tgt : null;
       };
       setU();
       var recv = function () { L.qty = num(rq.value); L.unit = ru.value; L.unit_price = num(rp.value); if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price); L.costOver = null; byUnit = k === 'food' && ru.value !== 'case'; setU(); changed(); };
