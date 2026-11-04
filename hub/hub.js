@@ -311,6 +311,9 @@ if (!Element.prototype.replaceChildren) {
     if (!left.length) { box.appendChild(h('p', { cls: 'hb-alldone', text: 'Everything’s prepped. Nice work.' })); return; }
     var groups = [], by = {}, cols = h('div', { cls: 'hb-pcols' }), keep = box.scrollTop;
     left.forEach(function (l) { if (!by[l.section]) { by[l.section] = []; groups.push(l.section); } by[l.section].push(l); });
+    // Dessert comes right after Small Plates on the board (before Large Plates)
+    var des = groups.filter(function (g) { return /dessert/i.test(g); }), sm = groups.findIndex(function (g) { return /small/i.test(g); });
+    if (des.length && sm >= 0) { groups = groups.filter(function (g) { return des.indexOf(g) < 0; }); groups.splice.apply(groups, [groups.findIndex(function (g) { return /small/i.test(g); }) + 1, 0].concat(des)); }
     box.appendChild(cols);
     groups.forEach(function (g) {
       cols.appendChild(h('div', { cls: 'hb-pgroup' }, [h('h4', { text: g + ' · ' + by[g].length }),
