@@ -3093,3 +3093,10 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .ck-use td small{color:var(--stone)}.ck-use .r{text-align:right;white-space:nowrap}.ck-from{font-size:.8rem;color:#4a4e53}
 .ck-use tfoot td{font-weight:600;padding:9px 10px;border-top:1px solid rgba(15,18,21,.12)}
 @media (max-width:700px){.ck-row{grid-template-columns:60px 84px 1fr 32px}.ck-row .ck-inv{grid-column:1/4}.ck-labels{display:none}}
+/* Financials: cash flow (Sankey) */
+.fn-sk-sub{margin:2px 0 8px;font-size:.86rem;color:#4a4e53}
+.fn-sk-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fn-sankey{min-width:720px;width:100%;height:auto;display:block}
+.fn-sk-link{opacity:.32;transition:opacity .15s}.fn-sk-link:hover{opacity:.6}
+.fn-sk-l{font-size:11.5px;fill:#3b3f44}.fn-sk-v{font-size:13px;font-weight:600;fill:#14171a}.fn-sk-n{font-size:10.5px;fill:#7f7a71;font-style:italic}
+.fn-chart figcaption .fn-range{margin-left:auto}
