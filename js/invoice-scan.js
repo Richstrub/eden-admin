@@ -73,7 +73,14 @@
 
   /* ---------- reading the file ---------- */
   function b64(file) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(file); }); }
-  function shrink(file) {   // photos: at most 2000 px on the long side, as JPEG (also turns iPhone HEIC into JPEG)
+  var HEIC = 'js/vendor/heic2any-0.0.4.min.js';   // MIT, github.com/alexcorvi/heic2any: only loaded for an iPhone HEIC photo the browser can't open itself
+  function isHeic(f) { return /hei[cf]/i.test(f.type || '') || /\.hei[cf]$/i.test(f.name || ''); }
+  function toJpeg(blob) {   // HEIC → JPEG for browsers without HEIC support (Chrome, Firefox, Windows)
+    return (window.heic2any ? Promise.resolve() : loadScript(HEIC)).then(function () {
+      return window.heic2any({ blob: blob, toType: 'image/jpeg', quality: 0.9 });
+    }).then(function (out) { return Array.isArray(out) ? out[0] : out; });
+  }
+  function shrink(file, converted) {   // photos: at most 2000 px on the long side, as JPEG (Safari opens iPhone HEIC itself; other browsers convert it first)
     return new Promise(function (res, rej) {
       var url = URL.createObjectURL(file), img = new Image();
       img.onload = function () {
@@ -82,12 +89,16 @@
         var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url); res({ type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.85).split(',')[1] });
       };
-      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('That photo couldn’t be opened. Try a JPG or PNG.')); };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        if (!converted && isHeic(file)) toJpeg(file).then(function (j) { return shrink(j, true); }).then(res, function () { rej(new Error('That HEIC photo couldn’t be converted. On the iPhone, take the photo from Scan invoice instead, or export it as JPG.')); });
+        else rej(new Error('That photo couldn’t be opened. Try a JPG, PNG, HEIC or PDF.'));
+      };
       img.src = url;
     });
   }
-  function readAI(files) {
-    var parts = files.map(function (f) {
+  function readAI(files, partsIn) {
+    var parts = partsIn ? partsIn.map(function (p) { return Promise.resolve(p); }) : files.map(function (f) {
       if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
         if (f.size > 18 * 1024 * 1024) return Promise.reject(new Error('That PDF is over 18 MB. Save a smaller copy or photograph the pages.'));
         return b64(f).then(function (d) { return { type: 'application/pdf', data: d }; });
@@ -159,7 +170,7 @@
   function open(api) {
     A = api;
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
-    var input = h('input', { type: 'file', accept: 'image/*,.pdf,application/pdf,.csv,.xlsx,.xls', multiple: true });
+    var input = h('input', { type: 'file', accept: 'image/*,.heic,.heif,.pdf,application/pdf,.csv,.xlsx,.xls', multiple: true });
     var m = A.modal('Scan an invoice', [
       h('p', { cls: 'sc-sub', text: 'Take a photo of the invoice (several photos for a long one, in page order), or choose a PDF, or a CSV/Excel invoice from the vendor’s website. You’ll check every line before any price changes.' }),
       h('label', { cls: 'ed-btn sc-file is-scan-pick' }, ['Take a photo or choose a file', input]),
@@ -336,7 +347,7 @@
   function loadBar() {
     return Promise.all([
       A.sb.rpc('inv_drive_status'),
-      A.sb.from('inventory_inbox').select('id,file_name,file_created,status,invoice,error,created_at').in('status', ['waiting', 'error']).order('created_at', { ascending: false }).limit(40)
+      A.sb.from('inventory_inbox').select('id,file_id,file_name,file_created,status,invoice,error,created_at').in('status', ['waiting', 'error']).order('created_at', { ascending: false }).limit(40)
     ]).then(function (res) {
       D.at = Date.now();
       if (res[0].error) { D.missing = true; D.st = null; return; }
@@ -386,6 +397,8 @@
       var dismiss = h('button', { type: 'button', cls: 'ed-btn small', text: 'Dismiss', title: 'Remove from this list (the file stays in Google Drive)', on: { click: function () {
         A.sb.from('inventory_inbox').update({ status: 'dismissed', done_at: new Date().toISOString() }).eq('id', x.id).then(function () { D.inbox = D.inbox.filter(function (y) { return y.id !== x.id; }); again(); });
       } } });
+      if (inv.pending) return h('li', null, [h('div', null, [h('b', { text: x.file_name }), h('span', { text: 'iPhone photo: read when you open it' })]),
+        h('div', { cls: 'is-bar-t' }, [h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Read & check', on: { click: function () { openWaiting(x, again); } } }), dismiss])]);
       return h('li', { cls: x.status === 'error' ? 'is-bad' : '' }, [
         h('div', null, [h('b', { text: x.status === 'error' ? x.file_name : (inv.vendor || 'Unknown vendor') + (inv.invoice_no ? ' · #' + inv.invoice_no : '') }),
           h('span', { text: x.status === 'error' ? 'Couldn’t read it: ' + (x.error || 'unknown problem') : [inv.date, n + ' line' + (n === 1 ? '' : 's'), inv.total != null ? money(inv.total) : '', x.file_name].filter(Boolean).join(' · ') })]),
@@ -393,8 +406,26 @@
       ]);
     })));
   }
+  function readPending(x) {   // an iPhone HEIC photo saved in the scanner folder: download, convert to JPEG, read
+    A.status('Converting and reading the photo… about 30 seconds.', 'dirty');
+    return A.sb.auth.getSession().then(function (y) {
+      var jwt = y && y.data && y.data.session && y.data.session.access_token || '';
+      return fetch('drive/file', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt }, body: JSON.stringify({ file_id: x.file_id }) });
+    }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.message || 'Couldn’t download it from Google Drive.'); });
+      return r.blob();
+    }).then(function (blob) {
+      var f = new File([blob], x.file_name || 'photo.heic', { type: (x.invoice && x.invoice.mime) || 'image/heic' });
+      return shrink(f);
+    }).then(function (part) { return readAI([{ name: x.file_name, type: 'image/jpeg' }], [part]); }).then(function (inv) {
+      x.invoice = inv; A.status('', '');
+      A.sb.from('inventory_inbox').update({ invoice: inv }).eq('id', x.id).then(function () {});
+      return inv;
+    });
+  }
   function openWaiting(x, again) {
-    loadLinks().then(function (links) {
+    var ready = x.invoice && x.invoice.pending ? readPending(x) : Promise.resolve(x.invoice);
+    ready.then(function () { return loadLinks(); }).then(function (links) {
       var inv = JSON.parse(JSON.stringify(x.invoice || {}));
       review(inv, links, { after: function (invId) {
         A.sb.from('inventory_inbox').update({ status: 'done', invoice_id: invId, done_at: new Date().toISOString() }).eq('id', x.id).then(function () {});

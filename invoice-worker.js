@@ -150,6 +150,21 @@ export async function driveRoute(req, env, path, rpc, key) {
     const r = await drivePoll(env, key, 6);
     return json(r, r.error ? 400 : 200);
   }
+  if (path === '/drive/file') {   // one scanned file from the folder (only files already in the scanned-invoices list), for the staff site to convert
+    const ok = await rpc(env, 'can_inventory', {}, jwt).catch(() => false);
+    if (ok !== true) return json({ error: 'denied' }, 403);
+    const id = String(b.file_id || '');
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) return json({ error: 'bad' }, 400);
+    const chk = await fetch(String(env.SUPABASE_URL).replace(/\/$/, '') + '/rest/v1/inventory_inbox?select=id&file_id=eq.' + encodeURIComponent(id), { headers: { apikey: env.SUPABASE_KEY, Authorization: 'Bearer ' + jwt } }).then(r => r.ok ? r.json() : []).catch(() => []);
+    if (!chk.length) return json({ error: 'denied' }, 403);
+    const d = await fetch(String(env.SUPABASE_URL).replace(/\/$/, '') + '/rest/v1/rpc/inv_drive_server', { method: 'POST', headers: { apikey: env.SUPABASE_KEY, Authorization: 'Bearer ' + env.SUPABASE_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ p_key: key }) }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!d || d.error) return json({ error: 'not_connected', message: 'Google Drive isn’t connected.' }, 400);
+    const at = await driveAccess(env, d.token, d.address);
+    if (!at || at === 'REVOKED') return json({ error: 'reconnect', message: 'Google Drive needs to be connected again.' }, 400);
+    const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });
+    if (!fr.ok) return json({ error: 'google', message: 'Couldn’t download it from Google Drive.' }, 502);
+    return new Response(fr.body, { headers: { 'content-type': fr.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'no-store' } });
+  }
   if (!boss) return json({ error: 'denied', message: 'Only the Owner or a manager can connect the scanner folder.' }, 403);
   if (path === '/drive/start') {
     const u = await mailInternals.userOf(env, jwt);
@@ -199,7 +214,7 @@ export async function drivePoll(env, key, max) {
   if (at === 'REVOKED') { await done('Google Drive needs to be connected again.', 'reconnect'); return { error: 'reconnect', message: 'Google Drive needs to be connected again.' }; }
   if (!at) { await done('Couldn’t reach Google.'); return { error: 'google', message: 'Couldn’t reach Google. Try again.' }; }
   const since = new Date(Date.now() - 30 * 864e5).toISOString();
-  const q = "'" + d.folder_id + "' in parents and trashed=false and createdTime > '" + since + "' and (mimeType='application/pdf' or mimeType='image/jpeg' or mimeType='image/png')";
+  const q = "'" + d.folder_id + "' in parents and trashed=false and createdTime > '" + since + "' and (mimeType='application/pdf' or mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/heic' or mimeType='image/heif')";
   const lr = await fetch(DRIVE + 'files?' + new URLSearchParams({ q, fields: 'files(id,name,mimeType,size,createdTime)', orderBy: 'createdTime', pageSize: '100', includeItemsFromAllDrives: 'true', supportsAllDrives: 'true' }), { headers: { Authorization: 'Bearer ' + at } });
   if (!lr.ok) { const m = lr.status === 403 ? 'Google Drive answered “not allowed”: turn on the Google Drive API in Google Cloud.' : lr.status === 404 ? 'The scanner folder was moved or deleted: pick it again.' : 'Couldn’t list the folder.'; await done(m, lr.status === 404 ? 'nofolder' : ''); return { error: 'google', message: m }; }
   const seen = new Set(d.seen || []);
@@ -207,6 +222,10 @@ export async function drivePoll(env, key, max) {
   let added = 0, failed = 0;
   for (const f of fresh.slice(0, max || 3)) {
     let inv = null, err = '';
+    if (/hei[cf]/i.test(f.mimeType)) {   // iPhone photo: the staff site converts it to JPEG and reads it when it's opened
+      await sb('inv_inbox_add_server', { p_key: key, p_file_id: f.id, p_name: f.name, p_created: f.createdTime, p_status: 'waiting', p_invoice: { pending: 'heic', mime: f.mimeType, lines: [] }, p_error: '' });
+      added++; continue;
+    }
     if (+f.size > MAX_DRIVE_BYTES) err = 'This scan is over 18 MB. Scan at 300 dpi or less, in color or grayscale, and save as PDF.';
     else {
       const fr = await fetch(DRIVE + 'files/' + encodeURIComponent(f.id) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + at } });
