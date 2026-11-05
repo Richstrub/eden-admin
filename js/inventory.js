@@ -113,7 +113,7 @@
       var move = I.items.filter(function (it) { return it.category === 'food' && NA_RE.test(String(it.section || '')); });
       if (move.length) { move.forEach(function (it) { it.category = 'bev'; }); saveItems(move).then(function () { status('Moved ' + move.length + ' soft drink, juice, coffee and tea item' + (move.length === 1 ? '' : 's') + ' to Beverages → N/A.', 'ok'); }, function () {}); }
       I.settingsOn = !!res[4];
-      loadAlerts();
+      return loadAlerts();
     }, function (e) {
       I.loading = false; I.loaded = true;
       if (isMissing(e)) I.missing = true;
@@ -556,12 +556,27 @@
     var since = new Date(Date.now() - 90 * 864e5).toISOString();
     return sb().from('inventory_prices').select('id,item_id,price_date,vendor,unit_cost,old_cost,created_at').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', since).order('created_at', { ascending: false }).limit(200).then(function (r) {
       I.alerts = r.error ? null : (r.data || []).filter(function (p) { return +p.old_cost && Math.abs(+p.unit_cost - +p.old_cost) / +p.old_cost >= 0.005; });
+      if (!I.alerts || !I.alerts.length) return;
+      // the change shown is by invoice date: the newest invoice price against the one before it
+      // (scanning an older invoice later doesn't make it the "latest")
+      var ids = uniq(I.alerts.map(function (p) { return p.item_id; }));
+      return sb().from('inventory_prices').select('item_id,price_date,vendor,unit_cost,created_at').in('item_id', ids).order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(2000).then(function (r2) {
+        if (r2.error) return;
+        var by = {}; (r2.data || []).forEach(function (p) { (by[p.item_id] = by[p.item_id] || []).push(p); });
+        I.alertByDate = {};
+        Object.keys(by).forEach(function (k) { var a = by[k].sort(function (x, y) { return String(y.price_date).localeCompare(String(x.price_date)) || String(y.created_at).localeCompare(String(x.created_at)); }); I.alertByDate[k] = { last: a[0], prev: a[1] || null }; });
+      });
     }, function () { I.alerts = null; });
   }
   function alertsCard() {
     var list = I.alerts; if (!list || !list.length) return null;
     var byItem = {}; list.forEach(function (p) { if (!byItem[p.item_id]) byItem[p.item_id] = p; });   // newest change per item
-    var rows = Object.keys(byItem).map(function (k) { return byItem[k]; });
+    var rows = Object.keys(byItem).map(function (k) {
+      var p = byItem[k], d = I.alertByDate && I.alertByDate[k];
+      if (d && d.last && d.prev) return { item_id: k, vendor: d.last.vendor, price_date: d.last.price_date, unit_cost: d.last.unit_cost, old_cost: d.prev.unit_cost };
+      return p;
+    }).filter(function (p) { return +p.old_cost && Math.abs(+p.unit_cost - +p.old_cost) / +p.old_cost >= 0.005; });
+    if (!rows.length) return null;
     var nameOf = function (id) { var x = I.items.filter(function (y) { return y.id === id; })[0]; return x || null; };
     var open = I.alertsOpen;
     var ul = h('ul', { cls: 'is-inbox', hidden: !open }, rows.map(function (p) {

@@ -689,7 +689,7 @@
       var bad = use.filter(function (L) { var c = L.costOver != null ? L.costOver : newCost(L); return c == null || !isFinite(c); });
       if (bad.length) { msg.className = 'sc-msg err'; msg.textContent = 'Fix the cost on: ' + bad.map(function (L) { return L.description; }).join(', '); return; }
       applyBtn.disabled = true; msg.className = 'sc-msg is-info'; msg.textContent = 'Saving…';
-      var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {};
+      var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {}, older = [];
       var cats = {}; use.forEach(function (L) { var x = item(L.item); if (x) cats[x.category] = (cats[x.category] || 0) + 1; });
       var newCat = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || null;   // new items join the inventory the rest of the invoice is in
       use.forEach(function (L) {
@@ -722,7 +722,14 @@
       }).then(function (r) {
         if (r.error) throw r.error;
         var invId = savedId = r.data.id;
-        return A.saveItems(adds.concat(upd)).then(function () {
+        // an invoice older than the item's newest price only goes into the history: it doesn't change today's cost
+        var upIds = upd.map(function (n) { return n.id; });
+        var newer = !date || !upIds.length ? Promise.resolve([]) : A.sb.from('inventory_prices').select('item_id,price_date').in('item_id', upIds).gt('price_date', date).then(function (q) { return q.error ? [] : q.data || []; }, function () { return []; });
+        return newer.then(function (nw) {
+          var keep = {}; nw.forEach(function (x) { keep[x.item_id] = 1; });
+          upd.forEach(function (n) { if (keep[n.id]) { var o = item(n.id); n.cost = o ? o.cost : n.cost; older.push(n.name); } });
+          return A.saveItems(adds.concat(upd));
+        }).then(function () {
           use.forEach(function (L) { hist.push({ item_id: L.item, invoice_id: invId, price_date: date || undefined, vendor: vendor, invoice_line: L.description, invoice_price: L.unit_price, invoice_unit: L.unit || '', per_unit: L.per, unit_cost: L.newCost, old_cost: L.old }); });
           return Promise.all([
             A.sb.from('inventory_prices').insert(hist),
@@ -734,7 +741,7 @@
         upd.forEach(function (n) { var it = item(n.id); if (it) Object.assign(it, n); });
         var warn = res.some(function (x) { return x && x.error; });
         m.close();
-        A.status('Updated ' + use.length + ' price' + (use.length === 1 ? '' : 's') + ' from ' + vendor + (f.no.value.trim() ? ' invoice ' + f.no.value.trim() : '') + '.' + (warn ? ' (Price history or matching memory didn’t save.)' : ''), warn ? 'err' : 'ok');
+        A.status('Updated ' + use.length + ' price' + (use.length === 1 ? '' : 's') + ' from ' + vendor + (f.no.value.trim() ? ' invoice ' + f.no.value.trim() : '') + '.' + (older.length ? ' ' + older.length + ' item' + (older.length === 1 ? ' has' : 's have') + ' a newer invoice price, so ' + (older.length === 1 ? 'its' : 'their') + ' cost stayed; this price is in the history.' : '') + (warn ? ' (Price history or matching memory didn’t save.)' : ''), warn ? 'err' : 'ok');
         if (opts.after) opts.after(savedId);
         A.done();
       }).catch(function (e) {
