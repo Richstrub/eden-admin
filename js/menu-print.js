@@ -52,7 +52,7 @@
           return '<div class="it"><div class="row"><span class="nm">' + esc(it.name) + '</span><span class="pr">' + esc(price(it.price)) + (it.cut && /^\d+(\.\d+)?$/.test(price(it.price)) ? '/oz' : '') + '</span></div>' +
             (it.desc ? '<p class="ds">' + esc(it.desc) + '</p>' : '') +
             (it.src ? '<p class="src">' + esc(it.src) + '</p>' : '') +
-            (it.pair ? '<p class="pair">Pairing · ' + esc(it.pair) + (it.pairPrice ? ' · ' + esc(price(it.pairPrice)) : '') + '</p>' : '') + '</div>';
+            (it.pair ? '<p class="pair">Pairing · ' + esc(it.pair) + (it.pairPrice ? ' · ' + esc(price(it.pairPrice)) + (it.pairKind === 'spirit' ? ' pour' : '') : '') + '</p>' : '') + '</div>';
         }).join('') +
         (g.noteAfter ? '<p class="note">' + esc(g.noteAfter) + '</p>' : '') + '</section>';
     }).join('');

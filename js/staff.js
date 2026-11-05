@@ -1022,7 +1022,20 @@
     ((ed.draft && ed.draft.tabs) || []).forEach(function (t) {
       (t.groups || []).forEach(function (g) {
         (g.items || []).forEach(function (w) {
-          if (isWine(w) && w.glass && w.name && !w.hidden) out.push({ name: w.name, glass: String(w.glass).trim(), style: g.title || '', where: w.appellation || w.country || '' });
+          if (isWine(w) && w.glass && w.name && !w.hidden) out.push({ name: w.name, glass: String(w.glass).trim(), style: g.title || '', where: w.appellation || w.country || '', kind: 'wine' });
+        });
+      });
+    });
+    return out;
+  }
+  // spirits on the spirits list, with their pour price: for pairing a dish with a pour (a digestif with dessert, a mezcal with the steak)
+  function spiritPours() {
+    var out = [];
+    ((ed.draft && ed.draft.tabs) || []).forEach(function (t) {
+      if (invKind(t) !== 'spirits') return;
+      (t.groups || []).forEach(function (g) {
+        (g.items || []).forEach(function (w) {
+          if (w.name && !w.hidden && !w.head) out.push({ name: w.name, glass: String(w.price || '').trim(), style: g.title || 'Spirits', where: w.src || w.desc || '', kind: 'spirit' });
         });
       });
     });
@@ -1044,14 +1057,17 @@
   }
   function pairRow(it) {
     var pr = document.createElement('div'); pr.className = 'ed-pairrow';
-    var wf = field('Wine pairing (optional)', it.pair, function (v) { if (v) it.pair = v; else delete it.pair; }, true);
-    var pf = field('Glass price', it.pairPrice, function (v) { if (v) it.pairPrice = v; else delete it.pairPrice; });
+    var wf = field('Pairing: wine or spirit (optional)', it.pair, function (v) {
+      if (v) it.pair = v; else delete it.pair;
+      if (v && spiritPours().some(function (x) { return x.name === v; })) it.pairKind = 'spirit'; else delete it.pairKind;   // the website says "pour", not "glass"
+    }, true);
+    var pf = field('Glass / pour price', it.pairPrice, function (v) { if (v) it.pairPrice = v; else delete it.pairPrice; });
     pr.appendChild(wf); pr.appendChild(pf);
     if (!ed.canWrite) return pr;
     var input = wf.querySelector('input'), priceInput = pf.querySelector('input');
     input.setAttribute('autocomplete', 'off'); input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
-    input.placeholder = 'Start typing a wine, grape or region';
+    input.placeholder = 'Start typing a wine, grape, region or spirit';
     wf.classList.add('ed-ac');
     var box = document.createElement('div'); box.className = 'ed-ac-list'; box.setAttribute('role', 'listbox'); box.hidden = true;
     wf.appendChild(box);
@@ -1060,6 +1076,7 @@
     function choose(w) {
       input.value = w.name; priceInput.value = w.glass;
       it.pair = w.name; it.pairPrice = w.glass;
+      if (w.kind === 'spirit') it.pairKind = 'spirit'; else delete it.pairKind;
       close(); markDirty();
     }
     function paint() {
@@ -1067,15 +1084,22 @@
       var on = box.querySelector('.ed-ac-opt.on'); if (on) on.scrollIntoView({ block: 'nearest' });
     }
     function open() {
-      var words = fold(input.value).split(/\s+/).filter(Boolean), all = glassWines();
+      var words = fold(input.value).split(/\s+/).filter(Boolean), all = glassWines().concat(spiritPours());
       matches = all.filter(function (w) { var hay = fold(w.name + ' ' + w.style + ' ' + w.where); return words.every(function (q) { return hay.indexOf(q) !== -1; }); });
       if (matches.length === 1 && matches[0].name === input.value) matches = [];
       box.innerHTML = '';
       if (!all.length) { close(); return; }
       var head = document.createElement('div'); head.className = 'ed-ac-head';
-      head.textContent = matches.length ? 'By the glass' + (words.length ? ' · ' + matches.length + ' match' + (matches.length === 1 ? '' : 'es') : '') : 'No glass pours match “' + input.value + '”. You can still type any wine.';
-      box.appendChild(head);
+      if (!matches.length) { head.textContent = 'No wines by the glass or spirits match “' + input.value + '”. You can still type anything.'; box.appendChild(head); }
+      var lastKind = null;
       matches.forEach(function (w, i) {
+        if (w.kind !== lastKind) {   // "Wine by the glass", then "Spirits"
+          lastKind = w.kind;
+          var hd = document.createElement('div'); hd.className = 'ed-ac-head';
+          var nk = matches.filter(function (x) { return x.kind === w.kind; }).length;
+          hd.textContent = (w.kind === 'spirit' ? 'Spirits' : 'Wine by the glass') + (words.length ? ' · ' + nk + ' match' + (nk === 1 ? '' : 'es') : '');
+          box.appendChild(hd);
+        }
         var o = document.createElement('div'); o.className = 'ed-ac-opt'; o.setAttribute('role', 'option');
         var n = document.createElement('span'); n.className = 'ed-ac-name'; n.textContent = w.name;
         var m = document.createElement('span'); m.className = 'ed-ac-meta'; m.textContent = w.style + (w.where ? ' · ' + w.where : '');
