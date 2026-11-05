@@ -16,20 +16,34 @@
   // amounts in a common base: ml for volume, g for weight
   var VOL = { tsp: 4.92892, tbsp: 14.7868, 'fl oz': 29.5735, floz: 29.5735, cup: 236.588, cups: 236.588, pt: 473.176, pint: 473.176, qt: 946.353, quart: 946.353, gal: 3785.41, gallon: 3785.41, ml: 1, l: 1000, lt: 1000, liter: 1000, litre: 1000 };
   var WT = { oz: 28.3495, lb: 453.592, lbs: 453.592, '#': 453.592, g: 1, kg: 1000, gram: 1, grams: 1 };
-  // a recipe's egg whites and yolks come from whole eggs: 1 white or 1 yolk uses 1 egg.
-  // Weights of one large egg (USDA FoodData Central): whole 50 g, white 33 g, yolk 17 g. Volumes count as grams (about 1 g per ml).
-  var EGG_G = { whole: 50, white: 33, yolk: 17 };
-  function eggPart(ing, it) {
-    var w = norm(ing.item), n = norm((it.ingredient || '') + ' ' + it.name);
-    if (!/\begg/.test(n) || /\b(white|yolk|liquid|powder)/.test(n)) return null;   // only when it's costed from whole eggs
-    return /\bwhites?\b/.test(w) ? 'white' : /\byolks?\b/.test(w) ? 'yolk' : null;
+  // Yields: part of a whole item a recipe calls for, costed from the whole. 1 white, 1 yolk or the juice of 1 lemon = 1 of the whole;
+  // by weight or volume, the amount ÷ what one whole gives. Volumes and weights count about the same (1 ml ≈ 1 g).
+  // Defaults from USDA FoodData Central (large egg: white 33 g, yolk 17 g; juice of 1 lemon 48 g, 1 lime 44 g).
+  // Owners and managers change them on Menu costs → Ingredient yields (saved in inventory_settings.yields).
+  var YIELDS_DEFAULT = [
+    { part: 'Egg white', words: 'egg white, white', from: 'egg', qty: 33, unit: 'g' },
+    { part: 'Egg yolk', words: 'egg yolk, yolk', from: 'egg', qty: 17, unit: 'g' },
+    { part: 'Lemon juice', words: 'lemon juice', from: 'lemon', qty: 48, unit: 'g' },
+    { part: 'Lime juice', words: 'lime juice', from: 'lime', qty: 44, unit: 'g' }
+  ];
+  var YIELDS = YIELDS_DEFAULT.slice();
+  function sing(t) { return norm(t).split(' ').map(function (w) { return w.length > 3 ? w.replace(/(es|s)$/, function (m) { return /(ch|sh|x)es$/.test(w) ? '' : m === 'es' ? 'e' : ''; }) : w; }).join(' '); }
+  function has(text, phrase) { var t = ' ' + sing(text) + ' ', p = sing(phrase); return !!p && t.indexOf(' ' + p + ' ') >= 0; }
+  function yieldFor(ing, it) {
+    var n = (it.ingredient || '') + ' ' + it.name;
+    for (var i = 0; i < YIELDS.length; i++) {
+      var y = YIELDS[i], words = String(y.words || y.part).split(',').map(function (w) { return w.trim(); }).filter(Boolean);
+      if (!has(n, y.from) || words.some(function (w) { return has(n, w); })) continue;   // costed from the whole (not bottled juice or liquid whites)
+      if (words.some(function (w) { return has(ing.item, w); })) return y;
+    }
+    return null;
   }
-  // how many whole eggs an amount of whites or yolks takes: "3" or "3 each" = 3 eggs, "100 g" of whites = 3.03 eggs
-  function eggsFor(q, u, part) {
-    var d = dim(u);
+  // how many wholes an amount takes: "3" = 3, "100 g" of whites ÷ 33 g = 3.03, "2 tbsp" of lemon juice ÷ 48 g
+  function wholesFor(q, u, y) {
+    var d = dim(u), yd = dim(y.unit), per = +y.qty;
     if (d === 'each') return q;
     if (d === 'dozen') return q * 12;
-    if (d === 'wt' || d === 'vol') return base(q, ozAs(u, d === 'vol' ? 'vol' : 'wt')) / EGG_G[part];
+    if ((d === 'wt' || d === 'vol') && (yd === 'wt' || yd === 'vol') && per > 0) return base(q, ozAs(u, d === 'vol' ? 'vol' : 'wt')) / base(per, ozAs(y.unit, yd === 'vol' ? 'vol' : 'wt'));
     return null;
   }
   var EACH = /^(each|ea|ct|count|pc|pcs|piece|pieces|egg|eggs|clove|cloves|head|heads|bunch|bunches|sprig|sprigs|portion|portions|serving|servings|plate|plates|slice|slices|leaf|leaves|unit|units)$/;
@@ -81,6 +95,8 @@
       D.recipes = r[1].error ? [] : (r[1].data || []); D.recErr = r[1].error || null;
       D.builds = r[2].error ? [] : (r[2].data || []);
       if (!r[3].error && r[3].data && window.EdenCosting) window.EdenCosting.setSettings(r[3].data);
+      D.yieldsCol = !r[3].error && r[3].data ? 'yields' in r[3].data : null;
+      YIELDS = !r[3].error && r[3].data && Array.isArray(r[3].data.yields) && r[3].data.yields.length ? r[3].data.yields : YIELDS_DEFAULT.slice();
       index(); D.loaded = true; return D;
     }, function (e) { D.p = null; throw e; });
     return D.p;
@@ -107,13 +123,12 @@
     }
     var it = D.invById[ing.inv_id]; if (!it) return { cost: null, why: 'inventory item deleted' };
     if (it.cost == null || it.cost === '') return { cost: null, why: 'no price in inventory' };
-    var ct = contents(it), part = eggPart(ing, it);
-    if (part) {
-      var eggs = eggsFor(ing.qty, ing.unit, part);
-      if (eggs == null) return { cost: null, why: 'can’t turn ' + (ing.unit || 'each') + ' of egg ' + part + ' into eggs' };
-      if (ct.dim === 'each') return { cost: +it.cost * eggs / ct.amt, eggs: eggs };
-      if (ct.dim === 'wt') return { cost: +it.cost * eggs * EGG_G.whole / ct.amt, eggs: eggs };
-      return { cost: null, why: 'can’t turn eggs into ' + (it.unit || 'each') };
+    var ct = contents(it), y = yieldFor(ing, it);
+    if (y) {
+      var n = wholesFor(ing.qty, ing.unit, y), wn = y.from;
+      if (n == null) return { cost: null, why: 'can’t turn ' + (ing.unit || 'each') + ' of ' + y.part.toLowerCase() + ' into ' + wn + 's' };
+      if (ct.dim === 'each') return { cost: +it.cost * n / ct.amt, wholes: n, whole: wn };
+      return { cost: null, why: 'count ' + (it.ingredient || it.name) + ' by the each (or dozen) to cost ' + y.part.toLowerCase() };
     }
     var iu = ozAs(ing.unit, ct.dim), d = dim(iu);
     if (d === 'dozen') d = 'each';
@@ -231,6 +246,49 @@
     el.innerHTML = ''; el.appendChild(h('div', { cls: 'mc-in' }, [h('p', { cls: 'sc-empty', text: 'Loading menu costs…' })]));
     Promise.all([load(ctx.sb, true), Promise.resolve(ctx.getMenu ? ctx.getMenu() : null)]).then(function (r) { P.menu = r[1]; paint(); }, function () { el.innerHTML = ''; el.appendChild(h('p', { cls: 'an-err', text: 'Couldn’t load the menu costs. Check your connection and reload.' })); });
   }
+  // Ingredient yields: look at and change how a part of an item is costed from the whole
+  function yieldsPanel() {
+    var rows0 = YIELDS.map(function (y) { return Object.assign({}, y); });
+    var det = h('details', { cls: 'mc-yields' }); det.open = !!P.yOpen; det.addEventListener('toggle', function () { P.yOpen = det.open; });
+    var body = h('div'), msg = h('p', { cls: 'sc-msg', role: 'status' });
+    var units = ['g', 'oz', 'ml', 'tsp', 'tbsp', 'fl oz', 'cup'];
+    function paintRows() {
+      body.innerHTML = '';
+      var tb = h('tbody');
+      rows0.forEach(function (y, i) {
+        var f = function (k, ph, w) { var e = h('input', { type: 'text', value: y[k] == null ? '' : String(y[k]), placeholder: ph, 'aria-label': ph }); if (w) e.style.width = w; e.addEventListener('input', function () { y[k] = k === 'qty' ? (parseFloat(e.value) || null) : e.value; }); return e; };
+        var us = h('select', { 'aria-label': 'Unit' }, units.map(function (u) { return h('option', { value: u, text: u }); })); us.value = y.unit || 'g'; us.addEventListener('change', function () { y.unit = us.value; });
+        tb.appendChild(h('tr', null, [h('td', null, f('part', 'e.g. Egg yolk')), h('td', null, f('words', 'egg yolk, yolk')), h('td', null, f('from', 'egg')),
+          h('td', { cls: 'mc-ygive' }, [h('span', { text: '1 ' + (y.from || 'whole') + ' gives' }), f('qty', '17', '64px'), us]),
+          h('td', null, h('button', { type: 'button', cls: 'rc-mini rc-del', 'aria-label': 'Remove', text: '✕', on: { click: function () { rows0.splice(i, 1); paintRows(); } } }))]));
+      });
+      body.appendChild(h('div', { cls: 'is-wrap' }, h('table', { cls: 'fn-tbl mc-ytbl' }, [h('thead', null, h('tr', null, ['Part', 'Recipe ingredient says', 'Costed from (whole)', 'One whole gives', ''].map(function (t) { return h('th', { text: t }); }))), tb])));
+      body.appendChild(h('div', { cls: 'mc-yact' }, [
+        h('button', { type: 'button', cls: 'ed-btn small', text: '+ Add a yield', on: { click: function () { rows0.push({ part: '', words: '', from: '', qty: null, unit: 'g' }); paintRows(); } } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Back to the defaults', on: { click: function () { rows0 = YIELDS_DEFAULT.map(function (y) { return Object.assign({}, y); }); paintRows(); } } }),
+        h('span', { cls: 'sc-sp' }),
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Save yields', on: { click: save } })
+      ]));
+      body.appendChild(msg);
+    }
+    function save() {
+      var list = rows0.filter(function (y) { return (y.part || '').trim() || (y.words || '').trim(); });
+      var bad = list.filter(function (y) { return !(y.from || '').trim() || !(+y.qty > 0); });
+      if (bad.length) { msg.textContent = 'Each yield needs what it’s costed from and how much one whole gives.'; return; }
+      list = list.map(function (y) { return { part: (y.part || y.words).trim(), words: (y.words || y.part).trim(), from: y.from.trim(), qty: +y.qty, unit: y.unit || 'g' }; });
+      msg.textContent = 'Saving…';
+      D.sb.from('inventory_settings').update({ yields: list, updated_at: new Date().toISOString() }).eq('id', 1).then(function (r) {
+        if (r.error) { msg.textContent = /yields|column/i.test(r.error.message || '') ? 'One-time setup: run supabase/ingredient-yields.sql in Supabase, then save again.' : /permission|security/i.test(r.error.message || '') ? 'Only the Owner or a manager can change yields.' : 'Couldn’t save. Check your connection and try again.'; return; }
+        YIELDS = list; P.yOpen = true; paint();
+      });
+    }
+    paintRows();
+    det.appendChild(h('summary', { text: 'Ingredient yields: egg whites & yolks, lemon & lime juice' }));
+    det.appendChild(h('p', { cls: 'an-sub', text: 'When a recipe calls for part of an item, it’s costed from the whole one. A count (3 egg yolks, juice of 2 lemons) uses that many wholes; a weight or volume (100 g whites, 2 tbsp lemon juice) is divided by what one whole gives. This only applies when the ingredient is linked to the whole item (Eggs, Lemons), not bottled juice or liquid whites.' }));
+    if (D.yieldsCol === false) det.appendChild(h('p', { cls: 'an-err', text: 'These are the defaults. To change them, run supabase/ingredient-yields.sql in Supabase once.' }));
+    det.appendChild(body);
+    return det;
+  }
   function paint() {
     var el = P.ctx.el; el.innerHTML = '';
     var all = rows(P.menu), wrap = h('div', { cls: 'mc-in' }); el.appendChild(wrap);
@@ -259,6 +317,7 @@
       h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Download CSV', on: { click: function () { csv(filtered()); } } })
     ]));
     var listEl = h('div', { cls: 'mc-list' }); wrap.appendChild(listEl);
+    wrap.appendChild(yieldsPanel());
     wrap.appendChild(h('p', { cls: 'fn-note', text: 'Targets: food ' + pct(TARGET.food) + ', cocktails ' + pct(TARGET.bar) + ', wine ' + pct(TARGET.wine) + ', beer & soft drinks ' + pct(TARGET.beer) + ', spirits ' + pct(TARGET.spirits) + '. To cost a plate: open its recipe in Recipes, link each ingredient to an inventory item, then connect the recipe to the menu item (with how much goes on one plate). A plate made of several recipes (protein, sauce, garnish) adds them up.' }));
     function filtered() {
       var w = norm(P.q).split(' ').filter(Boolean);
@@ -325,7 +384,7 @@
   }
 
   window.EdenMenuCost = {
-    load: load, show: show, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
     units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
       var seen = {};
       D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });

@@ -540,8 +540,8 @@
           if (!costEl) return;
           var c = (ing.inv_id || ing.rec_id) && ing.qty != null ? MC().ingCost(ing) : null;
           costEl.textContent = c && c.cost != null ? cmoney(c.cost) : c ? '?' : '';
-          costEl.title = c && c.cost == null ? c.why || '' : c && c.eggs != null ? 'Uses ' + Math.round(c.eggs * 100) / 100 + ' whole egg' + (c.eggs === 1 ? '' : 's') + ' (1 white or yolk = 1 egg)' : '';
-          if (c && c.eggs != null && c.cost != null) costEl.textContent += ' · ' + Math.round(c.eggs * 10) / 10 + ' egg' + (Math.round(c.eggs * 10) / 10 === 1 ? '' : 's');
+          costEl.title = c && c.cost == null ? c.why || '' : c && c.wholes != null ? 'Uses ' + Math.round(c.wholes * 100) / 100 + ' ' + c.whole + (c.wholes === 1 ? '' : 's') + ' (Menu costs → Ingredient yields)' : '';
+          if (c && c.wholes != null && c.cost != null) costEl.textContent += ' · ' + Math.round(c.wholes * 10) / 10 + ' ' + c.whole + (Math.round(c.wholes * 10) / 10 === 1 ? '' : 's');
           costEl.classList.toggle('none', !!c && c.cost == null);
           paintTotal();
         };
