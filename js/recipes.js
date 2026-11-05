@@ -556,7 +556,7 @@
         u.addEventListener('change', function () { ing.unit = normUnit(u.value); u.value = ing.unit; R.dirty = true; paintCost(); });
         u.addEventListener('input', function () { ing.unit = u.value.trim(); R.dirty = true; paintCost(); });
         it.addEventListener('input', function () { ing.item = it.value; R.dirty = true; });
-        var itCell = costs() ? ingSearch(ing, it, function () { if (!u.value.trim() && ing.inv_id && MC().data.invById[ing.inv_id]) { u.value = ing.unit = MC().data.invById[ing.inv_id].unit || ''; } paintCost(); }) : it;
+        var itCell = costs() ? ingSearch(ing, it, function () { if (!u.value.trim() && ing.inv_id && MC().data.invById[ing.inv_id] && !(MC().yieldFor && MC().yieldFor(ing, MC().data.invById[ing.inv_id]) && (u.placeholder = 'each (or g, oz)'))) { u.value = ing.unit = MC().data.invById[ing.inv_id].unit || ''; } paintCost(); }) : it;
         nt.addEventListener('input', function () { ing.note = nt.value; R.dirty = true; });
         it.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (i === x.ingredients.length - 1) { x.ingredients.push({ qty: null, unit: '', item: '', note: '' }); paintRows(); } var all = rows.querySelectorAll('[aria-label=Amount]'); var nx = all[Math.min(i + 1, all.length - 1)]; if (nx) nx.focus(); } });
         rows.appendChild(h('div', { cls: 'rc-erow' }, [q, u, itCell, nt, costEl, tools]));
@@ -580,6 +580,8 @@
       wrap.appendChild(it); wrap.appendChild(list); wrap.appendChild(src);
       function paintSrc() {
         var iv = ing.inv_id && D.invById[ing.inv_id], rr = ing.rec_id && D.recById[ing.rec_id];
+        var yy = iv && MC().yieldFor ? MC().yieldFor(ing, iv) : null;
+        if (yy) { src.textContent = 'From ' + (iv.ingredient || iv.name) + ' · 1 ' + yy.part.toLowerCase().replace(new RegExp('^' + yy.from + '\\s+'), '') + ' = 1 ' + yy.from + ' (' + (+yy.qty) + ' ' + yy.unit + ') · Costing calculations'; wrap.classList.add('rc-linked'); return; }
         src.textContent = iv ? 'From inventory' + (iv.ingredient && iv.ingredient !== ing.item ? ' (' + iv.ingredient + ')' : iv.name !== ing.item ? ' (' + iv.name + ')' : '') + ': ' + (iv.cost != null && iv.cost !== '' ? '$' + (+iv.cost).toFixed(2) + ' / ' + (iv.unit || 'each') : 'no price yet') : rr ? 'From the recipe ' + rr.name : '';
         wrap.classList.toggle('rc-linked', !!(iv || rr));
       }
@@ -593,6 +595,8 @@
           .sort(function (a, b) { return (a.category === 'food' ? 0 : 1) - (b.category === 'food' ? 0 : 1) || (a.ingredient ? 0 : 1) - (b.ingredient ? 0 : 1) || String(a.ingredient || a.name).localeCompare(b.ingredient || b.name); }).slice(0, 30);
         var recs = R.list.filter(function (r) { return r.id !== x.id && hit(r.name); }).slice(0, 10);
         var add = function (o) { opts.push(o); var b = h('button', { type: 'button', cls: 'rc-copt', tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(o); }); o.el = b; list.appendChild(b); };
+        var yo = MC().yieldOptions ? MC().yieldOptions(it.value) : [];
+        if (yo.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'From costing calculations' })); yo.forEach(function (o) { var iv = o.it; add({ inv: iv.id, name: o.y.part, text: o.y.part, sub: 'from ' + (iv.ingredient || iv.name) + ' · 1 = 1 ' + o.y.from + ' (' + (+o.y.qty) + ' ' + o.y.unit + ')' + (iv.cost != null && iv.cost !== '' ? ' · $' + (+iv.cost).toFixed(2) + ' / ' + (iv.unit || 'each') : ' · no price yet') }); }); }
         if (inv.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Inventory' })); inv.forEach(function (v) { add({ inv: v.id, name: v.ingredient || v.name, text: v.ingredient || v.name, sub: [v.ingredient ? v.name : '', v.cost != null && v.cost !== '' ? '$' + (+v.cost).toFixed(2) + ' / ' + (v.unit || 'each') : 'no price yet', v.pack, v.vendor].filter(Boolean).join(' · ') }); }); }
         if (recs.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Recipes' })); recs.forEach(function (r) { add({ rec: r.id, name: r.name, text: r.name, sub: 'Recipe' + (r.yield_qty ? ' · makes ' + r.yield_qty + ' ' + (r.yield_unit || '') : '') }); }); }
         if (!opts.length) list.appendChild(h('p', { cls: 'rc-chead', text: 'Nothing in the inventory matches. Keep it as typed (not costed).' }));

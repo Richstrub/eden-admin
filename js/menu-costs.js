@@ -29,14 +29,35 @@
   var YIELDS = YIELDS_DEFAULT.slice();
   function sing(t) { return norm(t).split(' ').map(function (w) { return w.length > 3 ? w.replace(/(es|s)$/, function (m) { return /(ch|sh|x)es$/.test(w) ? '' : m === 'es' ? 'e' : ''; }) : w; }).join(' '); }
   function has(text, phrase) { var t = ' ' + sing(text) + ' ', p = sing(phrase); return !!p && t.indexOf(' ' + p + ' ') >= 0; }
+  // the whole item (Eggs, Lemons), not a part of it someone sells (liquid egg whites, bottled lemon juice)
+  function isWhole(it, from) {
+    var n = (it.ingredient || '') + ' ' + it.name;
+    if (!has(n, from) || /\b(liquid|powder|dried|bottled|frozen)\b/.test(norm(n))) return false;
+    return !YIELDS.some(function (y) { return norm(y.from) === norm(from) && String(y.words || y.part).split(',').some(function (w) { return w.trim() && has(n, w.trim()); }); });
+  }
   function yieldFor(ing, it) {
     var n = (it.ingredient || '') + ' ' + it.name;
     for (var i = 0; i < YIELDS.length; i++) {
       var y = YIELDS[i], words = String(y.words || y.part).split(',').map(function (w) { return w.trim(); }).filter(Boolean);
-      if (!has(n, y.from) || words.some(function (w) { return has(n, w); })) continue;   // costed from the whole (not bottled juice or liquid whites)
+      if (!isWhole(it, y.from)) continue;   // costed from the whole (not bottled juice or liquid whites)
       if (words.some(function (w) { return has(ing.item, w); })) return y;
     }
     return null;
+  }
+  // the costing calculations a recipe search matches ("yolk" → Egg yolk), each with the whole items it can come from
+  function yieldOptions(q) {
+    var w = sing(q).split(' ').filter(Boolean); if (!w.length) return [];
+    var out = [];
+    YIELDS.forEach(function (y) {
+      var words = String(y.words || y.part).split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+      var hay = ' ' + sing(y.part + ' ' + words.join(' ')) + ' ';
+      if (!w.every(function (t) { return hay.indexOf(' ' + t) >= 0; })) return;
+      D.inv.forEach(function (it) {
+        if (it.active === false || it.category === 'paper') return;
+        if (isWhole(it, y.from)) out.push({ y: y, it: it });
+      });
+    });
+    return out;
   }
   // how many wholes an amount takes: "3" = 3, "100 g" of whites ÷ 33 g = 3.03, "2 tbsp" of lemon juice ÷ 48 g
   function wholesFor(q, u, y) {
@@ -394,7 +415,7 @@
   }
 
   window.EdenMenuCost = {
-    contents: contents, pourCost: pourCost, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    contents: contents, pourCost: pourCost, yieldOptions: yieldOptions, yieldFor: yieldFor, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
     units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
       var seen = {};
       D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });
