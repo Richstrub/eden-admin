@@ -3313,3 +3313,7 @@ tr.mc-none th b{color:#6b665e}
 .mc-yact{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
 .mc-yields{margin:14px 0 18px}.mc-yields>summary small{display:block;font-weight:400;color:#7a7d81;font-size:.8rem;margin:2px 0 0 18px}.mc-yields>summary span{font-size:1.02rem}
 .is-rec{display:table-cell}.is-rec>*+*{margin-top:6px}.is-sec{display:grid;gap:3px}.is-sec span{font-size:.72rem;color:#7a7d81;text-transform:uppercase;letter-spacing:.05em}.is-sec input{width:100%}
+.iv-chart-hit{fill:transparent;cursor:pointer}.iv-chart-hit:focus{outline:none}.iv-chart-d.on{fill:#1f2328;r:6}
+.iv-hist li{display:block;padding:0}.iv-hrow{display:flex;justify-content:space-between;gap:12px;width:100%;padding:6px 4px;background:none;border:0;font:inherit;text-align:left;cursor:pointer;border-radius:6px}.iv-hrow:hover{background:#f3eee6}
+.iv-hedit{margin:10px 0;padding:12px;border:1px solid #e1d8ca;border-radius:12px;background:#fbf8f3;display:grid;gap:8px}.iv-hhead{display:flex;justify-content:space-between;align-items:center}
+.iv-halso{display:flex;gap:8px;align-items:center;font-size:.85rem}.iv-hact{display:flex;align-items:center;gap:8px}
