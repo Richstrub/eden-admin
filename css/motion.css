@@ -16,6 +16,9 @@
 @keyframes moBack{from{opacity:.35;transform:translate3d(-32px,0,0)}to{opacity:1;transform:none}}
 
 /* pop-ups: the backdrop dims in, the card rises (a sheet from the bottom on phones) */
+/* pop-ups animate once, from .mo-ov-in below: the card's own opening animation (apple.css) would start again
+   when .mo-ov-in comes off after 600 ms, and the window would flash and open a second time */
+.sc-modal>.sc-card,.acct-back>.acct-card{animation:none}
 .mo-ov-in{animation:moFade .3s ease-out both}
 .mo-ov-in>.sc-card,.mo-ov-in>.acct-card,.mo-ov-in>*:first-child:not(.sc-card):not(script){animation:moPop .42s var(--mo-ease) both}
 dialog[open]{animation:moPop .42s var(--mo-ease) both}
