@@ -544,7 +544,7 @@
       if ((m = p.match(/^(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z#][a-z# ]*)/))) {
         n.value = m[1]; var u2 = normU(m[2]);
         if (units.some(function (o) { return o[0] === u2; })) uv = u2; else if (k === 'food' && u2) { uv = '__other'; cu = u2; }
-      }
+      } else if ((m = p.match(/^(\d+)\s*(?:\/|x|×)\s*\d/))) n.value = m[1];   // "12/28 oz": 12 bottles of 28 oz → a case holds 12 each
       n.setAttribute('aria-label', k === 'coffee' ? 'Case size' : 'How many in a case'); n.placeholder = k === 'coffee' ? '5' : '24';
       var s2 = sel(units, uv, 'Unit');
       var c2 = h('input', { type: 'text', cls: 'is-pk', value: cu, placeholder: 'e.g. flat, tray, sleeve', 'aria-label': 'Other measurement', hidden: uv !== '__other' });
@@ -572,7 +572,7 @@
       // food is counted by weight or by the each, never by the case: by the pound → by the pound; a case → what the case holds
       var setU = function () {
         var x = it || { unit: '', category: L.newKind || 'food' }, tgt = byUnit ? ru.value : (num(n.value) && (s2.value === '__other' ? normU(c2.value) : s2.value)) || null;
-        var isFood = (it ? it.category : (L.newKind === 'food' || !L.newKind ? 'food' : L.newKind)) === 'food';   // food only: paper goods stay by the case
+        var isFood = (it ? it.category : (L.newKind === 'food' || !L.newKind ? 'food' : L.newKind)) === 'food' || (!it && L.newKind === 'na');   // food, and new soft drinks (sold by the each): paper goods stay by the case
         L.setUnit = isFood && tgt && normU(canon(x.unit)) !== normU(tgt) && !(wq(x.unit) && wq(tgt)) ? tgt : null;
       };
       setU();
@@ -592,6 +592,13 @@
       if (isNew && !L.newKind) L.newKind = guessKind(L);
       if (L.item && L.rcv == null && kindOf(L, it) === 'wine') sizeFields(L, it, function () {});   // fill in the receiving boxes first, so the units and cost below use them
       if (L.item && kindOf(L, it) === 'food') { var su0 = L.setUnit || null; sizeFields(L, it, function () {}); if ((L.setUnit || null) !== su0 || L.setUnit) L.per = guessPer(L, it || { unit: '' }); }   // received by weight or each: counted that way
+      // a new drink or paper good that comes by the case of 12: counted (and priced) by what's inside, not by the case
+      if (isNew && kindOf(L, it) === 'other' && BIG.test(canon(L.unit))) {
+        var pm = String(L.pack || '').toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(?:\/|x|×)?\s*([a-z][a-z ]*)?/), cnt = pm ? +pm[1] : +L.bottles_per_case || 0;
+        var inn = cnt > 1 ? normU((pm && pm[2] ? pm[2].trim() : '') || 'each') : null;
+        if (inn && BIG.test(inn)) inn = null;
+        if ((L.setUnit || null) !== inn || (inn && L.per !== cnt)) { L.setUnit = inn; L.per = inn ? cnt : 1; L.costOver = null; }
+      } else if (isNew && kindOf(L, it) === 'other' && L.setUnit) L.setUnit = null;
       var nc = L.costOver != null ? L.costOver : newCost(L);
       var old = it && it.cost != null && !L.setUnit ? +it.cost : null, ch = old && nc != null ? (nc - old) / old : null;
       var use = h('input', { type: 'checkbox', checked: !!L.use && !!L.item, disabled: !L.item, 'aria-label': 'Use this line' });
