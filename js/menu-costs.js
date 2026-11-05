@@ -384,7 +384,7 @@
   }
 
   window.EdenMenuCost = {
-    load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    contents: contents, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
     units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
       var seen = {};
       D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });

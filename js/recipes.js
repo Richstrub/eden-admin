@@ -178,6 +178,13 @@
   // recipe units, plus measurements entered as case sizes in Inventory (flat, tray…), so ingredients can be costed in them
   function allUnits(extra) { var u = UNIT_LIST.concat(extra || []); if (window.EdenMenuCost && window.EdenMenuCost.data.loaded) window.EdenMenuCost.units().forEach(function (x) { if (u.indexOf(x) < 0) u.push(x); }); return u; }
   function MC() { return window.EdenMenuCost; }
+  // a typed box with a list: show the whole list when you click in (a filled box only lists what matches it)
+  function fullList(inp) {
+    var was = '';
+    inp.addEventListener('focus', function () { was = inp.value; if (was) { inp.placeholder = was; inp.value = ''; } });
+    inp.addEventListener('blur', function () { if (!inp.value.trim() && was) inp.value = was; });
+    return inp;
+  }
   function cmoney(n) { return n == null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2); }
   function invLabel(it) { return it.name + (it.pack ? ' · ' + it.pack : '') + (it.cost != null && it.cost !== '' ? ' · $' + (+it.cost).toFixed(2) + '/' + (it.unit || 'each') : ' · no price'); }
   function menuItems() {   // every item on the menu, with its section
@@ -389,7 +396,7 @@
     else sec.appendChild(h('table', { cls: 'rc-links' }, [h('tbody', null, links.map(function (l, i) {
       var mi = menu.filter(function (m) { return sameItem(m, l); })[0], lc = MC().linkCost(x, l), pr = mi ? (String(mi.price).match(/\d+(\.\d+)?/) || [])[0] : null;
       var q = h('input', { type: 'text', inputmode: 'decimal', cls: 'rc-x', value: l.qty == null ? '1' : fmtAmount(l.qty, normUnit(l.unit)), 'aria-label': 'Amount per plate', disabled: !canEdit() });
-      var u = h('input', { type: 'text', cls: 'rc-lu', list: 'rcUnitsV', value: l.unit || yu, 'aria-label': 'Unit', disabled: !canEdit() });
+      var u = fullList(h('input', { type: 'text', cls: 'rc-lu', list: 'rcUnitsV', value: l.unit || yu, 'aria-label': 'Unit', disabled: !canEdit() }));
       var upd = function () { var v = parseQty(q.value); if (v == null || v <= 0) return; l.qty = v; l.unit = u.value.trim(); saveLinks(x, render); };
       q.addEventListener('change', upd); u.addEventListener('change', upd);
       return h('tr', null, [
@@ -422,7 +429,7 @@
   }
   function amountFields(x) {
     var q = h('input', { type: 'text', inputmode: 'decimal', value: '1', 'aria-label': 'Amount per plate' });
-    var u = h('input', { type: 'text', list: 'rcUnitsD', value: x.yield_unit || 'portion', 'aria-label': 'Unit' });
+    var u = fullList(h('input', { type: 'text', list: 'rcUnitsD', value: x.yield_unit || 'portion', 'aria-label': 'Unit' }));
     return { q: q, u: u, el: h('label', { cls: 'sc-f' }, [h('span', { text: 'How much goes on one plate' }), h('div', { cls: 'rc-yrow' }, [q, u]),
       h('datalist', { id: 'rcUnitsD' }, allUnits(['portion', 'portions', 'servings']).map(function (v) { return h('option', { value: v }); })),
       h('small', { cls: 'rc-fine', text: x.yield_qty ? 'The recipe makes ' + fmtAmount(x.yield_qty, normUnit(x.yield_unit)) + ' ' + (x.yield_unit || '') + '.' : 'Give the recipe a base yield to cost a plate’s share.' })]) };
@@ -532,7 +539,7 @@
           return;
         }
         var q = h('input', { type: 'text', inputmode: 'decimal', value: ing.qty != null ? fmtAmount(ing.qty, normUnit(ing.unit)) : '', placeholder: '1 ½', 'aria-label': 'Amount' });
-        var u = h('input', { type: 'text', value: ing.unit || '', list: 'rcUnits', placeholder: 'cup', 'aria-label': 'Unit' });
+        var u = fullList(h('input', { type: 'text', value: ing.unit || '', list: 'rcUnits', placeholder: 'cup', 'aria-label': 'Unit' }));
         var it = h('input', { type: 'text', value: ing.item || '', placeholder: 'Heavy cream', 'aria-label': 'Ingredient' });
         var nt = h('input', { type: 'text', value: ing.note || '', placeholder: 'cold', 'aria-label': 'Note' });
         var costEl = costs() ? h('span', { cls: 'rc-ecost' }) : null;

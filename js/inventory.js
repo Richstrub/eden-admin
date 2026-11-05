@@ -753,11 +753,23 @@
       pc: h('input', { type: 'text', inputmode: 'decimal', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: 'e.g. 6 or 12' })
     };
     // 1 received unit = how many counted units: a case of mushrooms = 5 lb, a case of wine = 12 bottles
+    // what recipes will pay for it: per lb / oz / g (or qt / cup / fl oz), from the cost, the unit and the pack size
+    var forRec = h('p', { cls: 'iv-forrec' });
+    function paintForRec() {
+      var MCx = window.EdenMenuCost, c = num(f.cost.value);
+      if (!MCx || !MCx.contents || c == null || !isFoodIt) { forRec.textContent = ''; return; }
+      var t = { unit: f.unit.value.trim(), pack: f.pack.value.trim(), per_case: num(f.pc.value) }, ct = MCx.contents(t), parts = [];
+      if (ct.dim === 'wt') { var g = c / ct.amt; parts = ['$' + (g * 453.592).toFixed(2) + ' / lb', '$' + (g * 28.3495).toFixed(2) + ' / oz', '$' + g.toFixed(4) + ' / g']; }
+      else if (ct.dim === 'vol') { var ml = c / ct.amt; parts = ['$' + (ml * 946.353).toFixed(2) + ' / qt', '$' + (ml * 236.588).toFixed(2) + ' / cup', '$' + (ml * 29.5735).toFixed(2) + ' / fl oz', '$' + (ml * 14.7868).toFixed(3) + ' / tbsp']; }
+      else if (ct.dim === 'each' && ct.amt > 1) parts = ['$' + (c / ct.amt).toFixed(3) + ' each'];
+      forRec.textContent = parts.length ? 'For recipes: ' + parts.join(' · ') : 'Recipes can only use this by the ' + (t.unit || 'unit') + '. To cost it by weight, count it in lb (or oz, g), or put the weight in Pack size, e.g. 5 lb.';
+    }
     var convSpan = h('span'), convRow = lbl('', f.pc); convRow.replaceChild(convSpan, convRow.firstChild);
     function convLbl() {
       var r = f.ord.value.trim(), c = f.unit.value.trim();
       convRow.hidden = !r || !c || r === c;
       convSpan.textContent = 'How many ' + (c || 'units') + ' in 1 ' + (r || 'received unit');
+      paintForRec();
     }
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
     var m;
@@ -775,6 +787,7 @@
       I.orderCols ? convRow : h('p', { cls: 'sc-sub', text: 'To save Received in, run supabase/invoice-vendors.sql in Supabase once.' }),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
       h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), lbl('Cost per unit ($)', f.cost)]),
+      forRec,
       datalist('ivSections', uniq((SECTIONS[I.cat] || []).concat(catItemsAll.map(function (x) { return x.section; })))),
       datalist('ivUnits', UNITS), datalist('ivVendors', uniq(I.items.map(function (x) { return x.vendor; }))),
       msg
@@ -857,6 +870,7 @@
       loadHist();
     }
     convLbl();
+    [f.cost, f.pack, f.pc].forEach(function (e) { e.addEventListener('input', paintForRec); });
     setTimeout(function () { f.name.focus(); }, 30);
     function save() {
       var name = f.name.value.trim();
