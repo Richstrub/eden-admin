@@ -492,6 +492,17 @@
       return how;
     });
   }
+  // a new recipe, started from an inventory item: the item is its first ingredient
+  function newRecipe(name, it) {
+    var x = { id: uid(), name: name.slice(0, 200), category: '', yield_qty: null, yield_unit: '', time: '', allergens: '', ingredients: [{ qty: null, unit: it.unit || '', item: it.name, note: '', inv_id: it.id }], method: '', notes: '', updated_by: (I.ctx && I.ctx.name) || '' };
+    return sb().from('recipes').insert(x).then(function (r) {
+      if (r.error) throw r.error;
+      (I.recipes = I.recipes || []).push(x);
+      if (window.EdenRecipes) window.EdenRecipes.reload();
+      if (window.EdenMenuCost && window.EdenMenuCost.load) window.EdenMenuCost.load(sb(), true).catch(function () {});
+      return 'new';
+    });
+  }
   function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, addToRecipe: addToRecipe, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
@@ -708,13 +719,38 @@
       var rs = isNew ? [] : recipesFor(it.id), others = (I.recipes || []).filter(function (x) { return rs.indexOf(x) < 0; });
       box.appendChild(h('b', { text: 'Recipe' }));
       box.appendChild(h('p', { cls: 'sc-sub', text: rs.length ? 'Used in: ' + rs.map(function (x) { return x.name; }).join(', ') + '. The recipe carries the cost to the menu item.' : 'Not in a recipe yet. Add it to one, then the recipe carries the cost to the menu item.' }));
-      if (isNew || !others.length) return;
-      var sel = h('select', { 'aria-label': 'Add to a recipe' }, [h('option', { value: '', text: '+ Add to a recipe…' })].concat(others.map(function (x) { return h('option', { value: x.id, text: x.name }); })));
-      sel.addEventListener('change', function () {
-        if (!sel.value) return; sel.disabled = true;
-        addToRecipe(sel.value, it).then(function (how) { status(how === 'added' ? 'Added to the recipe. Give it an amount in Recipes.' : 'Linked to that recipe’s ingredient.', 'ok'); paint(); render(); }, function (e) { sel.disabled = false; status('Couldn’t save the recipe: ' + (e.message || e), 'err'); });
+      if (isNew) { box.appendChild(h('p', { cls: 'sc-sub', text: 'Save the item first, then add it to a recipe.' })); return; }
+      // type a recipe name: pick one, or start a new recipe with this item in it
+      var inp = h('input', { type: 'text', placeholder: 'Recipe name: search, or type a new one', 'aria-label': 'Recipe name', autocomplete: 'off' });
+      var list = h('div', { cls: 'rc-clist', hidden: true });
+      var opts = [], at = -1;
+      function build() {
+        var q = keyOf(inp.value), w = q.split(' ').filter(Boolean); list.innerHTML = ''; opts = []; at = -1;
+        var add = function (o) { opts.push(o); var b = h('button', { type: 'button', cls: 'rc-copt', tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); go(o); }); o.el = b; list.appendChild(b); };
+        others.filter(function (x) { var n = keyOf(x.name); return w.every(function (t) { return n.indexOf(t) >= 0; }); }).slice(0, 30)
+          .forEach(function (x) { add({ id: x.id, text: x.name, sub: x.ingredients.filter(function (g) { return !g.head; }).length + ' ingredients' }); });
+        var exact = (I.recipes || []).some(function (x) { return keyOf(x.name) === q; });
+        if (inp.value.trim() && !exact) add({ make: inp.value.trim(), text: '+ New recipe “' + inp.value.trim() + '”', sub: 'Starts a recipe with ' + it.name + ' in it' });
+        if (!opts.length) list.appendChild(h('p', { cls: 'rc-chead', text: 'Type a recipe name' }));
+        if (opts.length) hi(0);
+      }
+      function hi(n) { at = (n + opts.length) % opts.length; opts.forEach(function (o, k) { o.el.classList.toggle('on', k === at); }); }
+      function go(o) {
+        list.hidden = true; inp.disabled = true;
+        var p = o.make ? newRecipe(o.make, it) : addToRecipe(o.id, it);
+        p.then(function (how) { status(how === 'new' ? 'Started the recipe “' + o.make + '”. Finish it in Recipes.' : how === 'added' ? 'Added to the recipe. Give it an amount in Recipes.' : 'Linked to that recipe’s ingredient.', 'ok'); paint(); render(); },
+          function (e) { inp.disabled = false; status('Couldn’t save the recipe: ' + (e.message || e), 'err'); });
+      }
+      inp.addEventListener('input', function () { list.hidden = false; build(); });
+      inp.addEventListener('focus', function () { list.hidden = false; build(); });
+      inp.addEventListener('blur', function () { setTimeout(function () { list.hidden = true; }, 120); });
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (opts.length) hi(at + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (opts.length) hi(at - 1); }
+        else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (at >= 0 && opts[at]) go(opts[at]); }
+        else if (e.key === 'Escape') { e.stopPropagation(); list.hidden = true; }
       });
-      box.appendChild(sel);
+      box.appendChild(h('div', { cls: 'iv-rsearch' }, [inp, list]));
     }
     paint();
     return box;

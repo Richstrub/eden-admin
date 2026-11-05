@@ -3179,7 +3179,7 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 @media (max-width: 760px) { .fn-metph { flex-direction: column; } .fn-metpa { justify-content: flex-start; } }
 
 /* Recipes: cost and menu links */
-.rc-erows.rc-withinv .rc-erow:not(.rc-ehead){grid-template-columns:80px 90px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.6fr) auto}
+.rc-erows.rc-withinv .rc-erow:not(.rc-ehead){grid-template-columns:80px 90px minmax(0,2fr) minmax(0,1fr) 72px auto;align-items:start}
 .rc-erow input.rc-linked{background:#f3f7f4;border-color:#b9d2c3}
 .rc-icost{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#4a4e53;font-size:.92rem;width:80px}
 .rc-icost.none{color:#b6a27a}
@@ -3212,7 +3212,7 @@ td.tp-bad { color: #b0412c; font-weight: 600; }
 .rc-mopt[aria-selected=true]{background:#2a2e33;color:#fff}
 .rc-mopt[aria-selected=true] small{color:#d8d4cc}
 .rc-mopt:disabled{opacity:.45;cursor:default}
-@media (max-width:760px){.rc-erows.rc-withinv .rc-erow:not(.rc-ehead){grid-template-columns:70px 80px minmax(0,1fr) auto}.rc-erows.rc-withinv .rc-erow:not(.rc-ehead) input[aria-label=Note],.rc-erows.rc-withinv .rc-ehdr span:nth-child(4){display:none}}
+@media (max-width:760px){.rc-erows.rc-withinv .rc-erow:not(.rc-ehead){grid-template-columns:64px 70px minmax(0,1fr) 56px auto}.rc-erows.rc-withinv .rc-erow:not(.rc-ehead) input[aria-label=Note],.rc-erows.rc-withinv .rc-ehdr span:nth-child(4){display:none}}
 
 /* Menu costs page */
 .mc-in{max-width:1200px;margin:0 auto;padding:24px 28px 60px}
@@ -3299,3 +3299,12 @@ tr.mc-none th b{color:#6b665e}
 .iv-rec{font-size:.86rem;max-width:200px}.iv-rec a{color:inherit;text-decoration:underline;text-decoration-color:#c9b89a}.iv-none{color:#9a9da1}
 .iv-links{margin-top:10px;display:grid;gap:6px}.iv-links select{width:100%}
 .is-rec{min-width:140px;font-size:.86rem}.is-rec select{width:100%}
+
+.rc-combo{position:relative;display:grid;gap:3px;min-width:0}.rc-combo input{width:100%}.rc-combo.rc-linked input{border-color:#9cb58f;background:#f6faf3}
+.rc-src{font-size:.74rem;color:#5d7a52;line-height:1.2}
+.rc-clist{display:grid;max-height:260px;overflow:auto;background:#fff;border:1px solid #ddd6ca;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:4px}
+.rc-chead{margin:6px 8px 2px;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:#8a8d91}
+.rc-copt{display:grid;text-align:left;background:none;border:0;border-radius:8px;padding:6px 8px;cursor:pointer;font:inherit}.rc-copt small{color:#7a7d81;font-size:.74rem}.rc-copt:hover,.rc-copt.on{background:#f3eee6}
+.rc-ecost{text-align:right;font-variant-numeric:tabular-nums;padding-top:10px;font-size:.9rem}.rc-ecost.none{color:#b4552f}
+.rc-etotal{margin:8px 0 0;font-weight:600;font-size:.95rem}
+.iv-rsearch{position:relative;display:grid;gap:4px}.iv-rsearch input{width:100%}

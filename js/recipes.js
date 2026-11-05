@@ -518,7 +518,7 @@
     function paintRows() {
       rows.innerHTML = '';
       rows.classList.toggle('rc-withinv', costs());
-      rows.appendChild(h('div', { cls: 'rc-erow rc-ehdr' }, [h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Note (optional)' }), costs() ? h('span', { text: 'Costed from' }) : null, h('span')]));
+      rows.appendChild(h('div', { cls: 'rc-erow rc-ehdr' }, [h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Note (optional)' }), costs() ? h('span', { cls: 'r', text: 'Cost' }) : null, h('span')]));
       x.ingredients.forEach(function (ing, i) {
         var tools = h('div', { cls: 'rc-etools' }, [
           h('button', { type: 'button', cls: 'rc-mini', 'aria-label': 'Move up', text: '↑', on: { click: function () { if (i > 0) { x.ingredients.splice(i - 1, 0, x.ingredients.splice(i, 1)[0]); R.dirty = true; paintRows(); } } } }),
@@ -535,14 +535,81 @@
         var u = h('input', { type: 'text', value: ing.unit || '', list: 'rcUnits', placeholder: 'cup', 'aria-label': 'Unit' });
         var it = h('input', { type: 'text', value: ing.item || '', placeholder: 'Heavy cream', 'aria-label': 'Ingredient' });
         var nt = h('input', { type: 'text', value: ing.note || '', placeholder: 'cold', 'aria-label': 'Note' });
-        q.addEventListener('input', function () { ing.qty = parseQty(q.value); q.classList.toggle('bad', !!q.value.trim() && ing.qty == null); R.dirty = true; });
-        u.addEventListener('change', function () { ing.unit = normUnit(u.value); u.value = ing.unit; R.dirty = true; });
-        u.addEventListener('input', function () { ing.unit = u.value.trim(); R.dirty = true; });
+        var costEl = costs() ? h('span', { cls: 'rc-ecost' }) : null;
+        var paintCost = function () {
+          if (!costEl) return;
+          var c = ing.inv_id || ing.rec_id ? MC().ingCost(ing) : null;
+          costEl.textContent = c && c.cost != null ? cmoney(c.cost) : c ? '?' : '';
+          costEl.title = c && c.cost == null ? c.why || '' : '';
+          costEl.classList.toggle('none', !!c && c.cost == null);
+          paintTotal();
+        };
+        q.addEventListener('input', function () { ing.qty = parseQty(q.value); q.classList.toggle('bad', !!q.value.trim() && ing.qty == null); R.dirty = true; paintCost(); });
+        u.addEventListener('change', function () { ing.unit = normUnit(u.value); u.value = ing.unit; R.dirty = true; paintCost(); });
+        u.addEventListener('input', function () { ing.unit = u.value.trim(); R.dirty = true; paintCost(); });
         it.addEventListener('input', function () { ing.item = it.value; R.dirty = true; });
+        var itCell = costs() ? ingSearch(ing, it, function () { if (!u.value.trim() && ing.inv_id && MC().data.invById[ing.inv_id]) { u.value = ing.unit = MC().data.invById[ing.inv_id].unit || ''; } paintCost(); }) : it;
         nt.addEventListener('input', function () { ing.note = nt.value; R.dirty = true; });
         it.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (i === x.ingredients.length - 1) { x.ingredients.push({ qty: null, unit: '', item: '', note: '' }); paintRows(); } var all = rows.querySelectorAll('[aria-label=Amount]'); var nx = all[Math.min(i + 1, all.length - 1)]; if (nx) nx.focus(); } });
-        rows.appendChild(h('div', { cls: 'rc-erow' }, [q, u, it, nt, costs() ? linkInput(ing, it) : null, tools]));
+        rows.appendChild(h('div', { cls: 'rc-erow' }, [q, u, itCell, nt, costEl, tools]));
+        paintCost();
       });
+    }
+    // the recipe's cost so far, under the ingredients
+    var totalEl = h('p', { cls: 'rc-etotal' });
+    function paintTotal() {
+      if (!costs()) return;
+      var rc = MC().recipeCost(x), yq0 = parseQty(yq.value);
+      totalEl.textContent = rc.total == null ? 'Pick ingredients from the inventory to cost this recipe.' : 'Recipe cost: ' + cmoney(rc.total) + (yq0 ? ' · ' + cmoney(rc.total / yq0) + ' per ' + (yu.value.trim() || 'portion').replace(/s$/, '') : '') + (rc.missing.length ? ' · ' + rc.missing.length + ' ingredient' + (rc.missing.length === 1 ? '' : 's') + ' not priced yet' : '');
+    }
+    // the ingredient box searches the inventory (and other recipes, like a sauce): pick one and it's costed from it
+    function ingSearch(ing, it, onPick) {
+      var D = MC().data;
+      var wrap = h('div', { cls: 'rc-combo' + (ing.inv_id || ing.rec_id ? ' rc-linked' : '') });
+      var list = h('div', { cls: 'rc-clist', role: 'listbox', hidden: true });
+      var src = h('small', { cls: 'rc-src' });
+      it.setAttribute('placeholder', 'Search the inventory, e.g. cream'); it.setAttribute('autocomplete', 'off'); it.setAttribute('role', 'combobox');
+      wrap.appendChild(it); wrap.appendChild(list); wrap.appendChild(src);
+      function paintSrc() {
+        var iv = ing.inv_id && D.invById[ing.inv_id], rr = ing.rec_id && D.recById[ing.rec_id];
+        src.textContent = iv ? 'From inventory: ' + (iv.cost != null && iv.cost !== '' ? '$' + (+iv.cost).toFixed(2) + ' / ' + (iv.unit || 'each') : 'no price yet') : rr ? 'From the recipe ' + rr.name : '';
+        wrap.classList.toggle('rc-linked', !!(iv || rr));
+      }
+      var opts = [], at = -1;
+      function fold2(t) { return MC().norm(t); }
+      function build() {
+        var w = fold2(it.value).split(' ').filter(Boolean); list.innerHTML = ''; opts = []; at = -1;
+        if (!w.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Type to search the inventory' })); return; }
+        var hit = function (name) { var n = fold2(name); return w.every(function (t) { return n.indexOf(t) >= 0; }); };
+        var inv = D.inv.filter(function (v) { return v.active !== false && hit(v.name + ' ' + (v.section || '') + ' ' + (v.vendor || '')); })
+          .sort(function (a, b) { return (a.category === 'food' ? 0 : 1) - (b.category === 'food' ? 0 : 1) || String(a.name).localeCompare(b.name); }).slice(0, 30);
+        var recs = R.list.filter(function (r) { return r.id !== x.id && hit(r.name); }).slice(0, 10);
+        var add = function (o) { opts.push(o); var b = h('button', { type: 'button', cls: 'rc-copt', tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(o); }); o.el = b; list.appendChild(b); };
+        if (inv.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Inventory' })); inv.forEach(function (v) { add({ inv: v.id, name: v.name, text: v.name, sub: [v.cost != null && v.cost !== '' ? '$' + (+v.cost).toFixed(2) + ' / ' + (v.unit || 'each') : 'no price yet', v.pack, v.vendor].filter(Boolean).join(' · ') }); }); }
+        if (recs.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Recipes' })); recs.forEach(function (r) { add({ rec: r.id, name: r.name, text: r.name, sub: 'Recipe' + (r.yield_qty ? ' · makes ' + r.yield_qty + ' ' + (r.yield_unit || '') : '') }); }); }
+        if (!opts.length) list.appendChild(h('p', { cls: 'rc-chead', text: 'Nothing in the inventory matches. Keep it as typed (not costed).' }));
+      }
+      function pick(o) {
+        delete ing.inv_id; delete ing.rec_id;
+        if (o.inv) ing.inv_id = o.inv; else ing.rec_id = o.rec;
+        it.value = ing.item = o.name; R.dirty = true; list.hidden = true; paintSrc(); onPick();
+      }
+      function hi(n) { if (!opts.length) return; at = (n + opts.length) % opts.length; opts.forEach(function (o, k) { o.el.classList.toggle('on', k === at); }); opts[at].el.scrollIntoView({ block: 'nearest' }); }
+      it.addEventListener('input', function () {
+        if (ing.inv_id || ing.rec_id) { delete ing.inv_id; delete ing.rec_id; paintSrc(); onPick(); }   // typing something else unlinks it until you pick again
+        list.hidden = false; build(); if (opts.length) hi(0);
+      });
+      it.addEventListener('focus', function () { if (!(ing.inv_id || ing.rec_id) && it.value.trim()) { build(); list.hidden = false; } });
+      it.addEventListener('keydown', function (e) {
+        if (list.hidden) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); hi(at + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); hi(at - 1); }
+        else if (e.key === 'Enter' && at >= 0 && opts[at]) { e.preventDefault(); e.stopImmediatePropagation(); pick(opts[at]); }
+        else if (e.key === 'Escape') { e.preventDefault(); list.hidden = true; }
+      }, true);
+      it.addEventListener('blur', function () { setTimeout(function () { list.hidden = true; }, 120); });
+      paintSrc();
+      return wrap;
     }
     // which inventory item (or recipe) an ingredient is costed from: typed or picked from the list, guessed from its name
     var opts = {};
@@ -571,6 +638,7 @@
       box.appendChild(dl);
     }
     paintRows();
+    [yq, yu].forEach(function (e) { e.addEventListener('input', paintTotal); });
     var paste = h('textarea', { rows: '5', placeholder: 'Paste or type a list, one ingredient per line:\n2 cups heavy cream\n1 1/2 tbsp kosher salt\n3 cloves garlic, minced\nFor the garnish:' });
     var pasteBox = h('div', { cls: 'rc-paste', hidden: true }, [paste, h('div', { cls: 'rc-paste-a' }, [
       h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { pasteBox.hidden = true; } } }),
@@ -582,7 +650,7 @@
       } } })
     ])]);
     box.appendChild(h('section', { cls: 'rc-sec' }, [
-      h('h3', { text: 'Ingredients' }), rows,
+      h('h3', { text: 'Ingredients' }), rows, costs() ? totalEl : null,
       h('div', { cls: 'rc-eadd' }, [
         h('button', { type: 'button', cls: 'ed-btn small', text: '+ Ingredient', on: { click: function () { x.ingredients.push({ qty: null, unit: '', item: '', note: '' }); paintRows(); var all = rows.querySelectorAll('[aria-label=Amount]'); all[all.length - 1].focus(); } } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: '+ Sub-heading', on: { click: function () { x.ingredients.push({ head: true, item: '' }); paintRows(); } } }),
