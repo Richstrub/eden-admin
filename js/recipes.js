@@ -540,7 +540,7 @@
           if (!costEl) return;
           var c = (ing.inv_id || ing.rec_id) && ing.qty != null ? MC().ingCost(ing) : null;
           costEl.textContent = c && c.cost != null ? cmoney(c.cost) : c ? '?' : '';
-          costEl.title = c && c.cost == null ? c.why || '' : c && c.wholes != null ? 'Uses ' + Math.round(c.wholes * 100) / 100 + ' ' + c.whole + (c.wholes === 1 ? '' : 's') + ' (Menu costs → Ingredient yields)' : '';
+          costEl.title = c && c.cost == null ? c.why || '' : c && c.wholes != null ? 'Uses ' + Math.round(c.wholes * 100) / 100 + ' ' + c.whole + (c.wholes === 1 ? '' : 's') + ' (Menu costs → Costing calculations)' : '';
           if (c && c.wholes != null && c.cost != null) costEl.textContent += ' · ' + Math.round(c.wholes * 10) / 10 + ' ' + c.whole + (Math.round(c.wholes * 10) / 10 === 1 ? '' : 's');
           costEl.classList.toggle('none', !!c && c.cost == null);
           paintTotal();

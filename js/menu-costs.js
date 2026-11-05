@@ -19,7 +19,7 @@
   // Yields: part of a whole item a recipe calls for, costed from the whole. 1 white, 1 yolk or the juice of 1 lemon = 1 of the whole;
   // by weight or volume, the amount ÷ what one whole gives. Volumes and weights count about the same (1 ml ≈ 1 g).
   // Defaults from USDA FoodData Central (large egg: white 33 g, yolk 17 g; juice of 1 lemon 48 g, 1 lime 44 g).
-  // Owners and managers change them on Menu costs → Ingredient yields (saved in inventory_settings.yields).
+  // Owners and managers change them on Menu costs → Costing calculations (saved in inventory_settings.yields).
   var YIELDS_DEFAULT = [
     { part: 'Egg white', words: 'egg white, white', from: 'egg', qty: 33, unit: 'g' },
     { part: 'Egg yolk', words: 'egg yolk, yolk', from: 'egg', qty: 17, unit: 'g' },
@@ -283,7 +283,7 @@
       });
     }
     paintRows();
-    det.appendChild(h('summary', { text: 'Ingredient yields: egg whites & yolks, lemon & lime juice' }));
+    det.appendChild(h('summary', null, [h('span', { text: 'Costing calculations' }), h('small', { text: 'Egg whites & yolks, lemon & lime juice: costed from the whole item' })]));
     det.appendChild(h('p', { cls: 'an-sub', text: 'When a recipe calls for part of an item, it’s costed from the whole one. A count (3 egg yolks, juice of 2 lemons) uses that many wholes; a weight or volume (100 g whites, 2 tbsp lemon juice) is divided by what one whole gives. This only applies when the ingredient is linked to the whole item (Eggs, Lemons), not bottled juice or liquid whites.' }));
     if (D.yieldsCol === false) det.appendChild(h('p', { cls: 'an-err', text: 'These are the defaults. To change them, run supabase/ingredient-yields.sql in Supabase once.' }));
     det.appendChild(body);
@@ -295,6 +295,7 @@
     wrap.appendChild(h('div', { cls: 'mc-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Menu costs' })]),
       h('p', { cls: 'an-sub', text: 'What each item on the menu costs to make, against its price. Food comes from recipes connected to the menu item; cocktails from their builds; wine, beer and spirits from the inventory item they’re poured from.' })]));
     if (D.invErr || D.recErr) wrap.appendChild(h('p', { cls: 'an-err', text: 'Some data couldn’t be loaded (' + [D.invErr ? 'inventory' : '', D.recErr ? 'recipes' : ''].filter(Boolean).join(', ') + ').' }));
+    wrap.appendChild(yieldsPanel());   // Costing calculations, near the top
     // summary by kind
     var kinds = ['food', 'bar', 'wine', 'beer', 'spirits', 'coffee'].filter(function (k) { return all.some(function (r) { return r.kind === k; }); });
     var tiles = h('div', { cls: 'mc-tiles' }, kinds.map(function (k) {
@@ -317,7 +318,6 @@
       h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Download CSV', on: { click: function () { csv(filtered()); } } })
     ]));
     var listEl = h('div', { cls: 'mc-list' }); wrap.appendChild(listEl);
-    wrap.appendChild(yieldsPanel());
     wrap.appendChild(h('p', { cls: 'fn-note', text: 'Targets: food ' + pct(TARGET.food) + ', cocktails ' + pct(TARGET.bar) + ', wine ' + pct(TARGET.wine) + ', beer & soft drinks ' + pct(TARGET.beer) + ', spirits ' + pct(TARGET.spirits) + '. To cost a plate: open its recipe in Recipes, link each ingredient to an inventory item, then connect the recipe to the menu item (with how much goes on one plate). A plate made of several recipes (protein, sauce, garnish) adds them up.' }));
     function filtered() {
       var w = norm(P.q).split(' ').filter(Boolean);
