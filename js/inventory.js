@@ -600,12 +600,21 @@
   // cost per unit over time, from invoices: a small line chart (oldest → newest)
   function priceChart(pts, unit, onPick) {
     if (pts.length < 2 && !onPick) return null;
-    var W = 420, H = 90, P = 8, vals = pts.map(function (p) { return +p.unit_cost; }), lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), span = hi - lo || hi * 0.1 || 1;
-    var x = function (i) { return pts.length < 2 ? W / 2 : P + (W - 2 * P) * i / (pts.length - 1); }, y = function (v) { return H - P - (H - 2 * P) * (v - lo) / span; };
+    var W = 420, H = 100, P = 8, L = 52, vals = pts.map(function (p) { return +p.unit_cost; }), lo0 = Math.min.apply(null, vals), hi0 = Math.max.apply(null, vals);
+    // a $ scale on the left: rounded steps from a little under the lowest price to a little over the highest
+    var raw = (hi0 - lo0) || hi0 * 0.2 || 1, mag = Math.pow(10, Math.floor(Math.log10(raw / 3))), step = [1, 2, 2.5, 5, 10].map(function (k) { return k * mag; }).filter(function (k) { return raw / k <= 4; })[0] || raw;
+    var lo = Math.max(0, Math.floor(lo0 / step) * step), hi = Math.ceil(hi0 / step) * step; if (hi === lo) hi = lo + step;
+    var span = hi - lo;
+    var x = function (i) { return pts.length < 2 ? L + (W - L - P) / 2 : L + (W - L - P) * i / (pts.length - 1); }, y = function (v) { return H - P - (H - 2 * P) * (v - lo) / span; };
     var d = vals.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ');
     var ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('class', 'iv-chart'); svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Cost per ' + (unit || 'unit') + ' from ' + money(vals[0]) + ' to ' + money(vals[vals.length - 1]));
+    for (var tv = lo; tv <= hi + step / 1e6; tv += step) {
+      var gl = document.createElementNS(ns, 'line'); gl.setAttribute('x1', L - 4); gl.setAttribute('x2', W - P); gl.setAttribute('y1', y(tv)); gl.setAttribute('y2', y(tv)); gl.setAttribute('class', 'iv-chart-g'); svg.appendChild(gl);
+      var tx = document.createElementNS(ns, 'text'); tx.setAttribute('x', L - 8); tx.setAttribute('y', y(tv) + 3.5); tx.setAttribute('text-anchor', 'end'); tx.setAttribute('class', 'iv-chart-t');
+      tx.textContent = '$' + (step >= 1 ? Math.round(tv).toLocaleString() : tv.toFixed(2)); svg.appendChild(tx);
+    }
     var path = document.createElementNS(ns, 'path'); path.setAttribute('d', d); path.setAttribute('class', 'iv-chart-l'); svg.appendChild(path);
     vals.forEach(function (v, i) {
       var c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', x(i)); c.setAttribute('cy', y(v)); c.setAttribute('r', 4); c.setAttribute('class', 'iv-chart-d');
@@ -619,7 +628,7 @@
       } else svg.appendChild(c);
     });
     var first = vals[0], last = vals[vals.length - 1], ch = first ? (last - first) / first : 0;
-    return h('div', { cls: 'iv-chartw' }, [svg, h('span', { cls: 'is-u', text: money(lo) + ' – ' + money(hi) + ' · ' + (ch >= 0 ? '+' : '') + Math.round(ch * 1000) / 10 + '% since ' + dayLabel(pts[0].price_date) })]);
+    return h('div', { cls: 'iv-chartw' }, [svg, h('span', { cls: 'is-u', text: money(lo0) + ' – ' + money(hi0) + ' · ' + (ch >= 0 ? '+' : '') + Math.round(ch * 1000) / 10 + '% since ' + dayLabel(pts[0].price_date) })]);
   }
   // the menu items this item is sold as, with the cost % of each; add or remove links
   function menuLinks(it) {
