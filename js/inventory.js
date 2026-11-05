@@ -301,7 +301,11 @@
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
       order,
-      h('td', { cls: 'r iv-cost', text: it.cost != null ? money(it.cost) : '' }),
+      (function () {
+        var fr = it.category !== 'paper' && it.cost != null ? forRecipes(it) : null;
+        return h('td', { cls: 'r iv-cost', title: fr && fr.parts.length ? 'For recipes & cocktails: ' + fr.parts.join(' · ') : '' }, [it.cost != null ? money(it.cost) : '',
+          fr && fr.short && !/^(lb|oz|g|kg|1\/4 lb|1\/2 lb)$/.test(it.unit || '') ? h('small', { cls: 'iv-cpo', text: fr.short }) : null]);
+      })(),
       I.showCost ? h('td', { cls: 'iv-menu', title: tip, text: cc ? cc.menu : '' }) : null,
       I.showCost ? h('td', { cls: 'iv-pct' + (cc && cc.worst >= 0.35 ? ' hi' : ''), title: tip, text: cc ? cc.pct : '' }) : null,
       val,
@@ -713,6 +717,17 @@
     sel.addEventListener('change', function () { other.hidden = sel.value !== '__other'; if (!other.hidden) other.focus(); });
     return { el: h('div', { cls: 'iv-unitpick' }, [sel, other]), get value() { return sel.value === '__other' ? other.value : sel.value; } };
   }
+  // what recipes and cocktails pay for an item: per lb / oz / g, or per qt / cup / fl oz, or each
+  function forRecipes(t) {
+    var MCx = window.EdenMenuCost, c = t.cost;
+    if (!MCx || !MCx.contents || c == null || c === '') return null;
+    c = +c;
+    var ct = MCx.contents(t), parts = [], short = '';
+    if (ct.dim === 'wt') { var g = c / ct.amt; parts = ['$' + (g * 453.592).toFixed(2) + ' / lb', '$' + (g * 28.3495).toFixed(2) + ' / oz', '$' + g.toFixed(4) + ' / g']; short = '$' + (g * 28.3495).toFixed(2) + '/oz'; }
+    else if (ct.dim === 'vol') { var ml = c / ct.amt; parts = ['$' + (ml * 946.353).toFixed(2) + ' / qt', '$' + (ml * 236.588).toFixed(2) + ' / cup', '$' + (ml * 29.5735).toFixed(2) + ' / fl oz', '$' + (ml * 14.7868).toFixed(3) + ' / tbsp']; short = '$' + (ml * 29.5735).toFixed(2) + '/fl oz'; }
+    else if (ct.dim === 'each' && ct.amt > 1) { parts = ['$' + (c / ct.amt).toFixed(3) + ' each']; short = '$' + (c / ct.amt).toFixed(2) + ' ea'; }
+    return { parts: parts, short: short };
+  }
   function lbl(text, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: text }), input]); }
   function datalist(id, vals) { return h('datalist', { id: id }, vals.map(function (v) { return h('option', { value: v }); })); }
   function uniq(list) { var s = {}; return list.filter(function (x) { x = String(x || '').trim(); if (!x || s[x.toLowerCase()]) return false; s[x.toLowerCase()] = 1; return true; }); }
@@ -756,13 +771,10 @@
     // what recipes will pay for it: per lb / oz / g (or qt / cup / fl oz), from the cost, the unit and the pack size
     var forRec = h('p', { cls: 'iv-forrec' });
     function paintForRec() {
-      var MCx = window.EdenMenuCost, c = num(f.cost.value);
-      if (!MCx || !MCx.contents || c == null || !isFoodIt) { forRec.textContent = ''; return; }
-      var t = { unit: f.unit.value.trim(), pack: f.pack.value.trim(), per_case: num(f.pc.value) }, ct = MCx.contents(t), parts = [];
-      if (ct.dim === 'wt') { var g = c / ct.amt; parts = ['$' + (g * 453.592).toFixed(2) + ' / lb', '$' + (g * 28.3495).toFixed(2) + ' / oz', '$' + g.toFixed(4) + ' / g']; }
-      else if (ct.dim === 'vol') { var ml = c / ct.amt; parts = ['$' + (ml * 946.353).toFixed(2) + ' / qt', '$' + (ml * 236.588).toFixed(2) + ' / cup', '$' + (ml * 29.5735).toFixed(2) + ' / fl oz', '$' + (ml * 14.7868).toFixed(3) + ' / tbsp']; }
-      else if (ct.dim === 'each' && ct.amt > 1) parts = ['$' + (c / ct.amt).toFixed(3) + ' each'];
-      forRec.textContent = parts.length ? 'For recipes: ' + parts.join(' · ') : 'Recipes can only use this by the ' + (t.unit || 'unit') + '. To cost it by weight, count it in lb (or oz, g), or put the weight in Pack size, e.g. 5 lb.';
+      if (it.category === 'paper') { forRec.textContent = ''; return; }
+      var r = forRecipes({ category: it.category, unit: f.unit.value.trim(), pack: f.pack.value.trim(), per_case: num(f.pc.value), cost: num(f.cost.value) });
+      forRec.textContent = !r ? '' : r.parts.length ? (it.category === 'bev' ? 'For cocktails & recipes: ' : 'For recipes & cocktails: ') + r.parts.join(' · ')
+        : 'Recipes and cocktails can only use this by the ' + (f.unit.value.trim() || 'unit') + '. To cost it by weight or volume, count it in lb (oz, g) or qt, or put the size in Pack size, e.g. 5 lb or 750ml.';
     }
     var convSpan = h('span'), convRow = lbl('', f.pc); convRow.replaceChild(convSpan, convRow.firstChild);
     function convLbl() {

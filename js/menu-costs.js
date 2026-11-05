@@ -173,9 +173,19 @@
     if (/^(can|each|ea)$/.test(u) && /oz/.test(it.pack || '')) { var oz = parseFloat((String(it.pack).match(/(\d+(\.\d+)?)\s*oz/) || [])[1]); return oz ? one / oz : null; }
     return one / (window.EdenCosting.bottleMl(it) / ML_OZ);
   }
+  // one line of a cocktail build: spirits and wine by the ounce from their bottle; anything else (lime juice from limes,
+  // simple syrup by the qt, sugar by the lb, a sprig of mint) the same way recipes cost it
+  function pourCost(g) {
+    var it = D.invById[g.inv_id]; if (!it || g.qty == null) return null;
+    var f = OZ[String(g.unit || 'oz').toLowerCase()];
+    if (it.category === 'bev' && f) { var c = cpo(it); if (c != null) return g.qty * f * c; }
+    var r = ingCost(f ? { qty: g.qty * f, unit: 'fl oz', item: g.item, inv_id: g.inv_id } : { qty: g.qty, unit: g.unit, item: g.item, inv_id: g.inv_id });
+    if (r.cost == null && f) r = ingCost({ qty: g.qty * f, unit: 'oz', item: g.item, inv_id: g.inv_id });   // an ounce of something counted by weight
+    return r.cost;
+  }
   function buildCost(b) {
     var total = 0, n = 0, miss = 0;
-    (b.ingredients || []).forEach(function (g) { if (!g.inv_id) return; var f = OZ[String(g.unit || 'oz').toLowerCase()], c = cpo(D.invById[g.inv_id]); if (g.qty == null || !f || c == null) { miss++; return; } total += g.qty * f * c; n++; });
+    (b.ingredients || []).forEach(function (g) { if (!g.inv_id) return; var c = pourCost(g); if (c == null) { miss++; return; } total += c; n++; });
     return { cost: n ? total : null, missing: miss };
   }
   function tabKind(t) { var s = String(t.id || '') + ' ' + norm(t.label); return /food|kitchen/.test(s) ? 'food' : /bar|cocktail/.test(s) ? 'bar' : /wine/.test(s) ? 'wine' : /beer|soft/.test(s) ? 'beer' : /spirit/.test(s) ? 'spirits' : /coffee|tea/.test(s) ? 'coffee' : 'other'; }
@@ -384,7 +394,7 @@
   }
 
   window.EdenMenuCost = {
-    contents: contents, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    contents: contents, pourCost: pourCost, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
     units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
       var seen = {};
       D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });

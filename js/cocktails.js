@@ -69,9 +69,11 @@
     var total = 0, missing = 0;
     (b.ingredients || []).forEach(function (g) {
       if (!g.inv_id) return;
-      var oz = ozOf(g), cpo = costPerOz(invItem(g.inv_id));
-      if (oz == null || cpo == null) { missing++; return; }
-      total += oz * cpo;
+      var MCx = window.EdenMenuCost, c = null;
+      if (MCx && MCx.data && MCx.data.loaded && MCx.pourCost) c = MCx.pourCost(g);   // juice from limes, syrup by the qt, sugar by the lb…
+      else { var oz = ozOf(g), cpo = costPerOz(invItem(g.inv_id)); if (oz != null && cpo != null) c = oz * cpo; }
+      if (c == null) { missing++; return; }
+      total += c;
     });
     var m = menuFor(b);
     return { cost: total, missing: missing, price: m && m.price, pct: m && m.price && total ? total / m.price : null };
@@ -82,7 +84,7 @@
     if (!w.length) return null;
     var best = null, bs = 0;
     C.inv.forEach(function (it) {
-      var hay = ' ' + norm(it.name + ' ' + (it.pack || '') + ' ' + (it.section || '')) + ' ';
+      var hay = ' ' + norm((it.ingredient || '') + ' ' + it.name + ' ' + (it.pack || '') + ' ' + (it.section || '')) + ' ';
       var s = w.filter(function (x) { return hay.indexOf(' ' + x) !== -1; }).length / w.length;
       if (s > bs) { bs = s; best = it; }
     });
@@ -94,7 +96,8 @@
     return Promise.all([
       sb().from('cocktail_builds').select('*').order('sort').order('name'),
       sb().from('cocktail_sales').select('*'),
-      sb().from('inventory_items').select('*').eq('category', 'bev')
+      sb().from('inventory_items').select('*').in('category', ['bev', 'food']),
+      window.EdenMenuCost ? window.EdenMenuCost.load(sb()).catch(function () {}) : null
     ]).then(function (r) {
       C.loaded = true;
       if (r[0].error) { C.missing = isMissing(r[0].error); C.list = []; return; }
@@ -167,8 +170,8 @@
   function lbl(t, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: t }), input]); }
   function invSelect(val) {
     var sel = h('select', { cls: 'ck-inv', 'aria-label': 'Inventory item' }, [h('option', { value: '', text: '— not tracked —' })]);
-    var groups = {}; C.inv.forEach(function (it) { (groups[it.section || 'Other'] = groups[it.section || 'Other'] || []).push(it); });
-    Object.keys(groups).sort().forEach(function (g) { var og = h('optgroup', { label: g }); groups[g].sort(function (a, b) { return String(a.name).localeCompare(b.name); }).forEach(function (it) { og.appendChild(h('option', { value: it.id, text: it.name + (it.pack ? ' (' + it.pack + ')' : '') })); }); sel.appendChild(og); });
+    var groups = {}; C.inv.forEach(function (it) { var gk = (it.category === 'food' ? 'Kitchen · ' : '') + (it.section || 'Other'); (groups[gk] = groups[gk] || []).push(it); });
+    Object.keys(groups).sort(function (a, b) { return (/^Kitchen/.test(a) ? 1 : 0) - (/^Kitchen/.test(b) ? 1 : 0) || a.localeCompare(b); }).forEach(function (g) { var og = h('optgroup', { label: g }); groups[g].sort(function (a, b) { return String(a.name).localeCompare(b.name); }).forEach(function (it) { og.appendChild(h('option', { value: it.id, text: it.name + (it.pack ? ' (' + it.pack + ')' : '') })); }); sel.appendChild(og); });
     sel.value = val || '';
     return sel;
   }
@@ -353,6 +356,7 @@
       sold += n;
       (b.ingredients || []).forEach(function (g) {
         var oz = ozOf(g); if (oz == null) return;
+        var gi = g.inv_id ? invItem(g.inv_id) : null; if (gi && gi.category !== 'bev') return;   // liquor used: bar items only (not limes or sugar)
         if (!g.inv_id) { if (/oz|ml|cl/.test(g.unit || '') && g.qty) (unlinked[b.name] = unlinked[b.name] || []).push(g.item); return; }
         var x = per[g.inv_id] = per[g.inv_id] || { oz: 0, from: [] };
         x.oz += oz * n; x.from.push(b.name + ' × ' + n);
