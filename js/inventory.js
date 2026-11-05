@@ -755,7 +755,13 @@
       datalist('ivUnits', UNITS), datalist('ivVendors', uniq(I.items.map(function (x) { return x.vendor; }))),
       msg
     ], foot);
-    m.el.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); save(); } });
+    m.el.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' || ev.target.tagName !== 'INPUT') return;
+      ev.preventDefault();
+      var he = ev.target.closest('.iv-hedit');   // Enter in a price-history entry saves that entry, not the item
+      if (he) { var b = he.querySelector('.iv-hsave'); if (b) b.click(); return; }
+      save();
+    });
     var draft = { name: it.name, pack: it.pack, unit: it.unit, cost: it.cost, per_case: it.per_case, menu_refs: (Array.isArray(it.menu_refs) ? it.menu_refs : []).slice() };
     if (isFoodIt) msg.parentNode.insertBefore(h('div', { cls: 'iv-links' }, [I.ingCol ? lbl('Ingredient name (what recipes call it)', f.ingr) : h('p', { cls: 'sc-sub', text: 'To give items an ingredient name, run supabase/ingredient-name.sql in Supabase once.' }), datalist('ivIngs', ingNames()), isNew ? null : usedIn(it)]), msg);
     else if (!isNew && I.costCols && window.EdenCosting) msg.parentNode.insertBefore(menuLinks(draft), msg);
@@ -800,7 +806,7 @@
                 sb().from('inventory_prices').delete().eq('id', p.id).then(function (r) { if (r.error) { em.textContent = 'Couldn’t delete: ' + r.error.message; return; } status('Price entry deleted.', 'ok'); loadHist(); });
               } } }),
               h('span', { cls: 'sc-sp' }),
-              h('button', { type: 'button', cls: 'ed-btn small', text: 'Save this entry', on: { click: function () {
+              h('button', { type: 'button', cls: 'ed-btn small iv-hsave', text: 'Save this entry', on: { click: function () {
                 var c = num(g.cost.value), pr = g.price.value.trim() ? num(g.price.value) : null, pe = num(g.per.value);
                 if (c == null) { em.textContent = 'Cost should be a number.'; g.cost.focus(); return; }
                 if (g.price.value.trim() && pr == null) { em.textContent = 'Invoice price should be a number.'; return; }
@@ -808,8 +814,14 @@
                 em.textContent = 'Saving…';
                 sb().from('inventory_prices').update(row).eq('id', p.id).then(function (r) {
                   if (r.error) { em.textContent = isPerm(r.error) ? 'Your role can’t change price history.' : 'Couldn’t save: ' + r.error.message; return; }
-                  if (also.checked) { f.cost.value = String(c); msg.textContent = 'Cost per unit set to ' + money(c) + '. Click Save to keep it.'; }
-                  status('Price entry saved.', 'ok'); loadHist();
+                  if (!also.checked) { status('Price entry saved.', 'ok'); loadHist(); return; }
+                  // and the item's cost, saved now too
+                  f.cost.value = String(c);
+                  sb().from('inventory_items').update({ cost: c }).eq('id', it.id).then(function (r2) {
+                    if (r2.error) { em.textContent = 'The entry saved, but the item’s cost didn’t: ' + r2.error.message; return; }
+                    it.cost = c; render();
+                    status('Price entry saved. ' + it.name + ' now costs ' + money(c) + (it.unit ? ' / ' + it.unit : '') + '.', 'ok'); loadHist();
+                  });
                 });
               } } })
             ]));
