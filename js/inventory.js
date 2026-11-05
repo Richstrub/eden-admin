@@ -674,6 +674,15 @@
     var el = h('div', { cls: 'iv-unitpick' }, [sel, other]);
     return { el: el, get value() { return sel.value === '__other' ? other.value : sel.value; }, focus: function () { sel.focus(); } };
   }
+  // the section: a list of this tab's sections (and any already in use), or Other… to type a new one
+  function sectionPicker(cur, list) {
+    list = uniq(list.concat(cur ? [cur] : []));
+    var sel = h('select', { 'aria-label': 'Section' }, [h('option', { value: '', text: '— Pick a section —' })].concat(list.map(function (u) { return h('option', { value: u, text: u }); })).concat([h('option', { value: '__other', text: 'New section…' })]));
+    var other = h('input', { type: 'text', placeholder: 'Type the new section', 'aria-label': 'New section', hidden: true });
+    sel.value = cur || '';
+    sel.addEventListener('change', function () { other.hidden = sel.value !== '__other'; if (!other.hidden) other.focus(); });
+    return { el: h('div', { cls: 'iv-unitpick' }, [sel, other]), get value() { return sel.value === '__other' ? other.value : sel.value; } };
+  }
   function lbl(text, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: text }), input]); }
   function datalist(id, vals) { return h('datalist', { id: id }, vals.map(function (v) { return h('option', { value: v }); })); }
   function uniq(list) { var s = {}; return list.filter(function (x) { x = String(x || '').trim(); if (!x || s[x.toLowerCase()]) return false; s[x.toLowerCase()] = 1; return true; }); }
@@ -696,7 +705,7 @@
     var catItemsAll = I.items.filter(function (x) { return x.category === I.cat; });
     var f = {
       name: h('input', { type: 'text', value: it.name || '', placeholder: I.cat === 'bev' ? 'e.g. Tito’s Vodka' : I.cat === 'paper' ? 'e.g. To-go containers, large' : 'e.g. Heavy cream' }),
-      section: h('input', { type: 'text', value: it.section || '', list: 'ivSections', placeholder: (SECTIONS[I.cat] || [])[0] || '' }),
+      section: sectionPicker(it.section || '', (SECTIONS[it.category || I.cat] || []).concat(I.items.filter(function (x) { return x.category === (it.category || I.cat); }).map(function (x) { return x.section; }))),
       ingr: h('input', { type: 'text', value: it.ingredient || '', list: 'ivIngs', placeholder: 'e.g. Edible flowers', 'aria-label': 'Ingredient name' }),
       unit: unitPicker(it.unit || '', function (k, u) {   // lb → 1/4 lb: $10 a lb becomes $2.50 a 1/4 lb, par 5 becomes 20
         convLbl();
@@ -731,7 +740,7 @@
     m = modal(isNew ? 'Add item' : 'Edit item', [
       h('p', { cls: 'sc-sub', text: catOf(I.cat).label }),
       lbl('Item', f.name),
-      lbl('Section', f.section),
+      lbl('Section', f.section.el),
       h('div', { cls: 'sc-row2' }, [lbl('Received in (on the invoice)', f.ord.el), lbl('Counted in (for inventory)', f.unit.el)]),
       I.orderCols ? convRow : h('p', { cls: 'sc-sub', text: 'To save Received in, run supabase/invoice-vendors.sql in Supabase once.' }),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
