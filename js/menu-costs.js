@@ -16,6 +16,22 @@
   // amounts in a common base: ml for volume, g for weight
   var VOL = { tsp: 4.92892, tbsp: 14.7868, 'fl oz': 29.5735, floz: 29.5735, cup: 236.588, cups: 236.588, pt: 473.176, pint: 473.176, qt: 946.353, quart: 946.353, gal: 3785.41, gallon: 3785.41, ml: 1, l: 1000, lt: 1000, liter: 1000, litre: 1000 };
   var WT = { oz: 28.3495, lb: 453.592, lbs: 453.592, '#': 453.592, g: 1, kg: 1000, gram: 1, grams: 1 };
+  // a recipe's egg whites and yolks come from whole eggs: 1 white or 1 yolk uses 1 egg.
+  // Weights of one large egg (USDA FoodData Central): whole 50 g, white 33 g, yolk 17 g. Volumes count as grams (about 1 g per ml).
+  var EGG_G = { whole: 50, white: 33, yolk: 17 };
+  function eggPart(ing, it) {
+    var w = norm(ing.item), n = norm((it.ingredient || '') + ' ' + it.name);
+    if (!/\begg/.test(n) || /\b(white|yolk|liquid|powder)/.test(n)) return null;   // only when it's costed from whole eggs
+    return /\bwhites?\b/.test(w) ? 'white' : /\byolks?\b/.test(w) ? 'yolk' : null;
+  }
+  // how many whole eggs an amount of whites or yolks takes: "3" or "3 each" = 3 eggs, "100 g" of whites = 3.03 eggs
+  function eggsFor(q, u, part) {
+    var d = dim(u);
+    if (d === 'each') return q;
+    if (d === 'dozen') return q * 12;
+    if (d === 'wt' || d === 'vol') return base(q, ozAs(u, d === 'vol' ? 'vol' : 'wt')) / EGG_G[part];
+    return null;
+  }
   var EACH = /^(each|ea|ct|count|pc|pcs|piece|pieces|egg|eggs|clove|cloves|head|heads|bunch|bunches|sprig|sprigs|portion|portions|serving|servings|plate|plates|slice|slices|leaf|leaves|unit|units)$/;
   var TARGET = { food: 0.30, bar: 0.22, wine: 0.33, beer: 0.28, spirits: 0.22, coffee: 0.20 };
 
@@ -91,7 +107,15 @@
     }
     var it = D.invById[ing.inv_id]; if (!it) return { cost: null, why: 'inventory item deleted' };
     if (it.cost == null || it.cost === '') return { cost: null, why: 'no price in inventory' };
-    var ct = contents(it), iu = ozAs(ing.unit, ct.dim), d = dim(iu);
+    var ct = contents(it), part = eggPart(ing, it);
+    if (part) {
+      var eggs = eggsFor(ing.qty, ing.unit, part);
+      if (eggs == null) return { cost: null, why: 'can’t turn ' + (ing.unit || 'each') + ' of egg ' + part + ' into eggs' };
+      if (ct.dim === 'each') return { cost: +it.cost * eggs / ct.amt, eggs: eggs };
+      if (ct.dim === 'wt') return { cost: +it.cost * eggs * EGG_G.whole / ct.amt, eggs: eggs };
+      return { cost: null, why: 'can’t turn eggs into ' + (it.unit || 'each') };
+    }
+    var iu = ozAs(ing.unit, ct.dim), d = dim(iu);
     if (d === 'dozen') d = 'each';
     if (d !== ct.dim) return { cost: null, why: 'can’t turn ' + (ing.unit || 'each') + ' into ' + (it.unit || 'each') + (it.pack ? ' (' + it.pack + ')' : '') };
     return { cost: +it.cost * base(ing.qty, iu) / ct.amt };
