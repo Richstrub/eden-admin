@@ -58,6 +58,7 @@
   }
   // which menu items an inventory item is sold as: its saved links, or the same name (and description, for twins like Steelbound Blanco / Reposado)
   function linksFor(it, list) {
+    if (it.category === 'food') return [];   // food reaches the menu through recipes, not directly
     var refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];
     if (refs.length) return refs.map(function (r) { return list.filter(function (m) { return m.tab === r.tab && m.name === r.name && (!r.desc || m.desc === r.desc); })[0]; }).filter(Boolean);
     var n = norm(it.name); if (!n) return [];

@@ -3296,3 +3296,6 @@ tr.mc-none th b{color:#6b665e}
 .is-setu{color:#2f5e45 !important}
 .iv-unitpick{display:grid;gap:6px}
 .iv-rcv{white-space:nowrap}
+.iv-rec{font-size:.86rem;max-width:200px}.iv-rec a{color:inherit;text-decoration:underline;text-decoration-color:#c9b89a}.iv-none{color:#9a9da1}
+.iv-links{margin-top:10px;display:grid;gap:6px}.iv-links select{width:100%}
+.is-rec{min-width:140px;font-size:.86rem}.is-rec select{width:100%}
