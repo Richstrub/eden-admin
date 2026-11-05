@@ -633,6 +633,17 @@
         ingIn.addEventListener('input', function () { L.ingName = ingIn.value.trim(); });
         rcell.appendChild(ingIn);
       }
+      // food only: which section of the inventory it goes in (a new item, or move an existing one)
+      if (isFoodRow && A.sections) {
+        var cur = L.section != null ? L.section : it ? it.section || '' : '';
+        var secs = A.sections('food'); if (cur && secs.indexOf(cur) < 0) secs.push(cur);
+        var ssel = h('select', { 'aria-label': 'Inventory section for ' + L.description }, [h('option', { value: '', text: it ? '— No section —' : '— Pick a section —' })].concat(secs.map(function (x) { return h('option', { value: x, text: x }); })).concat([h('option', { value: '__other', text: 'New section…' })]));
+        var snew = h('input', { type: 'text', placeholder: 'New section', 'aria-label': 'New section', hidden: true });
+        ssel.value = cur;
+        ssel.addEventListener('change', function () { snew.hidden = ssel.value !== '__other'; if (!snew.hidden) { snew.focus(); L.section = snew.value.trim(); } else L.section = ssel.value; });
+        snew.addEventListener('input', function () { L.section = snew.value.trim(); });
+        rcell.appendChild(h('label', { cls: 'is-sec' }, [h('span', { text: 'Section' }), ssel, snew]));
+      }
       tr.appendChild(rcell);
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
@@ -658,7 +669,7 @@
       h('div', { cls: 'sc-row3 is-head' }, [lbl('Vendor', f.vendor), lbl('Invoice #', f.no), lbl('Date', f.date)]),
       h('p', { cls: 'sc-small', text: 'Tick each line that’s matched to the right inventory item. Check the units: the new cost is the invoice price ÷ how many of the item’s counting units come in one invoice unit. Lines you tick are remembered for next time.' }),
       sumNote,
-      h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Ingredient name', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
+      h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Ingredient & section', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
       msg
     ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: opts.onCancel ? 'Skip to the next invoice' : 'Cancel', on: { click: function () { m.close(); if (opts.onCancel) opts.onCancel(); } } }), applyBtn], true);
     m.el.classList.add('is-scan');
@@ -682,10 +693,11 @@
           if (as && L.newKind === 'beer' && L.keg) as = { cat: 'bev', section: 'Draught beer', recv: 'keg' };
           it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : L.keg ? 'keg' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           if (L.ingName && it.category === 'food') it.ingredient = L.ingName;
+          if (L.section != null && it.category === 'food') it.section = L.section;
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
-          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {}, L.ingName && it.category === 'food' && !it.ingredient ? { ingredient: L.ingName } : {});
+          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {}, L.ingName && it.category === 'food' && !it.ingredient ? { ingredient: L.ingName } : {}, L.section != null && it.category === 'food' && L.section !== (it.section || '') ? { section: L.section } : {});
         }
         L.newCost = c;
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString(), recv: recvOf(L) };

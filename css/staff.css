@@ -3312,3 +3312,4 @@ tr.mc-none th b{color:#6b665e}
 .mc-ytbl input,.mc-ytbl select{width:100%;min-width:0}.mc-ytbl td{vertical-align:middle}.mc-ygive{display:flex;gap:6px;align-items:center;white-space:nowrap}.mc-ygive select{width:auto}
 .mc-yact{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
 .mc-yields{margin:14px 0 18px}.mc-yields>summary small{display:block;font-weight:400;color:#7a7d81;font-size:.8rem;margin:2px 0 0 18px}.mc-yields>summary span{font-size:1.02rem}
+.is-rec{display:table-cell}.is-rec>*+*{margin-top:6px}.is-sec{display:grid;gap:3px}.is-sec span{font-size:.72rem;color:#7a7d81;text-transform:uppercase;letter-spacing:.05em}.is-sec input{width:100%}

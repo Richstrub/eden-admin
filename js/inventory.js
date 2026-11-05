@@ -470,7 +470,7 @@
 
   /* ---------- food → recipes: an item is linked when a recipe ingredient is costed from it (Recipes → Costed from) ---------- */
   function recipesFor(id) { return (I.recipes || []).filter(function (x) { return x.ingredients.some(function (g) { return g.inv_id === id; }); }); }
-  function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
     if (!r || r === it.unit) return r ? r : '';
