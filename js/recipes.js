@@ -538,7 +538,7 @@
         var costEl = costs() ? h('span', { cls: 'rc-ecost' }) : null;
         var paintCost = function () {
           if (!costEl) return;
-          var c = ing.inv_id || ing.rec_id ? MC().ingCost(ing) : null;
+          var c = (ing.inv_id || ing.rec_id) && ing.qty != null ? MC().ingCost(ing) : null;
           costEl.textContent = c && c.cost != null ? cmoney(c.cost) : c ? '?' : '';
           costEl.title = c && c.cost == null ? c.why || '' : '';
           costEl.classList.toggle('none', !!c && c.cost == null);
@@ -572,7 +572,7 @@
       wrap.appendChild(it); wrap.appendChild(list); wrap.appendChild(src);
       function paintSrc() {
         var iv = ing.inv_id && D.invById[ing.inv_id], rr = ing.rec_id && D.recById[ing.rec_id];
-        src.textContent = iv ? 'From inventory: ' + (iv.cost != null && iv.cost !== '' ? '$' + (+iv.cost).toFixed(2) + ' / ' + (iv.unit || 'each') : 'no price yet') : rr ? 'From the recipe ' + rr.name : '';
+        src.textContent = iv ? 'From inventory' + (iv.ingredient && iv.ingredient !== ing.item ? ' (' + iv.ingredient + ')' : iv.name !== ing.item ? ' (' + iv.name + ')' : '') + ': ' + (iv.cost != null && iv.cost !== '' ? '$' + (+iv.cost).toFixed(2) + ' / ' + (iv.unit || 'each') : 'no price yet') : rr ? 'From the recipe ' + rr.name : '';
         wrap.classList.toggle('rc-linked', !!(iv || rr));
       }
       var opts = [], at = -1;
@@ -581,11 +581,11 @@
         var w = fold2(it.value).split(' ').filter(Boolean); list.innerHTML = ''; opts = []; at = -1;
         if (!w.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Type to search the inventory' })); return; }
         var hit = function (name) { var n = fold2(name); return w.every(function (t) { return n.indexOf(t) >= 0; }); };
-        var inv = D.inv.filter(function (v) { return v.active !== false && hit(v.name + ' ' + (v.section || '') + ' ' + (v.vendor || '')); })
-          .sort(function (a, b) { return (a.category === 'food' ? 0 : 1) - (b.category === 'food' ? 0 : 1) || String(a.name).localeCompare(b.name); }).slice(0, 30);
+        var inv = D.inv.filter(function (v) { return v.active !== false && hit((v.ingredient || '') + ' ' + v.name + ' ' + (v.section || '') + ' ' + (v.vendor || '')); })
+          .sort(function (a, b) { return (a.category === 'food' ? 0 : 1) - (b.category === 'food' ? 0 : 1) || (a.ingredient ? 0 : 1) - (b.ingredient ? 0 : 1) || String(a.ingredient || a.name).localeCompare(b.ingredient || b.name); }).slice(0, 30);
         var recs = R.list.filter(function (r) { return r.id !== x.id && hit(r.name); }).slice(0, 10);
         var add = function (o) { opts.push(o); var b = h('button', { type: 'button', cls: 'rc-copt', tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); pick(o); }); o.el = b; list.appendChild(b); };
-        if (inv.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Inventory' })); inv.forEach(function (v) { add({ inv: v.id, name: v.name, text: v.name, sub: [v.cost != null && v.cost !== '' ? '$' + (+v.cost).toFixed(2) + ' / ' + (v.unit || 'each') : 'no price yet', v.pack, v.vendor].filter(Boolean).join(' · ') }); }); }
+        if (inv.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Inventory' })); inv.forEach(function (v) { add({ inv: v.id, name: v.ingredient || v.name, text: v.ingredient || v.name, sub: [v.ingredient ? v.name : '', v.cost != null && v.cost !== '' ? '$' + (+v.cost).toFixed(2) + ' / ' + (v.unit || 'each') : 'no price yet', v.pack, v.vendor].filter(Boolean).join(' · ') }); }); }
         if (recs.length) { list.appendChild(h('p', { cls: 'rc-chead', text: 'Recipes' })); recs.forEach(function (r) { add({ rec: r.id, name: r.name, text: r.name, sub: 'Recipe' + (r.yield_qty ? ' · makes ' + r.yield_qty + ' ' + (r.yield_unit || '') : '') }); }); }
         if (!opts.length) list.appendChild(h('p', { cls: 'rc-chead', text: 'Nothing in the inventory matches. Keep it as typed (not costed).' }));
       }

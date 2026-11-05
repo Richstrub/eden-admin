@@ -622,18 +622,17 @@
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
       }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' + (L.remembered ? ', with how it was received' : '') }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
-      // food only: which recipe it goes in. Existing items show their recipes; a new one can be added to one
+      // food only: the ingredient name recipes know it by. Shown when the item has one; typed for a new item (or one without)
       var newCat = isNew ? (NEW_AS[L.newKind] ? NEW_AS[L.newKind].cat : catGuess(L)) : null;
       var isFoodRow = it ? it.category === 'food' : isNew && newCat === 'food';
       var rcell = h('td', { cls: 'is-rec' });
-      if (isFoodRow && it) {
-        var rs = A.recipesFor ? A.recipesFor(it.id) : [];
-        rcell.appendChild(h('span', { cls: rs.length ? '' : 'is-u', text: rs.length ? rs.map(function (x) { return x.name; }).join(', ') : 'Not in a recipe yet' }));
-      } else if (isFoodRow && (A.recipes || []).length) {
-        var rsel = h('select', { 'aria-label': 'Add to a recipe' }, [h('option', { value: '', text: 'No recipe' })].concat(A.recipes.map(function (x) { return h('option', { value: x.id, text: x.name }); })));
-        rsel.value = L.recipe || ''; rsel.addEventListener('change', function () { L.recipe = rsel.value || null; });
-        rcell.appendChild(rsel);
-      } else if (isFoodRow) rcell.appendChild(h('span', { cls: 'is-u', text: 'No recipes yet' }));
+      if (isFoodRow && it && it.ingredient) rcell.appendChild(h('span', { text: it.ingredient }));
+      else if (isFoodRow && A.ingCol) {
+        if (!document.getElementById('isIngs')) document.body.appendChild(h('datalist', { id: 'isIngs' }, (A.ingNames ? A.ingNames() : []).map(function (v) { return h('option', { value: v }); })));
+        var ingIn = h('input', { type: 'text', list: 'isIngs', value: L.ingName || '', placeholder: 'e.g. Edible flowers', 'aria-label': 'Ingredient name for ' + L.description });
+        ingIn.addEventListener('input', function () { L.ingName = ingIn.value.trim(); });
+        rcell.appendChild(ingIn);
+      }
       tr.appendChild(rcell);
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
@@ -659,7 +658,7 @@
       h('div', { cls: 'sc-row3 is-head' }, [lbl('Vendor', f.vendor), lbl('Invoice #', f.no), lbl('Date', f.date)]),
       h('p', { cls: 'sc-small', text: 'Tick each line that’s matched to the right inventory item. Check the units: the new cost is the invoice price ÷ how many of the item’s counting units come in one invoice unit. Lines you tick are remembered for next time.' }),
       sumNote,
-      h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Recipe', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
+      h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-table' }, [h('thead', null, h('tr', null, ['Use', 'Invoice line', 'Inventory item', 'Ingredient name', 'Units', 'New cost', 'Was'].map(function (t) { return h('th', { text: t }); }))), tbody])),
       msg
     ], [tickAll, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: opts.onCancel ? 'Skip to the next invoice' : 'Cancel', on: { click: function () { m.close(); if (opts.onCancel) opts.onCancel(); } } }), applyBtn], true);
     m.el.classList.add('is-scan');
@@ -672,7 +671,7 @@
       var bad = use.filter(function (L) { var c = L.costOver != null ? L.costOver : newCost(L); return c == null || !isFinite(c); });
       if (bad.length) { msg.className = 'sc-msg err'; msg.textContent = 'Fix the cost on: ' + bad.map(function (L) { return L.description; }).join(', '); return; }
       applyBtn.disabled = true; msg.className = 'sc-msg is-info'; msg.textContent = 'Saving…';
-      var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {}, toRecipe = [];
+      var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {};
       var cats = {}; use.forEach(function (L) { var x = item(L.item); if (x) cats[x.category] = (cats[x.category] || 0) + 1; });
       var newCat = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; })[0] || null;   // new items join the inventory the rest of the invoice is in
       use.forEach(function (L) {
@@ -682,11 +681,11 @@
           if (as && L.newKind === 'na' && COFFEE_RE.test(L.description)) as = { cat: 'bev', section: 'Coffee & tea', recv: 'coffee' };
           if (as && L.newKind === 'beer' && L.keg) as = { cat: 'bev', section: 'Draught beer', recv: 'keg' };
           it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : L.keg ? 'keg' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
+          if (L.ingName && it.category === 'food') it.ingredient = L.ingName;
           adds.push(it); L.item = it.id; L.old = null;
-          if (L.recipe && it.category === 'food') toRecipe.push([L.recipe, it]);
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
-          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {});
+          changed[it.id] = Object.assign({}, changed[it.id] || it, { cost: c, vendor: it.vendor || vendor }, L.sized && L.pack ? { pack: L.pack } : {}, orderInfo(L, it), L.setUnit ? { unit: L.setUnit, pack: '' } : {}, L.ingName && it.category === 'food' && !it.ingredient ? { ingredient: L.ingName } : {});
         }
         L.newCost = c;
         linkRows[vendorKey(vendor) + '|' + lineKey(L)] = { vendor_key: vendorKey(vendor), line_key: lineKey(L), item_id: it.id, per_unit: L.per, updated_at: new Date().toISOString(), recv: recvOf(L) };
@@ -706,21 +705,17 @@
         var invId = savedId = r.data.id;
         return A.saveItems(adds.concat(upd)).then(function () {
           use.forEach(function (L) { hist.push({ item_id: L.item, invoice_id: invId, price_date: date || undefined, vendor: vendor, invoice_line: L.description, invoice_price: L.unit_price, invoice_unit: L.unit || '', per_unit: L.per, unit_cost: L.newCost, old_cost: L.old }); });
-          var recs = toRecipe.reduce(function (p, x) { return p.then(function (n) { return A.addToRecipe(x[0], x[1]).then(function (how) { return how === 'added' ? n + 1 : n; }); }); }, Promise.resolve(0))
-            .then(function (n) { return { recAdded: n }; }, function (e) { return { error: e }; });
           return Promise.all([
             A.sb.from('inventory_prices').insert(hist),
-            saveLinks(Object.keys(linkRows).map(function (k) { return linkRows[k]; })),
-            recs
+            saveLinks(Object.keys(linkRows).map(function (k) { return linkRows[k]; }))
           ]);
         });
       }).then(function (res) {
         adds.forEach(function (it) { A.items.push(it); });
         upd.forEach(function (n) { var it = item(n.id); if (it) Object.assign(it, n); });
         var warn = res.some(function (x) { return x && x.error; });
-        var recN = toRecipe.length, recAdd = res[2] && res[2].recAdded;
         m.close();
-        A.status('Updated ' + use.length + ' price' + (use.length === 1 ? '' : 's') + ' from ' + vendor + (f.no.value.trim() ? ' invoice ' + f.no.value.trim() : '') + '.' + (recN && !(res[2] && res[2].error) ? ' Put ' + recN + ' new item' + (recN === 1 ? '' : 's') + ' in recipes' + (recAdd ? ': give ' + (recAdd === 1 ? 'it an amount' : 'them amounts') + ' in Recipes' : '') + '.' : '') + (warn ? ' (Price history, matching memory or the recipe didn’t save.)' : ''), warn ? 'err' : 'ok');
+        A.status('Updated ' + use.length + ' price' + (use.length === 1 ? '' : 's') + ' from ' + vendor + (f.no.value.trim() ? ' invoice ' + f.no.value.trim() : '') + '.' + (warn ? ' (Price history or matching memory didn’t save.)' : ''), warn ? 'err' : 'ok');
         if (opts.after) opts.after(savedId);
         A.done();
       }).catch(function (e) {

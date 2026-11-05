@@ -102,8 +102,10 @@
       sb().from('inventory_items').select('order_unit,per_case').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
       sb().from('inventory_items').select('menu_refs').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
       sb().from('inventory_settings').select('*').eq('id', 1).maybeSingle().then(function (r) { return r.error ? null : r.data; }, function () { return null; }),
-      sb().from('recipes').select('id,name,ingredients').order('name').then(function (r) { return r.error ? [] : r.data || []; }, function () { return []; })
+      sb().from('recipes').select('id,name,ingredients').order('name').then(function (r) { return r.error ? [] : r.data || []; }, function () { return []; }),
+      sb().from('inventory_items').select('ingredient').limit(1).then(function (r) { return !r.error; }, function () { return false; })
     ]).then(function (res) {
+      I.ingCol = res[6];
       I.recipes = res[5].map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; });
       I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.costCols = res[3]; I.loaded = true; I.missing = false; I.loading = false;
       if (res[4] && window.EdenCosting) window.EdenCosting.setSettings(res[4]);
@@ -123,6 +125,7 @@
       var row = { id: it.id, category: it.category, section: it.section || '', name: it.name, unit: it.unit || '', pack: it.pack || '', vendor: it.vendor || '', par: it.par, cost: it.cost, sort: it.sort || 0, active: it.active !== false };
       if (I.orderCols) { row.order_unit = it.order_unit || ''; row.per_case = it.per_case == null || it.per_case === '' ? null : +it.per_case; }   // supabase/invoice-vendors.sql
       if (I.costCols) row.menu_refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];   // supabase/inventory-costing.sql
+      if (I.ingCol) row.ingredient = it.ingredient || '';   // supabase/ingredient-name.sql
       return row;
     }), { onConflict: 'id' }).then(function (r) { if (r.error) throw r.error; });
   }
@@ -232,7 +235,7 @@
     var ncol = (I.showCost ? 13 : 11) + (I.cat === 'food' ? 1 : 0);
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
-      h('th', { cls: 'iv-name', text: 'Item' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), I.cat === 'food' ? h('th', { cls: 'iv-rec', text: 'Recipe' }) : null, h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'iv-name', text: 'Item' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), I.cat === 'food' ? h('th', { cls: 'iv-rec', text: 'Ingredient name' }) : null, h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' })
@@ -293,7 +296,7 @@
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
       h('td', { cls: 'iv-unit', text: it.unit || '' }),
-      I.cat === 'food' ? recipeCell(it) : null,
+      I.cat === 'food' ? h('td', { cls: 'iv-rec', title: recipesFor(it.id).map(function (x) { return x.name; }).join(', ') ? 'Used in: ' + recipesFor(it.id).map(function (x) { return x.name; }).join(', ') : 'Not in a recipe yet' }, it.ingredient ? h('span', { text: it.ingredient }) : h('span', { cls: 'iv-none', text: '—' })) : null,
       h('td', { cls: 'r', text: qty(it.par) }),
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
@@ -467,43 +470,7 @@
 
   /* ---------- food → recipes: an item is linked when a recipe ingredient is costed from it (Recipes → Costed from) ---------- */
   function recipesFor(id) { return (I.recipes || []).filter(function (x) { return x.ingredients.some(function (g) { return g.inv_id === id; }); }); }
-  function recipeCell(it) {
-    var rs = recipesFor(it.id);
-    return h('td', { cls: 'iv-rec' }, rs.length ? rs.map(function (x, i) { return [i ? ', ' : '', h('a', { href: '#recipes', text: x.name, title: 'Open this recipe', on: { click: function () { if (window.EdenRecipes) window.EdenRecipes.focus(x.id); } } })]; }).reduce(function (a, b) { return a.concat(b); }, []) : h('span', { cls: 'iv-none', text: '—' }));
-  }
-  // put an item into a recipe: the ingredient with the same name (not yet costed) gets linked; otherwise it's added for the cook to give an amount
-  function addToRecipe(recId, it) {
-    var x = (I.recipes || []).filter(function (r) { return r.id === recId; })[0];
-    if (!x) return Promise.resolve(false);
-    var words = function (t) { return keyOf(t).split(' ').filter(function (w) { return w.length > 2; }); };
-    var iw = words(it.name), best = null, bestN = 0;
-    x.ingredients.forEach(function (g) {
-      if (g.head || g.inv_id || g.rec_id) return;
-      var gw = words(g.item), n = gw.filter(function (w) { return iw.some(function (v) { return v === w || v.replace(/s$/, '') === w.replace(/s$/, ''); }); }).length;
-      if (n > bestN) { best = g; bestN = n; }
-    });
-    var how;
-    if (best) { best.inv_id = it.id; how = 'linked'; }
-    else { x.ingredients.push({ qty: null, unit: it.unit || '', item: it.name, note: '', inv_id: it.id }); how = 'added'; }
-    return sb().from('recipes').update({ ingredients: x.ingredients }).eq('id', x.id).then(function (r) {
-      if (r.error) throw r.error;
-      if (window.EdenRecipes) window.EdenRecipes.reload();
-      if (window.EdenMenuCost && window.EdenMenuCost.load) window.EdenMenuCost.load(sb(), true).catch(function () {});
-      return how;
-    });
-  }
-  // a new recipe, started from an inventory item: the item is its first ingredient
-  function newRecipe(name, it) {
-    var x = { id: uid(), name: name.slice(0, 200), category: '', yield_qty: null, yield_unit: '', time: '', allergens: '', ingredients: [{ qty: null, unit: it.unit || '', item: it.name, note: '', inv_id: it.id }], method: '', notes: '', updated_by: (I.ctx && I.ctx.name) || '' };
-    return sb().from('recipes').insert(x).then(function (r) {
-      if (r.error) throw r.error;
-      (I.recipes = I.recipes || []).push(x);
-      if (window.EdenRecipes) window.EdenRecipes.reload();
-      if (window.EdenMenuCost && window.EdenMenuCost.load) window.EdenMenuCost.load(sb(), true).catch(function () {});
-      return 'new';
-    });
-  }
-  function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, addToRecipe: addToRecipe, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
     if (!r || r === it.unit) return r ? r : '';
@@ -711,57 +678,26 @@
   function datalist(id, vals) { return h('datalist', { id: id }, vals.map(function (v) { return h('option', { value: v }); })); }
   function uniq(list) { var s = {}; return list.filter(function (x) { x = String(x || '').trim(); if (!x || s[x.toLowerCase()]) return false; s[x.toLowerCase()] = 1; return true; }); }
 
-  // food is costed through recipes, never straight to the menu: receiving → recipe → the plate's food cost
-  function recipeBox(it, isNew) {
-    var box = h('div', { cls: 'iv-links' });
-    function paint() {
-      box.innerHTML = '';
-      var rs = isNew ? [] : recipesFor(it.id), others = (I.recipes || []).filter(function (x) { return rs.indexOf(x) < 0; });
-      box.appendChild(h('b', { text: 'Recipe' }));
-      box.appendChild(h('p', { cls: 'sc-sub', text: rs.length ? 'Used in: ' + rs.map(function (x) { return x.name; }).join(', ') + '. The recipe carries the cost to the menu item.' : 'Not in a recipe yet. Add it to one, then the recipe carries the cost to the menu item.' }));
-      if (isNew) { box.appendChild(h('p', { cls: 'sc-sub', text: 'Save the item first, then add it to a recipe.' })); return; }
-      // type a recipe name: pick one, or start a new recipe with this item in it
-      var inp = h('input', { type: 'text', placeholder: 'Recipe name: search, or type a new one', 'aria-label': 'Recipe name', autocomplete: 'off' });
-      var list = h('div', { cls: 'rc-clist', hidden: true });
-      var opts = [], at = -1;
-      function build() {
-        var q = keyOf(inp.value), w = q.split(' ').filter(Boolean); list.innerHTML = ''; opts = []; at = -1;
-        var add = function (o) { opts.push(o); var b = h('button', { type: 'button', cls: 'rc-copt', tabindex: '-1' }, [h('span', { text: o.text }), o.sub ? h('small', { text: o.sub }) : null]); b.addEventListener('mousedown', function (e) { e.preventDefault(); go(o); }); o.el = b; list.appendChild(b); };
-        others.filter(function (x) { var n = keyOf(x.name); return w.every(function (t) { return n.indexOf(t) >= 0; }); }).slice(0, 30)
-          .forEach(function (x) { add({ id: x.id, text: x.name, sub: x.ingredients.filter(function (g) { return !g.head; }).length + ' ingredients' }); });
-        var exact = (I.recipes || []).some(function (x) { return keyOf(x.name) === q; });
-        if (inp.value.trim() && !exact) add({ make: inp.value.trim(), text: '+ New recipe “' + inp.value.trim() + '”', sub: 'Starts a recipe with ' + it.name + ' in it' });
-        if (!opts.length) list.appendChild(h('p', { cls: 'rc-chead', text: 'Type a recipe name' }));
-        if (opts.length) hi(0);
-      }
-      function hi(n) { at = (n + opts.length) % opts.length; opts.forEach(function (o, k) { o.el.classList.toggle('on', k === at); }); }
-      function go(o) {
-        list.hidden = true; inp.disabled = true;
-        var p = o.make ? newRecipe(o.make, it) : addToRecipe(o.id, it);
-        p.then(function (how) { status(how === 'new' ? 'Started the recipe “' + o.make + '”. Finish it in Recipes.' : how === 'added' ? 'Added to the recipe. Give it an amount in Recipes.' : 'Linked to that recipe’s ingredient.', 'ok'); paint(); render(); },
-          function (e) { inp.disabled = false; status('Couldn’t save the recipe: ' + (e.message || e), 'err'); });
-      }
-      inp.addEventListener('input', function () { list.hidden = false; build(); });
-      inp.addEventListener('focus', function () { list.hidden = false; build(); });
-      inp.addEventListener('blur', function () { setTimeout(function () { list.hidden = true; }, 120); });
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); if (opts.length) hi(at + 1); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); if (opts.length) hi(at - 1); }
-        else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (at >= 0 && opts[at]) go(opts[at]); }
-        else if (e.key === 'Escape') { e.stopPropagation(); list.hidden = true; }
-      });
-      box.appendChild(h('div', { cls: 'iv-rsearch' }, [inp, list]));
-    }
-    paint();
-    return box;
+  // food is costed through recipes, never straight to the menu: receiving → recipe → the plate's food cost.
+  // Each food item has an ingredient name ("Edible flowers" for "100pc ed. flowers"); recipes pick the item by it.
+  function ingNames() {
+    var out = I.items.filter(function (x) { return x.category === 'food'; }).map(function (x) { return x.ingredient; });
+    (I.recipes || []).forEach(function (r) { r.ingredients.forEach(function (g) { if (!g.head) out.push(g.item); }); });
+    return uniq(out).sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function usedIn(it) {
+    var rs = recipesFor(it.id);
+    return h('p', { cls: 'sc-sub', text: rs.length ? 'Used in: ' + rs.map(function (x) { return x.name; }).join(', ') + '. The recipe carries the cost to the menu item.' : 'Not in a recipe yet. When you write a recipe, search for this ingredient name to cost it from this item.' });
   }
   function editItem(it) {
     var isNew = !it;
     it = it || { id: uid(), category: I.cat, section: '', name: '', unit: '', pack: '', vendor: '', par: null, cost: null, sort: 0 };
+    var isFoodIt = it.category === 'food';
     var catItemsAll = I.items.filter(function (x) { return x.category === I.cat; });
     var f = {
       name: h('input', { type: 'text', value: it.name || '', placeholder: I.cat === 'bev' ? 'e.g. Tito’s Vodka' : I.cat === 'paper' ? 'e.g. To-go containers, large' : 'e.g. Heavy cream' }),
       section: h('input', { type: 'text', value: it.section || '', list: 'ivSections', placeholder: (SECTIONS[I.cat] || [])[0] || '' }),
+      ingr: h('input', { type: 'text', value: it.ingredient || '', list: 'ivIngs', placeholder: 'e.g. Edible flowers', 'aria-label': 'Ingredient name' }),
       unit: unitPicker(it.unit || '', function (k, u) {   // lb → 1/4 lb: $10 a lb becomes $2.50 a 1/4 lb, par 5 becomes 20
         convLbl();
         if (k == null) return;
@@ -806,7 +742,7 @@
     ], foot);
     m.el.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); save(); } });
     var draft = { name: it.name, pack: it.pack, unit: it.unit, cost: it.cost, per_case: it.per_case, menu_refs: (Array.isArray(it.menu_refs) ? it.menu_refs : []).slice() };
-    if (I.cat === 'food' || it.category === 'food') msg.parentNode.insertBefore(recipeBox(it, isNew), msg);
+    if (isFoodIt) msg.parentNode.insertBefore(h('div', { cls: 'iv-links' }, [I.ingCol ? lbl('Ingredient name (what recipes call it)', f.ingr) : h('p', { cls: 'sc-sub', text: 'To give items an ingredient name, run supabase/ingredient-name.sql in Supabase once.' }), datalist('ivIngs', ingNames()), isNew ? null : usedIn(it)]), msg);
     else if (!isNew && I.costCols && window.EdenCosting) msg.parentNode.insertBefore(menuLinks(draft), msg);
     if (!isNew) sb().from('inventory_prices').select('price_date,vendor,invoice_line,invoice_price,invoice_unit,per_unit,unit_cost').eq('item_id', it.id).order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(24).then(function (r) {
       if (r.error || !r.data || !r.data.length) return;
@@ -827,6 +763,7 @@
       var next = Object.assign({}, it, { name: name, section: f.section.value.trim(), unit: f.unit.value.trim(), pack: f.pack.value.trim(), vendor: f.vendor.value.trim(), par: par, cost: cost });
       if (I.orderCols) { next.order_unit = f.ord.value.trim(); next.per_case = num(f.pc.value); }
       if (I.costCols) next.menu_refs = draft.menu_refs;
+      if (I.ingCol && isFoodIt) next.ingredient = f.ingr.value.trim();
       status('Saving…', 'dirty');
       saveItems([next]).then(function () {
         if (isNew) I.items.push(next); else Object.assign(it, next);
