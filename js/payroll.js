@@ -1227,32 +1227,33 @@
     Object.keys(t).forEach(function (k) { t[k] = r2(t[k]); });
     var buy = purchases(ws);
     var inT = r2(t.net + t.tax + t.tipsIn), payOut = r2(t.cost), afterPay = r2(inT - t.tax - t.tips - t.fees - t.loan - payOut), left = r2(afterPay - buy.total);
-    /* Lined up with the left side: food sales at the top feed food costs (kitchen labor and food purchases) at the top on the right,
-       beverage sales feed beverage & service, then overhead and Square; sales tax and tips at the bottom pass straight through. */
+    /* The costs in three brackets: Labor, Food & beverage cost, Fixed costs & other (with Square's fees and loan),
+       each broken out on the right; sales tax and tips pass straight through at the bottom. */
     var nodes = [
       { id: 'food', label: 'Food sales', col: 0, color: CF.teal }, { id: 'bev', label: 'Beverage sales', col: 0, color: CF.plum }, { id: 'sales', label: 'Net sales (not split)', col: 0, color: '#7fb0a8' },
       { id: 'short', label: 'Short (costs over what came in)', col: 0, color: CF.red },
       { id: 'tax', label: 'Sales tax', col: 0, color: CF.grey }, { id: 'tips', label: 'Tips', col: 0, color: CF.sand },
       { id: 'in', label: 'Money in', col: 1, color: CF.blue },
-      { id: 'gfood', label: 'Food costs', col: 2, color: CF.teal }, { id: 'gbev', label: 'Beverage & service', col: 2, color: CF.plum },
-      { id: 'gover', label: 'Overhead', col: 2, color: '#4d6a8a' }, { id: 'square', label: 'Square', col: 2, color: '#6f6a8f' },
-      { id: 'boh', label: 'Back of house labor', col: 3, color: CF.ember }, { id: 'bfood', label: 'Food purchases (invoices)', col: 3, color: '#3f7d74', keep: true, zero: 'none scanned yet' },
-      { id: 'foh', label: 'Servers & bartenders labor', col: 3, color: '#d39a6a' }, { id: 'bbev', label: 'Beverage purchases (invoices)', col: 3, color: '#7a5f98', keep: true, zero: 'none scanned yet' },
-      { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red }, { id: 'comm', label: 'Commission', col: 3, color: '#d39a6a' },
+      { id: 'glabor', label: 'Labor', col: 2, color: CF.ember }, { id: 'gcogs', label: 'Food & beverage cost', col: 2, color: CF.teal, keep: true, zero: 'no invoices yet' },
+      { id: 'gfixed', label: 'Fixed costs & other', col: 2, color: '#4d6a8a' },
+      { id: 'boh', label: 'Back of house labor', col: 3, color: CF.ember }, { id: 'foh', label: 'Servers & bartenders labor', col: 3, color: '#d39a6a' },
+      { id: 'mgmt', label: 'Management', col: 3, color: '#8c5a33' }, { id: 'ptax', label: 'Payroll taxes & fees', col: 3, color: CF.red }, { id: 'comm', label: 'Commission', col: 3, color: '#c9925e' },
+      { id: 'bfood', label: 'Food purchases (invoices)', col: 3, color: '#3f7d74', keep: true, zero: 'none scanned yet', gap: 14, parent: 'gcogs' },
+      { id: 'bbev', label: 'Beverage purchases (invoices)', col: 3, color: '#7a5f98', keep: true, zero: 'none scanned yet', parent: 'gcogs' },
+      { id: 'bfixed', label: 'Fixed costs', col: 3, color: '#4d6a8a', gap: 14, note: buy.fixed.length ? buy.fixed.map(function (f) { return f.vendor + ' ' + wkLabel(f.date); }).join(', ') : '' },
       { id: 'bpaper', label: 'Paper goods', col: 3, color: '#b5a27a' }, { id: 'bother', label: 'Other', col: 3, color: '#8f8a82' },
-      { id: 'bfixed', label: 'Fixed costs', col: 3, color: '#4d6a8a', note: buy.fixed.length ? buy.fixed.map(function (f) { return f.vendor + ' ' + wkLabel(f.date); }).join(', ') : '' },
-      { id: 'feesout', label: 'Card processing fees', col: 3, color: '#a8a39a' }, { id: 'loanout', label: 'Loan repayment', col: 3, color: '#8a6fa8' },
-      { id: 'left', label: buy.total ? 'Left after costs' : 'Left after payroll', col: 3, color: CF.green, note: buy.total ? '' : 'food, beverage, rent… come off with invoices' },
+      { id: 'feesout', label: 'Card processing fees', col: 3, color: '#a8a39a' }, { id: 'loanout', label: 'Square loan repayment', col: 3, color: '#8a6fa8' },
+      { id: 'left', label: buy.total ? 'Left after costs' : 'Left after payroll', col: 3, color: CF.green, gap: 14, note: buy.total ? '' : 'food, beverage, rent… come off with invoices' },
       { id: 'taxout', label: 'Sales tax (to NYS)', col: 3, color: CF.grey }, { id: 'tipsout', label: 'Tips (to staff)', col: 3, color: CF.sand }
     ];
-    var over = r2(t.mgmt + t.ptax + t.comm + buy.bpaper + buy.bother + buy.bfixed);
     var links = [
       ['food', 'in', t.food], ['bev', 'in', t.bev], ['sales', 'in', t.unsplit], ['short', 'in', Math.max(0, -left)], ['tax', 'in', t.tax], ['tips', 'in', t.tipsIn],
-      ['in', 'gfood', r2(t.boh + buy.bfood)], ['in', 'gbev', r2(t.foh + buy.bbev)], ['in', 'gover', over], ['in', 'square', r2(t.fees + t.loan)],
+      ['in', 'glabor', r2(t.boh + t.foh + t.mgmt + t.ptax + t.comm)], ['in', 'gcogs', r2(buy.bfood + buy.bbev)],
+      ['in', 'gfixed', r2(buy.bfixed + buy.bpaper + buy.bother + t.fees + t.loan)],
       ['in', 'left', Math.max(0, left)], ['in', 'taxout', t.tax], ['in', 'tipsout', t.tips],
-      ['gfood', 'bfood', buy.bfood], ['gfood', 'boh', t.boh], ['gbev', 'bbev', buy.bbev], ['gbev', 'foh', t.foh],
-      ['gover', 'mgmt', t.mgmt], ['gover', 'ptax', t.ptax], ['gover', 'comm', t.comm], ['gover', 'bpaper', buy.bpaper], ['gover', 'bother', buy.bother], ['gover', 'bfixed', buy.bfixed],
-      ['square', 'feesout', t.fees], ['square', 'loanout', t.loan]
+      ['glabor', 'boh', t.boh], ['glabor', 'foh', t.foh], ['glabor', 'mgmt', t.mgmt], ['glabor', 'ptax', t.ptax], ['glabor', 'comm', t.comm],
+      ['gcogs', 'bfood', buy.bfood], ['gcogs', 'bbev', buy.bbev],
+      ['gfixed', 'bfixed', buy.bfixed], ['gfixed', 'bpaper', buy.bpaper], ['gfixed', 'bother', buy.bother], ['gfixed', 'feesout', t.fees], ['gfixed', 'loanout', t.loan]
     ].map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
     return { nodes: nodes, links: links, t: t, left: left, total: inT, buy: buy };
   }
@@ -1264,21 +1265,24 @@
     var cols = []; nodes.forEach(function (n) { (cols[n.col] = cols[n.col] || []).push(n); });
     var nw = 10, pad = 16, T = 8, foot = opt.base ? 34 : 0, usable = H - T * 2 - foot, L = 6, R = opt.base ? 280 : 230;   // the last column's labels sit to its right
     var maxTot = 0, maxN = 0; cols.forEach(function (c) { if (!c) return; maxTot = Math.max(maxTot, c.reduce(function (a, n) { return a + n.v; }, 0)); maxN = Math.max(maxN, c.length); });
-    var k = (usable - pad * (maxN - 1)) / maxTot, nc = cols.length;
+    var gapOf = function (c) { return c.reduce(function (a, n, i) { return a + (i ? n.gap || 0 : 0); }, 0); };   // n.gap: extra space above a node (between brackets)
+    var maxGap = 0; cols.forEach(function (c) { if (c) maxGap = Math.max(maxGap, gapOf(c)); });
+    var k = (usable - pad * (maxN - 1) - maxGap) / maxTot, nc = cols.length;
     cols.forEach(function (c, ci) {
       if (!c) return;
-      var x = L + (W - L - R - nw) * ci / (nc - 1), hgt = c.reduce(function (a, n) { return a + n.v * k; }, 0) + pad * (c.length - 1);
+      var x = L + (W - L - R - nw) * ci / (nc - 1), hgt = c.reduce(function (a, n) { return a + n.v * k; }, 0) + pad * (c.length - 1) + gapOf(c);
       // a column that all comes out of one node sits beside it; otherwise it's centered
       var parents = {}; c.forEach(function (n) { n.ins.forEach(function (l) { parents[l.s] = 1; }); });
       var pk = Object.keys(parents), y = T + (usable - hgt) / 2;
       if (pk.length === 1 && byId[pk[0]].y != null) { var p = byId[pk[0]]; y = Math.max(T, Math.min(T + usable - hgt, p.y + p.h / 2 - hgt / 2)); }
-      c.forEach(function (n) { n.x = x; n.y = y; n.h = Math.max(2, n.v * k); y += n.h + pad; });
+      c.forEach(function (n, i) { if (i) y += n.gap || 0; n.x = x; n.y = y; n.h = Math.max(2, n.v * k); y += n.h + pad; });
     });
     // a middle column whose nodes all feed the last column sits beside its children, so the flows line up straight across
     cols.forEach(function (c, ci) {
-      if (!c || ci === 0 || ci === nc - 1 || !c.every(function (n) { return n.outs.length && n.outs.every(function (l) { return byId[l.t].col === nc - 1; }); })) return;
+      if (!c || ci === 0 || ci === nc - 1 || !c.every(function (n) { return (!n.outs.length && n.keep) || (n.outs.length && n.outs.every(function (l) { return byId[l.t].col === nc - 1; })); })) return;
       c.forEach(function (n) {
-        var ys = n.outs.map(function (l) { return byId[l.t]; }).filter(function (b) { return b.y != null; }); if (!ys.length) return;
+        var kids = n.outs.length ? n.outs.map(function (l) { return byId[l.t]; }) : nodes.filter(function (b) { return b.parent === n.id; });   // a $0 bracket sits by its $0 children
+        var ys = kids.filter(function (b) { return b.y != null; }); if (!ys.length) return;
         var top = Math.min.apply(null, ys.map(function (b) { return b.y; })), bot = Math.max.apply(null, ys.map(function (b) { return b.y + b.h; }));
         n.y = top + (bot - top - n.h) / 2;
       });
