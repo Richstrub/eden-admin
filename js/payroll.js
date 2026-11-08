@@ -1257,6 +1257,45 @@
     ].map(function (l) { return { s: l[0], t: l[1], v: r2(l[2]) }; }).filter(function (l) { return l.v > 0; });
     return { nodes: nodes, links: links, t: t, left: left, total: inT, buy: buy };
   }
+  /* Sales tax check: Onondaga County is 8% (4% New York State + 4% county). A week whose tax comes in under 7.9% of net sales
+     has sales rung up without tax: listed from the Transactions CSV (checks of $25+ with no tax) and the Item sales detail
+     (items sold with no tax, usually an item with its tax switched off in Square). */
+  var TAX_RATE = 0.08;
+  function taxFlag(ws) {
+    var low = [], noTax = [];
+    ws.forEach(function (w) {
+      var x = w.s, net = x && x.net; if (!net || net < 200) return;
+      var tax = x.tax;
+      if (tax == null || !tax) { noTax.push(w); return; }
+      var rate = tax / net; if (rate >= 0.079) return;
+      var R = w.rows || {}, sl = R._sales, it = R._items;
+      low.push({ w: w, rate: rate, short: r2(net * TAX_RATE - tax), checks: (sl && sl.noTax) || R._noTax || null, items: it ? it.untaxed : undefined });
+    });
+    if (!low.length && !noTax.length) return null;
+    var short = low.reduce(function (a, x) { return a + x.short; }, 0);
+    var wt = ws.filter(function (w) { return w.s && w.s.tax; }), NET = wt.reduce(function (a, w) { return a + ((w.s && w.s.net) || 0); }, 0), TAX = wt.reduce(function (a, w) { return a + ((w.s && w.s.tax) || 0); }, 0);
+    var head = low.length
+      ? 'Sales tax: ' + (TAX / NET * 100).toFixed(1) + '% of net sales' + (noTax.length ? ' (weeks with tax recorded)' : '') + ', under the 8% Onondaga County rate. ' + low.length + (low.length === 1 ? ' week' : ' weeks') + ' came in low, about ' + money(r2(short)) + ' less tax than 8% would be.'
+      : 'Sales tax: no tax recorded for ' + noTax.length + (noTax.length === 1 ? ' week' : ' weeks') + '.';
+    var det = h('details', { cls: 'fn-sk-warn fn-tax' }, [h('summary', { text: head + ' See why' })]);
+    low.forEach(function (x) {
+      var box = h('div', { cls: 'fn-tax-wk' }, [h('b', { text: 'Week of ' + wkLabel(x.w.week) + ' · ' + (x.rate * 100).toFixed(1) + '% · about ' + money(x.short) + ' short' })]);
+      if (x.checks && x.checks.length) {
+        box.appendChild(h('p', { text: 'Checks with no tax:' }));
+        box.appendChild(h('ul', null, x.checks.slice().sort(function (a, b) { return b.net - a.net; }).slice(0, 8).map(function (c) { return h('li', { text: wkLabel(c.d) + ' · ' + money(c.net) + (c.what ? ' · ' + c.what : '') }); })));
+      } else if (x.checks == null) box.appendChild(h('p', { cls: 'fn-tax-hint', text: 'Drop this week’s Transactions CSV here again to list any checks rung up with no tax.' }));
+      var u = x.items ? Object.keys(x.items).map(function (k) { return [k, x.items[k][0], x.items[k][1]]; }).sort(function (a, b) { return b[2] - a[2]; }) : null;
+      if (u && u.length) {
+        box.appendChild(h('p', { text: 'Items sold with no tax (check each one’s Taxes in Square → Items):' }));
+        box.appendChild(h('ul', null, u.slice(0, 12).map(function (r) { return h('li', { text: r[0] + ' · ' + (Math.round(r[1] * 10) / 10) + ' sold · ' + money(r[2]) }); })));
+      } else if (u && !u.length) box.appendChild(h('p', { text: 'Every item in the Item sales file was taxed: the shortfall is in the checks above (or tax-exempt sales).' }));
+      else box.appendChild(h('p', { cls: 'fn-tax-hint', text: 'To see which items were sold without tax, drop this week’s Item sales detail CSV here (Square → Reports → Item sales → Export → Item sales detail).' }));
+      det.appendChild(box);
+    });
+    if (noTax.length) det.appendChild(h('p', { cls: 'fn-tax-hint', text: 'No sales tax recorded for the week' + (noTax.length === 1 ? '' : 's') + ' of ' + noTax.map(function (w) { return wkLabel(w.week); }).join(', ') + ' (sales from End of day reports, or the Transactions CSV had no Tax column). Drop that week’s Transactions CSV into Weekly payroll to read it.' }));
+    det.appendChild(h('p', { cls: 'fn-tax-hint', text: 'New York expects tax on taxable sales whether or not it was charged, so check these with your accountant. Tax-exempt sales (with a certificate) are fine.' }));
+    return det;
+  }
   function sankey(cb, nodes, links, W, H, opt) {
     opt = opt || {};   // opt.base: show each last-column node (and opt.pctAlso ids) as a % of it, with a total under the column
     var byId = {}; nodes.forEach(function (n) { n.inV = 0; n.outV = 0; n.ins = []; n.outs = []; byId[n.id] = n; });
@@ -1341,7 +1380,7 @@
     if (hi < 0) return Promise.reject(new Error(fname + ': this isn’t an Item sales file (no Category and Net sales columns).'));
     var di = H.indexOf('date'), ci = H.indexOf('category'), ii = H.indexOf('item'), qi = H.indexOf('qty'); if (qi < 0) qi = H.indexOf('quantity'); if (qi < 0) qi = H.indexOf('items sold');
     var ni = H.indexOf('net sales'); if (ni < 0) ni = H.indexOf('gross sales');
-    var ei = H.indexOf('event type'), ppi = H.indexOf('price point name');
+    var ei = H.indexOf('event type'), ppi = H.indexOf('price point name'), xi = H.indexOf('tax');
     if (di < 0) return Promise.reject(new Error(fname + ': this is a summary without dates. Export “Item sales detail” instead (it lists each sale with its date).'));
     var m0 = function (v) { v = String(v || '').trim(); var neg = /^\(.*\)$/.test(v) || /^-/.test(v); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : (neg ? -n : n); };
     var weeks = {}, n = 0;
@@ -1349,10 +1388,11 @@
       var d = parseDate(r[di]); if (!d) return;
       var net = m0(r[ni]); if (!net) return;
       var wk = iso(sunday(d)), day = d.getDay(), cat = ci >= 0 ? String(r[ci] || '').trim() : '', item = ii >= 0 ? String(r[ii] || '').trim() : '';
-      var w = weeks[wk] = weeks[wk] || { food: [0, 0, 0, 0, 0, 0, 0], bev: [0, 0, 0, 0, 0, 0, 0], bevBy: { beer: 0, wine: 0, spirits: 0, na: 0 }, byCat: {}, cocktails: {}, items: {}, rows: 0 };
+      var w = weeks[wk] = weeks[wk] || { food: [0, 0, 0, 0, 0, 0, 0], bev: [0, 0, 0, 0, 0, 0, 0], bevBy: { beer: 0, wine: 0, spirits: 0, na: 0 }, byCat: {}, cocktails: {}, items: {}, untaxed: {}, rows: 0 };
       var isBev = cat && !/uncategori[sz]ed/i.test(cat) ? BEVCAT.test(cat) : (BEV_RE.test(item) || BEVCAT.test(item));
       if (isBev) { w.bev[day] = r2(w.bev[day] + net); var k = bevKind(cat, item); w.bevBy[k] = r2(w.bevBy[k] + net); } else w.food[day] = r2(w.food[day] + net);
       w.byCat[cat || 'Uncategorized'] = r2((w.byCat[cat || 'Uncategorized'] || 0) + net);
+      if (item && xi >= 0 && net > 0 && !m0(r[xi])) { var u0 = w.untaxed[item] = w.untaxed[item] || [0, 0]; u0[0] += qi >= 0 ? (m0(r[qi]) || 0) : 1; u0[1] = r2(u0[1] + net); }   // sold with no sales tax
       if (item) { var it0 = w.items[item] = w.items[item] || [0, 0, cat || '', isBev ? 1 : 0]; it0[0] += qi >= 0 ? (m0(r[qi]) || 0) : 1; it0[1] = r2(it0[1] + net); }   // [qty, net sales, category, beverage?]
       if (/cocktail/i.test(cat) && qi >= 0 && !(ei >= 0 && /refund/i.test(r[ei] || ''))) { var nm = (ppi >= 0 && r[ppi] && !/regular/i.test(r[ppi]) ? r[ppi] : item) || item; w.cocktails[nm] = (w.cocktails[nm] || 0) + (m0(r[qi]) || 1); }
       w.rows++; n++;
@@ -1367,7 +1407,7 @@
       keys.forEach(function (k) {
         var x = have[k]; if (!x) { skipped.push(k); return; }
         var rows2 = x.rows || {}, w = weeks[k];
-        rows2._items = { food: w.food, bev: w.bev, bevBy: w.bevBy, byCat: w.byCat, cocktails: w.cocktails, items: w.items, file: fname, at: new Date().toISOString() };
+        rows2._items = { food: w.food, bev: w.bev, bevBy: w.bevBy, byCat: w.byCat, cocktails: w.cocktails, items: w.items, untaxed: xi >= 0 ? w.untaxed : null, file: fname, at: new Date().toISOString() };
         if (rows2._summary) { rows2._summary.food = sum(w.food); rows2._summary.bev = sum(w.bev); rows2._summary.salesExact = true; rows2._summary.bevBy = w.bevBy; }
         ups.push({ week_start: k, rows: rows2 });
       });
@@ -1627,6 +1667,7 @@
       if (msg.length) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: msg.join(' ') }));
     })();
     if (d.t.noFees) cb.box.appendChild(h('p', { cls: 'fn-sk-warn', text: 'Card processing fees aren’t in for ' + d.t.noFees + ' of these ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' (they were imported before fees were read), so the Square band is only the loan there. Drop ' + (d.t.noFees === 1 ? 'that week’s' : 'those weeks’') + ' Transactions CSV into Weekly payroll again to add them.' }));
+    var tf = taxFlag(ws); if (tf) cb.box.appendChild(tf);
     var wrap = h('div', { cls: 'fn-sk-wrap' }); wrap.appendChild(sankey(cb, d.nodes, d.links, 960, bt ? 560 : 460, { base: d.t.net, pctFrom: 0, pctSkip: ['in'], totLabel: 'Total costs', totSkip: ['taxout', 'tipsout', 'left'] })); cb.box.appendChild(wrap);
     var costsDet = null;
     if (d.buy.list.length || d.buy.fixed.length) {
@@ -1975,19 +2016,26 @@
     if (!food && !bev) return { food: r2(net), bev: 0 };
     var f = r2(net * food / (food + bev)); return { food: f, bev: r2(net - f) };
   }
+  // a sale of $25 or more with no sales tax on it (a bar tab rung up without tax, a tax-exempt group): kept for the tax flag on Financials
+  function noTaxRow(list, r, di, ni, xi, de, m0) {
+    if (xi < 0 || ni < 0) return;
+    var net = m0(r[ni]), tax = m0(r[xi]); if (net < 25 || tax) return;
+    if (list.length < 40) list.push({ d: iso(parseDate(r[di])), net: r2(net), what: de >= 0 ? String(r[de] || '').slice(0, 70) : '' });
+  }
   /* A Transactions CSV dropped on Financials (or on a week that's final): adds what the cash flow needs (card fees, tips
      collected, the food/beverage estimate) to every week in the file. Pay, the tip pool, net sales and tax aren't touched. */
   function txFeesFile(text, fname) {
     var rows = parseCSV(text), H = (rows[0] || []).map(function (x) { return String(x).trim().toLowerCase(); });
     var di = H.indexOf('date'), ti = H.indexOf('tip'); if (ti < 0) ti = H.indexOf('tips');
-    var st = H.indexOf('transaction status'), ni = H.indexOf('net sales'), de = H.indexOf('description'), fe = H.indexOf('fees');
+    var st = H.indexOf('transaction status'), ni = H.indexOf('net sales'), de = H.indexOf('description'), fe = H.indexOf('fees'), xi = H.indexOf('tax'), ei = H.indexOf('event type');
     if (di < 0 || fe < 0) return Promise.reject(new Error(fname + ': couldn’t find the Date and Fees columns of a Transactions CSV.'));
     var m0 = function (v) { v = String(v || '').trim(); var neg = /^\(.*\)$/.test(v) || /^-/.test(v); var n = numIn(v.replace(/[()\-]/g, '')); return n == null ? 0 : (neg ? -n : n); };
     var weeks = {}, z = function () { return [0, 0, 0, 0, 0, 0, 0]; };
     rows.slice(1).forEach(function (r) {
       var d = parseDate(r[di]); if (!d) return;
       if (st >= 0 && /fail|cancel|void/i.test(r[st] || '')) return;
-      var wk = iso(sunday(d)), i = d.getDay(), w = weeks[wk] = weeks[wk] || { fees: z(), tips: z(), food: z(), bev: z() };
+      var wk = iso(sunday(d)), i = d.getDay(), w = weeks[wk] = weeks[wk] || { fees: z(), tips: z(), food: z(), bev: z(), noTax: [] };
+      if (!(ei >= 0 && /refund/i.test(r[ei] || ''))) noTaxRow(w.noTax, r, di, ni, xi, de, m0);
       w.fees[i] = r2(w.fees[i] - m0(r[fe]));
       if (ti >= 0) w.tips[i] = r2(w.tips[i] + m0(r[ti]));
       if (ni >= 0) { var sp = splitCheck(de >= 0 ? r[de] : '', m0(r[ni])); w.food[i] = r2(w.food[i] + sp.food); w.bev[i] = r2(w.bev[i] + sp.bev); }
@@ -1997,7 +2045,8 @@
     var tot = 0;
     return saveToWeeks(keys, fname, function (rows2, k) {
       var w = weeks[k], sm = rows2._summary, sl = rows2._sales;
-      if (sl) { sl.fees = w.fees; if (!sl.tips) sl.tips = w.tips; if (!sl.food) { sl.food = w.food; sl.bev = w.bev; } }
+      if (sl) { sl.fees = w.fees; if (!sl.tips) sl.tips = w.tips; if (!sl.food) { sl.food = w.food; sl.bev = w.bev; } if (xi >= 0) sl.noTax = w.noTax; }
+      else if (xi >= 0) rows2._noTax = w.noTax;
       if (sm) { sm.cardFees = sum(w.fees); tot += sm.cardFees; if (sm.tipsIn == null) sm.tipsIn = sum(w.tips); if (sm.food == null) { sm.food = sum(w.food); sm.bev = sum(w.bev); } }
     }, 'card fees').then(function (m) { return m.replace(/: card fees for/, ': ' + money(r2(tot)) + ' in card fees for'); });
   }
@@ -2020,6 +2069,7 @@
         if (ni >= 0) sales.net[si] = r2(sales.net[si] + money0(r[ni]));
         if (gi >= 0) sales.gross[si] = r2(sales.gross[si] + money0(r[gi]));
         if (xi >= 0) sales.tax[si] = r2(sales.tax[si] + money0(r[xi]));
+        if (!(ei >= 0 && /refund/i.test(r[ei] || ''))) noTaxRow(sales.noTax = sales.noTax || [], r, di, ni, xi, de, money0);
         if (ni >= 0) { var sp = splitCheck(de >= 0 ? r[de] : '', money0(r[ni])); sales.food[si] = r2(sales.food[si] + sp.food); sales.bev[si] = r2(sales.bev[si] + sp.bev); }
         if (ti >= 0) sales.tips[si] = r2(sales.tips[si] + money0(r[ti]));
         if (fe >= 0) sales.fees[si] = r2(sales.fees[si] - money0(r[fe]));   // Square's processing fees (shown as negatives)
