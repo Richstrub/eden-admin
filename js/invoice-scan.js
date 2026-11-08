@@ -1002,6 +1002,28 @@
   }
 
 
+  /* ---------- Invoice dates: flag ones that look off (the Financials page puts each invoice in the week of its date) ---------- */
+  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function wdOf(d) { return new Date(d + 'T12:00:00').getDay(); }
+  function dayDiff(a, b) { return Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 864e5); }
+  function usualDay(list) {   // a vendor's delivery day, when most of its invoices fall on one
+    var c = [0, 0, 0, 0, 0, 0, 0], n = 0;
+    list.forEach(function (o) { if (o.x.invoice_date) { c[wdOf(o.x.invoice_date)]++; n++; } });
+    if (n < 4) return null;
+    var top = c.indexOf(Math.max.apply(null, c));
+    return c[top] / n >= 0.6 ? top : null;
+  }
+  function dateFlag(x, usual) {
+    var d = x.invoice_date, today = new Date(), t = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    var made = x.created_at ? String(x.created_at).slice(0, 10) : null;
+    if (!d) return 'No date: it isn’t on the Financials page';
+    if (d > t) return 'Date is in the future';
+    if (made && dayDiff(made, d) > 60) return 'More than 60 days before it was scanned (' + made + ')';
+    if (made && dayDiff(d, made) > 1) return 'After the day it was scanned (' + made + ')';
+    if (usual != null) { var w = wdOf(d), dist = Math.min(Math.abs(w - usual), 7 - Math.abs(w - usual)); if (dist >= 2) return 'A ' + WD[w] + '; this vendor’s invoices are usually ' + WD[usual]; }
+    return '';
+  }
+
   /* ---------- Vendors: spend and delivery charges, from the invoices put into the inventory ---------- */
   function vendors(api) {
     A = api;
@@ -1016,8 +1038,13 @@
         v.spend += x.total != null ? +x.total : lt + fs; v.fees += fs; if (fs) v.feeN++;
       });
       var list = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.spend - a.spend; });
+      var nFlag = 0;
+      list.forEach(function (v) { v.usual = usualDay(v.list); v.flags = 0; v.list.forEach(function (o) { o.flag = dateFlag(o.x, v.usual); if (o.flag) { v.flags++; nFlag++; } }); });
       var since = list.length ? list.reduce(function (m, v) { var d = v.list[v.list.length - 1].x.invoice_date; return !m || (d && d < m) ? d : m; }, '') : '';
-      var body = [h('p', { cls: 'sc-sub', text: list.length ? 'From the invoices put into the inventory' + (since ? ' since ' + since : '') + '. Tap a vendor to see its invoices.' : 'No invoices yet. Scan an invoice and update its prices; it shows up here.' })];
+      var body = [h('p', { cls: 'sc-sub', text: list.length ? 'From the invoices put into the inventory' + (since ? ' since ' + since : '') + '. Tap a vendor to see its invoices; click a date to correct it (the Financials page puts each invoice in the week of its date).' : 'No invoices yet. Scan an invoice and update its prices; it shows up here.' })];
+      var flagNote = h('p', { cls: 'is-dflag-sum', hidden: !nFlag });
+      var paintNote = function () { flagNote.hidden = !nFlag; flagNote.textContent = nFlag + (nFlag === 1 ? ' invoice date looks' : ' invoice dates look') + ' off. Those vendors are open below; check each flagged date against the paper invoice.'; };
+      paintNote(); body.push(flagNote);
       if (list.length) {
         var tb = h('tbody');
         list.forEach(function (v) {
@@ -1025,13 +1052,38 @@
           var row = h('tr', { cls: 'is-vrow' }, [h('td', null, h('b', { text: v.name })), h('td', { cls: 'r', text: String(v.list.length) }), h('td', { cls: 'r', text: money(v.spend) }),
             h('td', { cls: 'r', text: money(v.fees) }), h('td', { cls: 'r', text: v.fees ? money(avg) : '—' }), h('td', { cls: 'r', text: v.spend ? Math.round(v.fees / v.spend * 1000) / 10 + '%' : '—' }), h('td', { text: v.list[0].x.invoice_date || '' })]);
           var det = h('tr', { cls: 'is-vdet', hidden: true }, h('td', { colspan: '7' }, h('table', { cls: 'is-vinv' }, [h('thead', null, h('tr', null, ['Date', 'Invoice #', 'Items', 'Delivery & fees', 'Total'].map(function (t) { return h('th', { text: t }); }))),
-            h('tbody', null, v.list.map(function (o) { return h('tr', null, [h('td', { text: o.x.invoice_date || '' }), h('td', { text: o.x.invoice_no || '' }), h('td', { cls: 'r', text: money(o.lt) }),
+            h('tbody', null, v.list.map(function (o) { return h('tr', { cls: o.flag ? 'is-dflagged' : '' }, [dateCell(o, v), h('td', { text: o.x.invoice_no || '' }), h('td', { cls: 'r', text: money(o.lt) }),
               h('td', { cls: 'r', title: o.fees.map(function (f) { return f.description + ' ' + money(f.amount); }).join(', '), text: o.fs ? money(o.fs) + (o.fees.length ? ' (' + o.fees.map(function (f) { return f.description; }).join(', ') + ')' : '') : '—' }),
               h('td', { cls: 'r', text: o.x.total != null ? money(o.x.total) : money(o.lt + o.fs) })]); }))])));
           row.addEventListener('click', function () { det.hidden = !det.hidden; row.classList.toggle('open', !det.hidden); });
+          if (v.flags) { det.hidden = false; row.classList.add('open'); row.firstChild.appendChild(h('span', { cls: 'is-dflag-n', text: ' ⚠ ' + v.flags }));  }
           tb.appendChild(row); tb.appendChild(det);
         });
         body.push(h('div', { cls: 'is-wrap' }, h('table', { cls: 'is-vtable' }, [h('thead', null, h('tr', null, ['Vendor', 'Invoices', 'Spent', 'Delivery & fees', 'Avg per invoice', 'Of spend', 'Last invoice'].map(function (t, i) { return h('th', { cls: i && i < 6 ? 'r' : '', text: t }); }))), tb])));
+      }
+      // an invoice's date, editable: it moves the invoice (and its price history) to that day
+      function dateCell(o, v) {
+        var inp = h('input', { type: 'date', value: o.x.invoice_date || '', 'aria-label': 'Invoice date' });
+        var fl = h('small', { cls: 'is-dflag', text: o.flag ? '⚠ ' + o.flag : '' });
+        var td = h('td', { cls: 'is-dcell' }, [inp, fl]);
+        inp.addEventListener('click', function (e) { e.stopPropagation(); });
+        inp.addEventListener('change', function () {
+          var nd = inp.value || null, was = o.x.invoice_date;
+          if (nd === was) return;
+          inp.disabled = true; fl.textContent = 'Saving…';
+          A.sb.from('inventory_invoices').update({ invoice_date: nd }).eq('id', o.x.id).then(function (r) {
+            inp.disabled = false;
+            if (r.error) { inp.value = was || ''; fl.textContent = /permission|security|42501/i.test((r.error.message || '') + r.error.code) ? 'Your role can’t change invoices.' : 'Couldn’t save: ' + r.error.message; return; }
+            if (nd) A.sb.from('inventory_prices').update({ price_date: nd }).eq('invoice_id', o.x.id).then(function () {}, function () {});   // its prices move with it
+            o.x.invoice_date = nd;
+            var had = !!o.flag; o.flag = dateFlag(o.x, v.usual);
+            if (had && !o.flag) { nFlag--; v.flags--; } else if (!had && o.flag) { nFlag++; v.flags++; }
+            fl.textContent = o.flag ? '⚠ ' + o.flag : 'Saved: moved from ' + (was || 'no date') + '.';
+            td.parentNode.classList.toggle('is-dflagged', !!o.flag); paintNote();
+            A.status('Invoice date saved. The Financials page now counts it in the week of ' + (nd || 'no date') + '.', 'ok');
+          });
+        });
+        return td;
       }
       var m = A.modal('Vendors', body, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })], true);
       m.el.classList.add('is-scan');

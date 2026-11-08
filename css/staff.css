@@ -3321,3 +3321,6 @@ tr.mc-none th b{color:#6b665e}
 .iv-forrec{margin:-2px 0 4px;font-size:.82rem;color:#5d7a52}
 .iv-cpo{display:block;font-size:.72rem;color:#7a7d81;font-weight:400}
 .fn-tax>summary{cursor:pointer}.fn-tax-wk{margin:10px 0 0}.fn-tax-wk p{margin:6px 0 2px}.fn-tax-wk ul{margin:0;padding-left:18px}.fn-tax-wk li{font-size:.85rem}.fn-tax-hint{font-size:.82rem;opacity:.85;margin:6px 0 0}
+.is-dcell input{font:inherit;font-size:.85rem;padding:3px 6px;border:1px solid #ddd6ca;border-radius:6px;background:#fff}
+.is-dflag{display:block;font-size:.72rem;color:#a4572b;max-width:220px;line-height:1.25;margin-top:2px}.is-dflagged td{background:#fbf1e7}
+.is-dflag-sum{margin:6px 0 10px;padding:8px 12px;border-radius:10px;background:#fbf1e7;color:#7a3f1d;font-size:.9rem}.is-dflag-n{color:#a4572b;font-weight:600}
