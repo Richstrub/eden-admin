@@ -368,6 +368,19 @@
         var ok = w.every(function (t) { return hay.indexOf(t) >= 0; });
         return ok ? { it: it, sc: w.length ? (norm(it.name).indexOf(w[0]) === 0 ? 2 : 1) : 0 } : null;
       }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc || String(a.it.name).localeCompare(String(b.it.name)); });
+      // before you type (or once the box is cleared), adding a new item comes first; while you search, it moves to the bottom
+      var addNew = function () {
+        head('Add as a new item');
+        NEW_KINDS.forEach(function (k) { add({ v: '__new:' + k[0], text: '+ New ' + k[1], cls: 'is-cnew' }); });
+        add({ v: '', text: '— Not in inventory (skip) —', cls: 'is-cskip' });
+      };
+      if (!w.length) { addNew(); list.appendChild(h('p', { cls: 'is-chead is-chint', text: 'Type to search the inventory' + (opt.wine || opt.spirit ? ' and the list' : '') })); }
+      if (!w.length) { /* nothing from the inventory until you type */ }
+      else if (hits.length) {
+        head('In the inventory · ' + hits.length);
+        hits.slice(0, w.length ? 40 : 25).forEach(function (x) { var it = x.it; add({ v: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : ''), sub: [CAT_LABEL[it.category], it.section, it.vendor].filter(Boolean).join(' · ') }); });
+        if (hits.length > (w.length ? 40 : 25)) list.appendChild(h('p', { cls: 'is-chead', text: '…type more to narrow it down' }));
+      } else if (w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Nothing in the inventory matches “' + q + '”' }));
       // the wine list and the spirits list: a wine (spirit) line opens on its list, best matches to the invoice line first; any search looks in both
       [['wine', '__wine:', 'On the wine list', opt.wine], ['spirits', '__spirit:', 'On the spirits list', opt.spirit]].forEach(function (K) {
         var W = wineList(K[0]), seen = {};
@@ -387,15 +400,7 @@
         });
         if (wh.length > 60) list.appendChild(h('p', { cls: 'is-chead', text: '…type to narrow the list' }));
       });
-      if (!w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Type to search the inventory' }));   // nothing from the inventory until you type
-      else if (hits.length) {
-        head('In the inventory · ' + hits.length);
-        hits.slice(0, w.length ? 40 : 25).forEach(function (x) { var it = x.it; add({ v: it.id, text: it.name + (it.unit ? ' (' + it.unit + ')' : ''), sub: [CAT_LABEL[it.category], it.section, it.vendor].filter(Boolean).join(' · ') }); });
-        if (hits.length > (w.length ? 40 : 25)) list.appendChild(h('p', { cls: 'is-chead', text: '…type more to narrow it down' }));
-      } else if (w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Nothing in the inventory matches “' + q + '”' }));
-      head('Add as a new item');
-      NEW_KINDS.forEach(function (k) { add({ v: '__new:' + k[0], text: '+ New ' + k[1], cls: 'is-cnew' }); });
-      add({ v: '', text: '— Not in inventory (skip) —', cls: 'is-cskip' });
+      if (w.length) addNew();
       at = -1;
     }
     function open() { build(); list.hidden = false; inp.setAttribute('aria-expanded', 'true'); }   // the list opens right under the box, inside the line
