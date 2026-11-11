@@ -535,7 +535,7 @@
         return [h('label', null, ['Received ', qn]), us, h('label', { hidden: R.unit !== 'case' }, ['of ', bp, ' bottles']), h('label', null, ['Bottle ', s1]), c1,
           h('label', null, ['$', pr, R.unit === 'case' ? ' / case' : ' / bottle']), R.unit === 'case' ? h('label', null, ['$', pb, ' / bottle']) : null, h('label', null, ['$', oz, ' / oz'])];
       }
-      var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['gal', 'gal'], ['l', 'L']];
+      var units = k === 'coffee' ? [['oz', 'oz'], ['lb', 'lb'], ['g', 'grams']] : k === 'food' ? [['each', 'each'], ['lb', 'lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'grams'], ['gal', 'gal'], ['qt', 'qt'], ['dozen', 'dozen'], ['bunch', 'bunches']] : [['each', 'each'], ['can', 'cans'], ['bottle', 'bottles'], ['oz', 'oz'], ['lb', 'lb'], ['gal', 'gal'], ['qt', 'qt'], ['l', 'L']];
       if (k === 'food') {   // measurements typed in before (from the inventory's case sizes), then "Other…"
         learnedUnits().forEach(function (u) { if (!units.some(function (o) { return o[0] === u; })) units.push([u, u]); });
         units.push(['__other', 'Other…']);
@@ -578,11 +578,13 @@
       setU();
       var recv = function () { L.qty = num(rq.value); L.unit = ru.value; L.unit_price = num(rp.value); if (L.qty != null && L.unit_price != null) L.extended = r2(L.qty * L.unit_price); L.costOver = null; byUnit = k === 'food' && ru.value !== 'case'; setU(); changed(); };
       rq.addEventListener('change', recv); ru.addEventListener('change', recv); rp.addEventListener('change', recv);
-      if (byUnit) return [h('label', null, ['Received ', rq]), ru, h('label', null, ['· $', rp, ' / ' + ru.value]),
-        L.setUnit && it ? h('span', { cls: 'is-u is-setu', text: it.name + ' will be counted by the ' + ru.value + ' (was by the ' + (it.unit || 'unit') + ')' }) : null];
-      return [h('label', null, ['Received ', rq]), ru, h('label', null, [k === 'coffee' ? '· Case size ' : '· Case holds ', n]), s2, c2,
-        h('label', null, ['· $', rp, ' / ' + (ru.value === 'case' ? 'case' : ru.value)]), perCaseTxt ? h('span', { cls: 'is-u', text: perCaseTxt }) : null,
-        k === 'food' && ru.value === 'case' && !num(n.value) ? h('em', { text: 'Add what the case holds, to cost it by the ' + (wu(inner) ? inner : 'each') }) : null,
+      // the case size lives in the Units column: [number] [lb / gal / each…] per case
+      L._caseUI = h('span', { cls: 'is-case' }, [n, s2, c2, h('span', { cls: 'is-u', text: 'per case' })]);
+      L._caseNote = byUnit ? 'Received by the ' + ru.value + ': the case size is only for ordering' : perCaseTxt || '';
+      L._caseMiss = ru.value === 'case' && !num(n.value);
+      L._byUnit = byUnit;
+      return [h('label', null, ['Received ', rq]), ru, h('label', null, ['· $', rp, ' / ' + (ru.value === 'case' ? 'case' : ru.value)]),
+        L._caseMiss ? h('em', { text: 'Add what the case holds in the Units column, to cost it by the ' + (wu(inner) ? inner : 'each') }) : null,
         L.setUnit && it ? h('span', { cls: 'is-u is-setu', text: it.name + ' will be counted by the ' + L.setUnit + ' (was by the ' + (it.unit || 'unit') + ')' }) : null];
     }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
@@ -652,6 +654,12 @@
         rcell.appendChild(h('label', { cls: 'is-sec' }, [h('span', { text: 'Section' }), ssel, snew]));
       }
       tr.appendChild(rcell);
+      var kk = kindOf(L, it), caseCol = L.item && L._caseUI && (kk === 'food' || kk === 'coffee' || kk === 'other');
+      if (caseCol) {   // food, coffee, drinks and paper: the case size here, and what the line comes to in the counting unit
+        var cnv = [L._caseUI];
+        cnv.push(h('span', { cls: 'is-u', text: L._caseNote || ('= ' + (Math.round((flip ? 1 / L.per : L.per) * 100) / 100) + ' ' + unitName + ' per ' + (L.unit || 'invoice unit')) }));
+        tr.appendChild(h('td', { cls: 'is-conv' + (L._caseMiss ? ' is-miss' : '') }, cnv));
+      } else
       tr.appendChild(h('td', { cls: 'is-conv' }, L.item && recvWine ? [h('b', { cls: 'is-perv', text: String(Math.round((flip ? 1 / L.per : L.per) * 100) / 100) }), h('span', { cls: 'is-u', text: (flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit')) + ' (from the case size)' })] : L.item ? [per, h('span', { cls: 'is-u', text: flip ? (L.unit || 'invoice unit') + ' per ' + unitName : unitName + ' per ' + (L.unit || 'invoice unit') })] : null));
       tr.appendChild(h('td', { cls: 'is-new' }, L.item ? [h('span', { cls: 'is-dl' }, ['$', nci]), h('span', { cls: 'is-u', text: 'per ' + unitName })] : null));
       tr.appendChild(h('td', { cls: 'is-old' }, it ? [h('span', { text: L.setUnit ? (it.cost != null ? cost(+it.cost) + ' / ' + (it.unit || 'unit') : 'No cost yet') : old == null ? 'No cost yet' : cost(old) }),

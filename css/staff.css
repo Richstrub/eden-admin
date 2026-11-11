@@ -3324,3 +3324,5 @@ tr.mc-none th b{color:#6b665e}
 .is-dcell input{font:inherit;font-size:.85rem;padding:3px 6px;border:1px solid #ddd6ca;border-radius:6px;background:#fff}
 .is-dflag{display:block;font-size:.72rem;color:#a4572b;max-width:220px;line-height:1.25;margin-top:2px}.is-dflagged td{background:#fbf1e7}
 .is-dflag-sum{margin:6px 0 10px;padding:8px 12px;border-radius:10px;background:#fbf1e7;color:#7a3f1d;font-size:.9rem}.is-dflag-n{color:#a4572b;font-weight:600}
+.is-case{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}.is-case input,.is-case select{font:inherit;font-size:.82rem;padding:3px 6px;border:1px solid rgba(42,46,51,.2);border-radius:4px;background:#fff}
+.is-case input.is-n{width:58px}.is-case input.is-pk{width:110px}.is-conv.is-miss .is-case input.is-n{border-color:#c9965a;background:#fff8ee}
