@@ -617,7 +617,8 @@
       var dw = norm(L.description).split(' ').filter(function (t) { return t.length > 2; });
       var sc = function (m) { var nm = norm(m.name); return dw.filter(function (t) { return nm.indexOf(t) >= 0; }).length; };
       var sl = h('select', { cls: 'is-lpick', 'aria-label': kind === 'wine' ? 'Wine on the wine list' : 'Spirit on the spirits list' });
-      sl.appendChild(h('option', { value: '', text: kind === 'wine' ? '— Pick the wine —' : '— Pick the spirit —' }));
+      var what = kind === 'wine' ? 'wine' : 'spirit';
+      sl.appendChild(h('option', { value: '', text: '+ Add a new ' + what + ' (not on the list)' }));   // first: a bottle that isn't on the list yet
       var idx = W.map(function (x, i) { return { x: x, i: i, s: sc(x.m) }; }), seen = {};
       var best = idx.filter(function (y) { return y.s > 0; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5);
       var opt = function (y) { var m = y.x.m; return h('option', { value: String(y.i), text: m.name + (y.x.item ? '  (in the inventory)' : '') }); };
@@ -625,13 +626,18 @@
       var groups = {}; idx.forEach(function (y) { var k = norm(y.x.m.name); if (seen[k]) return; seen[k] = 1; (groups[y.x.m.group || 'Other'] = groups[y.x.m.group || 'Other'] || []).push(y); });
       Object.keys(groups).forEach(function (g) { sl.appendChild(h('optgroup', { label: g }, groups[g].sort(function (a, b) { return String(a.x.m.name).localeCompare(String(b.x.m.name)); }).map(opt))); });
       if (L.wine) { var cur = W.map(function (x) { return x.m; }).indexOf(L.wine); if (cur >= 0) sl.value = String(cur); }
+      // a new one: its name, starting from the invoice line (tidied up)
+      var tidy = function (t) { return String(t || '').toLowerCase().replace(/\b\d+\s*(ml|l|lt)\b/g, '').replace(/\s+/g, ' ').trim().replace(/\b([a-z])/g, function (c) { return c.toUpperCase(); }); };
+      if (L.newName == null) L.newName = tidy(L.description);
+      var nm = h('input', { type: 'text', cls: 'is-lname', value: L.newName, placeholder: 'Name of the ' + what, 'aria-label': 'Name of the new ' + what, hidden: !!L.wine });
+      nm.addEventListener('input', function () { L.newName = nm.value.trim(); });
       sl.addEventListener('change', function () {
         var y = W[+sl.value];
         if (sl.value === '' || !y) { L.wine = null; paintRow(L); return; }
         if (y.item) { L.item = y.item.id; L.wine = null; L.per = guessPer(L, y.item); L.costOver = null; L.how = 'picked'; L.use = true; paintRow(L); count(); return; }   // already in the inventory: use it
         L.wine = y.m; paintRow(L);
       });
-      return h('label', { cls: 'is-lpw' }, [h('span', { text: kind === 'wine' ? 'On the wine list' : 'On the spirits list' }), sl, L.wine ? null : h('small', { cls: 'is-u', text: 'Not on the list? Leave it: the invoice name is used.' })]);
+      return h('label', { cls: 'is-lpw' }, [h('span', { text: kind === 'wine' ? 'On the wine list' : 'On the spirits list' }), sl, nm, L.wine ? null : h('small', { cls: 'is-u', text: 'Or pick it from the list above, once it’s on the menu.' })]);
     }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {
@@ -759,6 +765,7 @@
           it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : L.keg ? 'keg' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           if (L.ingName && it.category === 'food') it.ingredient = L.ingName;
           if (L.section != null && it.category === 'food') it.section = L.section;
+          if (!L.wine && (L.newKind === 'wine' || L.newKind === 'spirits') && L.newName) it.name = L.newName;   // a new bottle, named as typed
           if (L.wine) { it.name = L.wine.name; if (A.menuRefs) it.menu_refs = [{ tab: L.wine.tab, name: L.wine.name }]; }   // named as on the wine list, and linked to it
           adds.push(it); L.item = it.id; L.old = null;
         } else {

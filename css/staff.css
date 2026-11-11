@@ -3328,3 +3328,4 @@ tr.mc-none th b{color:#6b665e}
 .is-case input.is-n{width:58px}.is-case input.is-pk{width:110px}.is-conv.is-miss .is-case input.is-n{border-color:#c9965a;background:#fff8ee}
 .is-copt.is-cbest>span{font-weight:600}
 .is-lpw{display:grid;gap:3px;margin-top:6px}.is-lpw span{font-size:.72rem;color:#7a7d81;text-transform:uppercase;letter-spacing:.05em}.is-lpick{width:100%;font:inherit;font-size:.85rem;padding:5px 6px;border:1px solid rgba(42,46,51,.2);border-radius:6px;background:#fff}
+.is-lpw .is-lname{width:100%;font:inherit;font-size:.85rem;padding:5px 8px;border:1px solid rgba(42,46,51,.2);border-radius:6px}
