@@ -580,6 +580,26 @@
       });
     }, function () { I.alerts = null; });
   }
+  // after a price-history entry is fixed or deleted: each entry's "was" becomes the entry before it (by invoice date),
+  // the changes it touches show again in Price changes, and the card is redrawn
+  function rechain(itemId, touched) {
+    return sb().from('inventory_prices').select('id,price_date,created_at,unit_cost,old_cost').eq('item_id', itemId).limit(500).then(function (r) {
+      if (r.error) return;
+      var a = (r.data || []).sort(function (x, y) { return String(x.price_date).localeCompare(String(y.price_date)) || String(x.created_at).localeCompare(String(y.created_at)); });
+      // the entry fixed (and the one after it), or after a delete the entry that now follows the gap
+      var ti = touched.id ? a.map(function (x) { return x.id; }).indexOf(touched.id) : -1, jobs = [];
+      var only = false;
+      if (touched.date) { ti = -2; only = true; a.some(function (x, i) { if (String(x.price_date) >= String(touched.date)) { ti = i; return true; } }); }
+      a.forEach(function (x, i) {
+        if (!i) return;
+        var want = +a[i - 1].unit_cost, has = x.old_cost == null ? null : +x.old_cost, row = {};
+        if (has == null || Math.abs(has - want) > 0.00005) row.old_cost = want;
+        if ((i === ti || (!only && i === ti + 1)) && ti > -2 && want && Math.abs(+x.unit_cost - want) / want >= 0.005) row.seen_at = null;   // a real change now: show it again
+        if (Object.keys(row).length) jobs.push(sb().from('inventory_prices').update(row).eq('id', x.id));
+      });
+      return Promise.all(jobs);
+    }).then(function () { return loadAlerts(); }).then(function () { render(); }, function () {});
+  }
   function alertsCard() {
     var list = I.alerts; if (!list || !list.length) return null;
     var byItem = {}; list.forEach(function (p) { if (!byItem[p.item_id]) byItem[p.item_id] = p; });   // newest change per item
@@ -860,7 +880,7 @@
             edit.appendChild(h('div', { cls: 'iv-hact' }, [
               h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Delete this entry', on: { click: function () {
                 if (!confirm('Delete the ' + dayLabel(p.price_date) + ' price from the history? The invoice itself stays.')) return;
-                sb().from('inventory_prices').delete().eq('id', p.id).then(function (r) { if (r.error) { em.textContent = 'Couldn’t delete: ' + r.error.message; return; } status('Price entry deleted.', 'ok'); loadHist(); });
+                sb().from('inventory_prices').delete().eq('id', p.id).then(function (r) { if (r.error) { em.textContent = 'Couldn’t delete: ' + r.error.message; return; } status('Price entry deleted.', 'ok'); loadHist(); rechain(it.id, { date: p.price_date }); });
               } } }),
               h('span', { cls: 'sc-sp' }),
               h('button', { type: 'button', cls: 'ed-btn small iv-hsave', text: 'Save this entry', on: { click: function () {
@@ -871,13 +891,13 @@
                 em.textContent = 'Saving…';
                 sb().from('inventory_prices').update(row).eq('id', p.id).then(function (r) {
                   if (r.error) { em.textContent = isPerm(r.error) ? 'Your role can’t change price history.' : 'Couldn’t save: ' + r.error.message; return; }
-                  if (!also.checked) { status('Price entry saved.', 'ok'); loadHist(); return; }
+                  if (!also.checked) { status('Price entry saved.', 'ok'); loadHist(); rechain(it.id, { id: p.id }); return; }
                   // and the item's cost, saved now too
                   f.cost.value = String(c);
                   sb().from('inventory_items').update({ cost: c }).eq('id', it.id).then(function (r2) {
                     if (r2.error) { em.textContent = 'The entry saved, but the item’s cost didn’t: ' + r2.error.message; return; }
                     it.cost = c; render();
-                    status('Price entry saved. ' + it.name + ' now costs ' + money(c) + (it.unit ? ' / ' + it.unit : '') + '.', 'ok'); loadHist();
+                    status('Price entry saved. ' + it.name + ' now costs ' + money(c) + (it.unit ? ' / ' + it.unit : '') + '.', 'ok'); loadHist(); rechain(it.id, { id: p.id });
                   });
                 });
               } } })
