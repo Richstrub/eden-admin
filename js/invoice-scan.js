@@ -441,7 +441,15 @@
       date: h('input', { type: 'date', value: /^\d{4}-\d\d-\d\d$/.test(inv.date || '') ? inv.date : (function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })(new Date()) })
     };
     var tbody = h('tbody'), msg = h('p', { cls: 'sc-msg', role: 'status' }), sumNote = h('p', { cls: 'sc-small is-sum' });
-    var applyBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Update prices', on: { click: apply } });
+    var applyBtn = h('button', { type: 'button', cls: 'ed-btn', text: 'Update prices', on: { click: applyNow } });
+    // one click saves: keep the box you were typing in from losing focus on mousedown (its change redraws the row and
+    // moves the button out from under the click), then commit that box and save
+    applyBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    function applyNow() {
+      var ae = document.activeElement;
+      if (ae && ae !== applyBtn && ae !== document.body && ae.blur) { ae.blur(); setTimeout(function () { if (!applyBtn.disabled) apply(); }, 0); return; }
+      apply();
+    }
     var item = function (id) { return A.items.filter(function (x) { return x.id === id; })[0]; };
 
     // what kind of item a line is, for its size boxes: food, wine & liquor, coffee & tea, or other drinks
