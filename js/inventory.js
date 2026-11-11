@@ -853,7 +853,7 @@
   function editItem(it) {
     var isNew = !it;
     it = it || { id: uid(), category: I.cat, section: '', name: '', unit: '', pack: '', vendor: '', par: null, cost: null, sort: 0 };
-    var isFoodIt = it.category === 'food';
+    var isFoodIt = it.category === 'food', histRows = null;
     var catItemsAll = I.items.filter(function (x) { return x.category === I.cat; });
     var f = {
       name: h('input', { type: 'text', value: it.name || '', placeholder: I.cat === 'bev' ? 'e.g. Tito’s Vodka' : I.cat === 'paper' ? 'e.g. To-go containers, large' : 'e.g. Heavy cream' }),
@@ -923,11 +923,11 @@
     else if (!isNew && I.costCols && window.EdenCosting) msg.parentNode.insertBefore(menuLinks(draft), msg);
     if (!isNew) {
       var hist = h('div', { cls: 'iv-hist' }); msg.parentNode.insertBefore(hist, msg);
-      var loadHist = function (openId) {
+      var loadHist = function (openId) {   // (histRows: what it loaded, newest first)
         sb().from('inventory_prices').select('id,price_date,vendor,invoice_line,invoice_price,invoice_unit,per_unit,unit_cost,old_cost,invoice_id').eq('item_id', it.id).order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(24).then(function (r) {
           hist.innerHTML = '';
           if (r.error || !r.data || !r.data.length) return;
-          var rows = r.data, edit = h('div', { cls: 'iv-hedit', hidden: true });
+          var rows = r.data, edit = h('div', { cls: 'iv-hedit', hidden: true }); histRows = rows;
           var pick = function (p) { openEntry(p, rows[0] === p); };
           var line = function (p) { return [dayLabel(p.price_date) + ' · ' + (p.vendor || ''), money(p.unit_cost) + (it.unit ? ' / ' + it.unit : '') + (p.per_unit && +p.per_unit !== 1 ? ' (' + money(p.invoice_price) + ' / ' + (p.invoice_unit || 'unit') + ' ÷ ' + (+p.per_unit) + ')' : '')]; };
           hist.appendChild(h('b', { text: 'Price history from invoices' }));
@@ -990,6 +990,16 @@
     }
     convLbl();
     [f.cost, f.pack, f.pc].forEach(function (e) { e.addEventListener('input', paintForRec); });
+    // a new case size reprices the item from its newest by-the-case invoice price, right away
+    var oldPc = it.per_case != null ? +it.per_case : null;
+    function caseEntries() { return (histRows || []).filter(function (p) { return +p.invoice_price > 0 && (p.per_unit == null || (oldPc && Math.abs(+p.per_unit - oldPc) < 1e-9) || +p.per_unit === 1) && /^(cs|case|cases|ca|bx|box)$/i.test(String(p.invoice_unit || '').replace(/[^a-z]/gi, '') || (f.ord.value || '')); }); }
+    f.pc.addEventListener('input', function () {
+      var n = num(f.pc.value), last = (histRows || [])[0];
+      if (!(n > 0) || !last || !(+last.invoice_price > 0) || caseEntries().indexOf(last) < 0) return;
+      f.cost.value = String(Math.round(+last.invoice_price / n * 10000) / 10000);
+      msg.textContent = 'Cost per ' + (f.unit.value.trim() || 'unit') + ' is now ' + money(+f.cost.value) + ' (' + money(+last.invoice_price) + ' a case ÷ ' + qty(n) + '). Save to keep it; the price history is fixed too.';
+      paintForRec();
+    });
     setTimeout(function () { f.name.focus(); }, 30);
     function save() {
       var name = f.name.value.trim();
@@ -1004,9 +1014,12 @@
       if (I.costCols) next.menu_refs = draft.menu_refs;
       if (I.ingCol && isFoodIt) next.ingredient = f.ingr.value.trim();
       status('Saving…', 'dirty');
+      var newPc = num(f.pc.value), fixHist = !isNew && I.orderCols && newPc > 0 && newPc !== oldPc ? caseEntries().filter(function (p) { return !p.per_unit || Math.abs(+p.per_unit - newPc) > 1e-9; }) : [];
       saveItems([next]).then(function () {
         if (isNew) I.items.push(next); else Object.assign(it, next);
-        m.close(); status(isNew ? 'Added ' + name + '.' : 'Saved.', 'ok'); render();
+        // the case size changed: the by-the-case prices saved with the old size are repriced, then Price changes is redrawn
+        if (fixHist.length) Promise.all(fixHist.map(function (p) { return sb().from('inventory_prices').update({ per_unit: newPc, unit_cost: Math.round(+p.invoice_price / newPc * 10000) / 10000 }).eq('id', p.id); })).then(function () { rechain(it.id, { id: fixHist[0].id }); });
+        m.close(); status(isNew ? 'Added ' + name + '.' : 'Saved.' + (fixHist.length ? ' ' + fixHist.length + ' invoice price' + (fixHist.length === 1 ? '' : 's') + ' repriced at ' + qty(newPc) + ' a case.' : ''), 'ok'); render();
       }, function (e) { msg.textContent = isPerm(e) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection and try again.'; status('', ''); });
     }
     function del() {
