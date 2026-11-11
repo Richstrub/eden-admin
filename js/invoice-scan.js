@@ -765,6 +765,18 @@
       var use = inv.lines.filter(function (L) { return L.use && L.item; });
       var bad = use.filter(function (L) { var c = L.costOver != null ? L.costOver : newCost(L); return c == null || !isFinite(c); });
       if (bad.length) { msg.className = 'sc-msg err'; msg.textContent = 'Fix the cost on: ' + bad.map(function (L) { return L.description; }).join(', '); return; }
+      // already saved? (the same vendor, date and invoice # or total): say so once, and save again only if clicked again
+      var dkey = vendor.toLowerCase() + '|' + (f.date.value || '') + '|' + f.no.value.trim() + '|' + inv.total;
+      if (applyBtn.dataset.dupOk !== dkey) {
+        applyBtn.disabled = true;
+        A.sb.from('inventory_invoices').select('id,invoice_no,total,created_at').ilike('vendor', vendor).eq('invoice_date', f.date.value || '1900-01-01').limit(20).then(function (r) {
+          applyBtn.disabled = false;
+          var no = f.no.value.trim(), same = r.error ? [] : (r.data || []).filter(function (x) { return no ? String(x.invoice_no || '').trim() === no : inv.total != null && Math.abs(+x.total - +inv.total) < 0.01; });
+          if (same.length) { applyBtn.dataset.dupOk = dkey; msg.className = 'sc-msg err'; msg.textContent = 'This invoice was already saved (' + new Date(same[0].created_at).toLocaleString() + '). Saving it again counts it twice. Click Update again only if it’s a different invoice.'; return; }
+          applyBtn.dataset.dupOk = dkey; apply();
+        }, function () { applyBtn.disabled = false; applyBtn.dataset.dupOk = dkey; apply(); });
+        return;
+      }
       applyBtn.disabled = true; msg.className = 'sc-msg is-info'; msg.textContent = 'Saving…';
       var date = f.date.value || null, changed = {}, adds = [], hist = [], linkRows = {}, older = [];
       var cats = {}; use.forEach(function (L) { var x = item(L.item); if (x) cats[x.category] = (cats[x.category] || 0) + 1; });

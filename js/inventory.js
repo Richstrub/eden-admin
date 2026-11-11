@@ -113,7 +113,7 @@
       var move = I.items.filter(function (it) { return it.category === 'food' && NA_RE.test(String(it.section || '')); });
       if (move.length) { move.forEach(function (it) { it.category = 'bev'; }); saveItems(move).then(function () { status('Moved ' + move.length + ' soft drink, juice, coffee and tea item' + (move.length === 1 ? '' : 's') + ' to Beverages → N/A.', 'ok'); }, function () {}); }
       I.settingsOn = !!res[4];
-      return loadAlerts();
+      return Promise.all([loadAlerts(), loadAudit()]);
     }, function (e) {
       I.loading = false; I.loaded = true;
       if (isMissing(e)) I.missing = true;
@@ -188,6 +188,7 @@
       ])
     ]));
     if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
+    var audit = auditCard(); if (audit) wrap.appendChild(audit);
     var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
     wrap.appendChild(pricingPanel());
     wrap.appendChild(h('div', { cls: 'sc-tabs iv-tabs', role: 'tablist' }, CATS.map(function (c) {
@@ -482,7 +483,7 @@
     var by = new Map(); bev.forEach(function (it) { C.linksFor(it, list).forEach(function (m) { if (!by.has(m)) by.set(m, it); }); });
     return wines.map(function (m) { return { m: m, item: by.get(m) || null }; });
   }
-  function scanApi() { return { wines: wineList, menuRefs: !!I.costCols, recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function scanApi() { return { wines: wineList, menuRefs: !!I.costCols, recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); Promise.all([loadAlerts(), loadAudit()]).then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
     if (!r || r === it.unit) return r ? r : '';
@@ -599,6 +600,84 @@
       });
       return Promise.all(jobs);
     }).then(function () { return loadAlerts(); }).then(function () { render(); }, function () {});
+  }
+  /* ---------- Price check: invoice prices saved the wrong way, and invoices saved twice ----------
+     Wrong way = a line received by the case for an item counted by something inside the case (a case of 11 lb, counted by the lb)
+     but saved as if 1 case = 1 lb ($139.78 / lb instead of $12.71). Twice = the same vendor, invoice # (or total) and date. */
+  function caseLike(u, it) { var x = String(u || '').toLowerCase().replace(/[^a-z]/g, ''); return /^(cs|case|cases|ca|bx|box)$/.test(x) || (it.order_unit && x === String(it.order_unit).toLowerCase().replace(/[^a-z]/g, '')); }
+  function loadAudit() {
+    var since = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
+    return Promise.all([
+      sb().from('inventory_prices').select('id,item_id,invoice_id,price_date,invoice_price,invoice_unit,per_unit,unit_cost,created_at').gte('price_date', since).limit(5000),
+      sb().from('inventory_invoices').select('id,vendor,invoice_no,invoice_date,total,created_at').gte('invoice_date', since).limit(2000)
+    ]).then(function (r) {
+      if (r[0].error || r[1].error) { I.audit = null; return; }
+      var byId = {}; I.items.forEach(function (it) { byId[it.id] = it; });
+      // invoices saved twice: keep the first one saved
+      var groups = {}, dup = {}, dups = [];
+      (r[1].data || []).forEach(function (x) {
+        var k = String(x.vendor || '').toLowerCase().trim() + '|' + (x.invoice_date || '') + '|' + (String(x.invoice_no || '').trim() || 'total ' + x.total);
+        (groups[k] = groups[k] || []).push(x);
+      });
+      Object.keys(groups).forEach(function (k) {
+        var g = groups[k].sort(function (a, b) { return String(a.created_at).localeCompare(String(b.created_at)); });
+        g.slice(1).forEach(function (x) { dup[x.id] = 1; dups.push(x); });
+      });
+      // prices saved case-as-one-unit
+      var wrong = [];
+      (r[0].data || []).forEach(function (p) {
+        if (dup[p.invoice_id]) return;   // goes with its duplicate invoice
+        var it = byId[p.item_id], pc = it ? +it.per_case : 0;
+        if (!it || !(pc > 1) || !it.order_unit || it.order_unit === it.unit) return;
+        if (p.per_unit != null && +p.per_unit !== 1) return;
+        if (!caseLike(p.invoice_unit, it) || !(+p.invoice_price > 0) || Math.abs(+p.unit_cost - +p.invoice_price) > 0.005) return;
+        wrong.push({ p: p, it: it, fix: Math.round(+p.invoice_price / pc * 10000) / 10000, pc: pc });
+      });
+      I.audit = { wrong: wrong, dups: dups, prices: r[0].data || [] };
+    }, function () { I.audit = null; });
+  }
+  function auditCard() {
+    var a = I.audit; if (!a || (!a.wrong.length && !a.dups.length)) return null;
+    var n = a.wrong.length + a.dups.length;
+    var lis = a.wrong.map(function (w) {
+      return h('li', null, [h('div', null, [h('b', { text: w.it.name }), h('span', { text: dayLabel(w.p.price_date) + ' · saved as ' + money(+w.p.unit_cost) + ' / ' + (w.it.unit || 'unit') + ' · should be ' + money(w.fix) + ' / ' + (w.it.unit || 'unit') + ' (' + money(+w.p.invoice_price) + ' / ' + (w.p.invoice_unit || 'case') + ' ÷ ' + w.pc + ')' })])]);
+    }).concat(a.dups.map(function (x) {
+      var k = a.prices.filter(function (p) { return p.invoice_id === x.id; }).length;
+      return h('li', null, [h('div', null, [h('b', { text: (x.vendor || 'Invoice') + (x.invoice_no ? ' #' + x.invoice_no : '') + ' saved twice' }), h('span', { text: dayLabel(x.invoice_date) + (x.total != null ? ' · ' + money(+x.total) : '') + ' · removes the second copy' + (k ? ' and its ' + k + ' price' + (k === 1 ? '' : 's') : '') + ', so it isn’t counted twice on Financials' })])]);
+    }));
+    var fix = h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Fix all', on: { click: function () { fix.disabled = true; fixAudit().then(function () { fix.disabled = false; }); } } });
+    return h('div', { cls: 'is-bar iv-alerts iv-audit' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: n + (n === 1 ? ' price looks' : ' prices look') + ' wrong' }), h('span', { text: 'Received by the case but saved as if one case were one ' + 'counting unit, or an invoice saved twice.' })]), h('div', { cls: 'is-bar-t' }, [fix])]), h('ul', { cls: 'is-inbox' }, lis)]);
+  }
+  function fixAudit() {
+    var a = I.audit; if (!a) return Promise.resolve();
+    status('Fixing prices…', 'dirty');
+    var items = {}, jobs = [];
+    // 1. the second copies of invoices, and their prices
+    a.dups.forEach(function (x) {
+      a.prices.forEach(function (p) { if (p.invoice_id === x.id) items[p.item_id] = 1; });
+      jobs.push(sb().from('inventory_prices').delete().eq('invoice_id', x.id).then(function (r) { if (r.error) throw r.error; return sb().from('inventory_invoices').delete().eq('id', x.id); }).then(function (r) { if (r && r.error) throw r.error; }));
+    });
+    // 2. the case-as-one-unit prices
+    a.wrong.forEach(function (w) {
+      items[w.it.id] = 1;
+      jobs.push(sb().from('inventory_prices').update({ unit_cost: w.fix, per_unit: w.pc }).eq('id', w.p.id).then(function (r) { if (r.error) throw r.error; }));
+    });
+    return Promise.all(jobs).then(function () {
+      // 3. each item's cost = its newest invoice price (by date), now that the history is right
+      var ids = Object.keys(items);
+      return sb().from('inventory_prices').select('item_id,price_date,created_at,unit_cost').in('item_id', ids).limit(5000).then(function (r) {
+        if (r.error) throw r.error;
+        var last = {}; (r.data || []).forEach(function (p) { var l = last[p.item_id]; if (!l || String(p.price_date) > String(l.price_date) || (p.price_date === l.price_date && String(p.created_at) > String(l.created_at))) last[p.item_id] = p; });
+        return Promise.all(ids.map(function (id) {
+          var it = I.items.filter(function (x) { return x.id === id; })[0], l = last[id];
+          if (!it || !l || Math.abs(+it.cost - +l.unit_cost) < 0.00005) return null;
+          return sb().from('inventory_items').update({ cost: +l.unit_cost }).eq('id', id).then(function (q) { if (q.error) throw q.error; it.cost = +l.unit_cost; });
+        })).then(function () { return Promise.all(ids.map(function (id) { return rechain(id, { id: null }); })); });
+      });
+    }).then(function () {
+      var n = a.wrong.length + a.dups.length;
+      return loadAudit().then(function () { render(); status('Fixed ' + n + (n === 1 ? ' price' : ' prices') + '. Costs, price history and Price changes are updated.', 'ok'); });
+    }, function (e) { status('Couldn’t fix them all: ' + (e.message || e), 'err'); return loadAudit().then(render); });
   }
   function alertsCard() {
     var list = I.alerts; if (!list || !list.length) return null;
