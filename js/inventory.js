@@ -474,7 +474,15 @@
 
   /* ---------- food → recipes: an item is linked when a recipe ingredient is costed from it (Recipes → Costed from) ---------- */
   function recipesFor(id) { return (I.recipes || []).filter(function (x) { return x.ingredients.some(function (g) { return g.inv_id === id; }); }); }
-  function scanApi() { return { recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  // the wine list, each wine with the inventory item it's sold from (by its saved link, or the same name)
+  function wineList(kind) {   // kind 'wine' (the wine list) or 'spirits' (the spirits list)
+    var C = window.EdenCosting; if (!C) return [];
+    var list = C.menuList(menu()), wines = list.filter(function (m) { return kind === 'spirits' ? C.kindOf(m) === 'pour' && /spirit/i.test(m.tab + ' ' + m.tabLabel) : C.kindOf(m) === 'wine'; });
+    var bev = I.items.filter(function (it) { return it.category === 'bev' && it.active !== false; });
+    var by = new Map(); bev.forEach(function (it) { C.linksFor(it, list).forEach(function (m) { if (!by.has(m)) by.set(m, it); }); });
+    return wines.map(function (m) { return { m: m, item: by.get(m) || null }; });
+  }
+  function scanApi() { return { wines: wineList, menuRefs: !!I.costCols, recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); loadAlerts().then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
     if (!r || r === it.unit) return r ? r : '';

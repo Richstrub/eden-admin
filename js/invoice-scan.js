@@ -340,9 +340,13 @@
   var KEGS = [['sixtel', '1/6 barrel · 5.16 gal', 660.5], ['quarter', '1/4 barrel · 7.75 gal', 992], ['half', '1/2 barrel · 15.5 gal', 1984], ['50l', '50 L · 13.2 gal', 1690.7], ['20l', '20 L · 5.3 gal', 676.3], ['custom', 'Other size…', null]];
   var COFFEE_RE = /\b(coffee|espresso|decaf|tea|chai|matcha|oolong|rooibos|beans?)\b/i;
   // the inventory item for a line: type to search what's already in the inventory; the "+ New …" choices are always in the list
-  function itemSelect(L, onChange) {
+  // wines on the wine list (from the menu), each with the inventory item it's linked to, if any
+  function wineList(kind) { return A.wines ? A.wines(kind || 'wine') : []; }
+  function itemSelect(L, onChange, opt) {
+    opt = opt || {};
     var cur = L.item === '__new' ? null : L.item ? A.items.filter(function (x) { return x.id === L.item; })[0] : null;
     var label = function () {
+      if (L.item === '__new' && L.wine) return '+ New ' + (L.newKind === 'spirits' ? 'spirit' : 'wine') + ': ' + L.wine.name;
       if (L.item === '__new') { var k = NEW_KINDS.filter(function (x) { return x[0] === (L.newKind || 'food'); })[0]; return '+ New ' + (k ? k[1] : 'item'); }
       return cur ? cur.name + (cur.unit ? ' (' + cur.unit + ')' : '') : '';
     };
@@ -364,6 +368,25 @@
         var ok = w.every(function (t) { return hay.indexOf(t) >= 0; });
         return ok ? { it: it, sc: w.length ? (norm(it.name).indexOf(w[0]) === 0 ? 2 : 1) : 0 } : null;
       }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc || String(a.it.name).localeCompare(String(b.it.name)); });
+      // the wine list and the spirits list: a wine (spirit) line opens on its list, best matches to the invoice line first; any search looks in both
+      [['wine', '__wine:', 'On the wine list', opt.wine], ['spirits', '__spirit:', 'On the spirits list', opt.spirit]].forEach(function (K) {
+        var W = wineList(K[0]), seen = {};
+        if (!W.length || !(w.length || K[3])) return;
+        var dw = words(L.description), wh = W.map(function (x, i) {
+          var nm = norm(x.m.name + ' ' + (x.m.group || '')), key = norm(x.m.name);
+          if (seen[key]) return null; seen[key] = 1;
+          if (w.length && !w.every(function (t) { return nm.indexOf(t) >= 0; })) return null;
+          var sc = dw.filter(function (t) { return t.length > 2 && nm.indexOf(t) >= 0; }).length;
+          return { x: x, i: i, sc: sc };
+        }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc || String(a.x.m.name).localeCompare(String(b.x.m.name)); });
+        if (!wh.length) return;
+        head(K[2] + ' · ' + wh.length);
+        wh.slice(0, 60).forEach(function (y) {
+          var m = y.x.m, pr = K[0] === 'wine' ? [m.glass ? '$' + m.glass + ' gl' : '', m.bottle || m.price ? '$' + (m.bottle || m.price) + ' btl' : ''].filter(Boolean).join(' · ') : (m.price ? '$' + m.price : '');
+          add({ v: y.x.item ? y.x.item.id : K[1] + y.i, text: m.name, sub: [m.group, pr, y.x.item ? 'in the inventory' : 'not in the inventory yet: adds it'].filter(Boolean).join(' · '), cls: y.sc && !w.length ? 'is-cbest' : '' });
+        });
+        if (wh.length > 60) list.appendChild(h('p', { cls: 'is-chead', text: '…type to narrow the list' }));
+      });
       if (!w.length) list.appendChild(h('p', { cls: 'is-chead', text: 'Type to search the inventory' }));   // nothing from the inventory until you type
       else if (hits.length) {
         head('In the inventory · ' + hits.length);
@@ -587,6 +610,29 @@
         L._caseMiss ? h('em', { text: 'Add what the case holds in the Units column, to cost it by the ' + (wu(inner) ? inner : 'each') }) : null,
         L.setUnit && it ? h('span', { cls: 'is-u is-setu', text: it.name + ' will be counted by the ' + L.setUnit + ' (was by the ' + (it.unit || 'unit') + ')' }) : null];
     }
+    // a new wine or spirit: which one on the wine list / spirits list it is (names it and links it to the list)
+    function listPick(L) {
+      var kind = L.newKind === 'spirits' ? 'spirits' : 'wine', W = wineList(kind);
+      if (!W.length) return null;
+      var dw = norm(L.description).split(' ').filter(function (t) { return t.length > 2; });
+      var sc = function (m) { var nm = norm(m.name); return dw.filter(function (t) { return nm.indexOf(t) >= 0; }).length; };
+      var sl = h('select', { cls: 'is-lpick', 'aria-label': kind === 'wine' ? 'Wine on the wine list' : 'Spirit on the spirits list' });
+      sl.appendChild(h('option', { value: '', text: kind === 'wine' ? '— Pick the wine —' : '— Pick the spirit —' }));
+      var idx = W.map(function (x, i) { return { x: x, i: i, s: sc(x.m) }; }), seen = {};
+      var best = idx.filter(function (y) { return y.s > 0; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5);
+      var opt = function (y) { var m = y.x.m; return h('option', { value: String(y.i), text: m.name + (y.x.item ? '  (in the inventory)' : '') }); };
+      if (best.length) sl.appendChild(h('optgroup', { label: 'Best matches' }, best.map(opt)));
+      var groups = {}; idx.forEach(function (y) { var k = norm(y.x.m.name); if (seen[k]) return; seen[k] = 1; (groups[y.x.m.group || 'Other'] = groups[y.x.m.group || 'Other'] || []).push(y); });
+      Object.keys(groups).forEach(function (g) { sl.appendChild(h('optgroup', { label: g }, groups[g].sort(function (a, b) { return String(a.x.m.name).localeCompare(String(b.x.m.name)); }).map(opt))); });
+      if (L.wine) { var cur = W.map(function (x) { return x.m; }).indexOf(L.wine); if (cur >= 0) sl.value = String(cur); }
+      sl.addEventListener('change', function () {
+        var y = W[+sl.value];
+        if (sl.value === '' || !y) { L.wine = null; paintRow(L); return; }
+        if (y.item) { L.item = y.item.id; L.wine = null; L.per = guessPer(L, y.item); L.costOver = null; L.how = 'picked'; L.use = true; paintRow(L); count(); return; }   // already in the inventory: use it
+        L.wine = y.m; paintRow(L);
+      });
+      return h('label', { cls: 'is-lpw' }, [h('span', { text: kind === 'wine' ? 'On the wine list' : 'On the spirits list' }), sl, L.wine ? null : h('small', { cls: 'is-u', text: 'Not on the list? Leave it: the invoice name is used.' })]);
+    }
     function newCost(L) { return L.per ? r4(L.unit_price / L.per) : null; }
     function paintRow(L) {
       var tr = L.tr; tr.innerHTML = '';
@@ -627,10 +673,14 @@
       ]));
       if (isNew && !L.newKind) L.newKind = guessKind(L);
       tr.appendChild(h('td', { cls: 'is-it' }, [itemSelect(L, function (v) {
+        L.wine = null;
+        if (/^__wine:/.test(v)) { var wx = wineList('wine')[+v.slice(7)]; L.wine = wx ? wx.m : null; L.newKind = 'wine'; v = '__new'; L.rcv = null; }   // a wine from the list, new to the inventory
+        if (/^__spirit:/.test(v)) { var sx = wineList('spirits')[+v.slice(9)]; L.wine = sx ? sx.m : null; L.newKind = 'spirits'; v = '__new'; L.rcv = null; }
         if (/^__new:/.test(v)) { L.newKind = v.slice(6); v = '__new'; L.rcv = null; }
         L.item = v; L.costOver = null; L.how = v ? 'picked' : '';
         var x = v && v !== '__new' ? item(v) : null; L.per = x ? guessPer(L, x) : 1; L.use = !!v; paintRow(L); count();
-      }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' + (L.remembered ? ', with how it was received' : '') }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null]));
+      }, { wine: (it ? it.category === 'bev' && /wine/i.test(it.section || '') : guessKind(L) === 'wine') || /wine|vin/i.test((f && f.vendor && f.vendor.value) || inv.vendor || ''),
+        spirit: it ? it.category === 'bev' && !/wine|beer|draught|soft|coffee/i.test(it.section || '') : catGuess(L) === 'bev' && guessKind(L) === 'spirits' }), L.how === 'remembered' ? h('span', { cls: 'is-tag ok', text: 'Remembered from a past invoice' + (L.remembered ? ', with how it was received' : '') }) : L.how === 'suggested' ? h('span', { cls: 'is-tag', text: 'Suggested: tick if it’s right' }) : null, isNew && (L.newKind === 'wine' || L.newKind === 'spirits') ? listPick(L) : null]));
       // food only: the ingredient name recipes know it by. Shown when the item has one; typed for a new item (or one without)
       var newCat = isNew ? (NEW_AS[L.newKind] ? NEW_AS[L.newKind].cat : catGuess(L)) : null;
       var isFoodRow = it ? it.category === 'food' : isNew && newCat === 'food';
@@ -709,6 +759,7 @@
           it = Object.assign({ id: A.uid(), category: as ? as.cat : newCat || catGuess(L), section: as ? as.section : '', name: L.description, unit: L.setUnit || (as && as.recv === 'wine' ? 'bottle' : L.keg ? 'keg' : canon(L.unit)), pack: L.setUnit ? '' : L.pack || '', vendor: vendor, par: null, cost: c, sort: 0 }, orderInfo(L, null));
           if (L.ingName && it.category === 'food') it.ingredient = L.ingName;
           if (L.section != null && it.category === 'food') it.section = L.section;
+          if (L.wine) { it.name = L.wine.name; if (A.menuRefs) it.menu_refs = [{ tab: L.wine.tab, name: L.wine.name }]; }   // named as on the wine list, and linked to it
           adds.push(it); L.item = it.id; L.old = null;
         } else {
           it = item(L.item); L.old = it.cost == null ? null : +it.cost;
@@ -753,6 +804,7 @@
         if (opts.after) opts.after(savedId);
         A.done();
       }).catch(function (e) {
+        if (window.console) console.error('Update prices failed', e);
         applyBtn.disabled = false; msg.className = 'sc-msg err';
         msg.textContent = isMissing(e) ? 'One-time setup: run supabase/invoices.sql in Supabase first.' : (e && /security|permission/i.test(e.message || '')) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection and try again.';
       });
