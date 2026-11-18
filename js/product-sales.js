@@ -64,6 +64,7 @@
       var agg = {};
       rows.forEach(function (r) {
         if (!r[ii] || !r[di]) return;
+        if (/\(voided\)/i.test(r[ii] + ' ' + (pi >= 0 ? r[pi] : ''))) return;   // voided items: $0, never served
         var d = String(r[di]).trim(), m = d.match(/^(\d{4})-(\d\d)-(\d\d)/) || d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
         if (!m) return;
         var day = m[0].indexOf('-') > 0 ? m[0] : (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0');
@@ -328,7 +329,7 @@
     var g = orderGuide(p, list), Inv = window.EdenInventory;
     var countBtn = h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Enter this month’s count', on: { click: function () { if (Inv && Inv.enterCount) Inv.enterCount(); else location.hash = '#inventory'; } } });
     var newest = X.counts.length ? X.counts[0].count_date : null, thisMonth = newest && newest.slice(0, 7) === iso(new Date()).slice(0, 7);
-    det.appendChild(h('summary', null, [h('b', { text: 'What to order this week' }), h('span', { text: g.rows.filter(function (r) { return r.order > 0; }).length + ' items · from ' + qty(p.weeks) + ' weeks of sales and the last count' })]));
+    det.appendChild(h('summary', null, [h('b', { text: 'What to order this week' }), h('span', { text: g.rows.filter(function (r) { return r.order > 0; }).length + ' items · from ' + (p.days <= 7 ? 'a week' : qty(Math.round(p.weeks * 10) / 10) + ' weeks') + ' of sales and the last count' })]));
     det.appendChild(h('div', { cls: 'ps-count' + (thisMonth ? '' : ' warn') }, [
       h('span', { text: newest ? (thisMonth ? 'Last count: ' + dayLabel(newest) + '.' : 'No count for this month yet (last: ' + dayLabel(newest) + '). On hand below is the last count, less what’s been sold since, plus what came in on invoices.') : 'No inventory count yet: until there is one, the order is a week of expected use.' }),
       countBtn
