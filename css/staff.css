@@ -3329,3 +3329,19 @@ tr.mc-none th b{color:#6b665e}
 .is-copt.is-cbest>span{font-weight:600}
 .is-lpw{display:grid;gap:3px;margin-top:6px}.is-lpw span{font-size:.72rem;color:#7a7d81;text-transform:uppercase;letter-spacing:.05em}.is-lpick{width:100%;font:inherit;font-size:.85rem;padding:5px 6px;border:1px solid rgba(42,46,51,.2);border-radius:6px;background:#fff}
 .is-lpw .is-lname{width:100%;font:inherit;font-size:.85rem;padding:5px 8px;border:1px solid rgba(42,46,51,.2);border-radius:6px}
+/* Financials → Product sales */
+.ps-drop{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border:1.5px dashed #cdbfa9;border-radius:14px;background:#fbf8f3;margin:4px 0 16px}.ps-drop.on{border-color:#b0703f;background:#f6ecdf}
+.ps-drop>div{display:grid;gap:3px}.ps-drop span{font-size:.85rem;color:#6f7276}
+.ps-head{display:grid;gap:12px;margin-bottom:14px}.ps-range{display:flex;flex-wrap:wrap;gap:6px}
+.ps-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.ps-kpi{display:grid;gap:2px;padding:12px 14px;border:1px solid #e6dfd3;border-radius:12px;background:#fff}
+.ps-kpi small{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#7a7d81}.ps-kpi b{font-size:1.35rem;font-variant-numeric:tabular-nums}.ps-kpi span{font-size:.8rem;color:#7a7d81}
+.ps-sec{margin-top:16px;border:1px solid #e6dfd3;border-radius:14px;background:#fff;padding:12px 16px}.ps-sec>summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ps-sec>summary span{font-size:.85rem;color:#7a7d81}
+.ps-tools{display:flex;gap:8px;align-items:center;margin:10px 0}.ps-tools input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid #ddd6ca;border-radius:8px}
+.ps-sort{background:none;border:0;font:inherit;font-weight:600;cursor:pointer;padding:0;color:inherit}.ps-sort.on{text-decoration:underline}
+.ps-tbl td small{display:block;font-size:.72rem;color:#8a8d91}.ps-otbl .ps-order{font-weight:600}.ps-otbl tr.ps-ok td{color:#8a8d91}.ps-otbl .ps-ok .ps-order{font-weight:400}
+.ps-vendor{margin:16px 0 6px;font-size:.95rem}.ps-count{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:#f2f5f1;margin:10px 0;font-size:.88rem}.ps-count.warn{background:#fbf1e7;color:#7a3f1d}
+.ps-all{margin:10px 0;font-size:.85rem}.ps-unl{margin-top:12px}.ps-unl>summary{cursor:pointer;font-size:.9rem;color:#7a3f1d}
+.ps-ulist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}.ps-ulist li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid #f0ebe3}.ps-ulist li div{display:grid}.ps-ulist li span{font-size:.8rem;color:#7a7d81}.ps-ulist select{max-width:260px;font:inherit;font-size:.85rem}
+@media (max-width:640px){.ps-drop,.ps-count{flex-direction:column;align-items:stretch}}
+.ps-head,.ps-drop,.ps-sec,.ps-kpis{width:100%;box-sizing:border-box}
+.ps-tbl td.r,.ps-tbl th.r{text-align:right}

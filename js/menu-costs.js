@@ -211,6 +211,50 @@
   }
   function tabKind(t) { var s = String(t.id || '') + ' ' + norm(t.label); return /food|kitchen/.test(s) ? 'food' : /bar|cocktail/.test(s) ? 'bar' : /wine/.test(s) ? 'wine' : /beer|soft/.test(s) ? 'beer' : /spirit/.test(s) ? 'spirits' : /coffee|tea/.test(s) ? 'coffee' : 'other'; }
   // rows: one per menu item and serving (a wine has a glass row and a bottle row)
+  /* ---------- usage: what one sale of a dish or drink takes out of the inventory, in each item's counting unit ----------
+     Worked out from cost: a line's cost ÷ the item's cost per unit = the units it uses (so every unit conversion,
+     yield and costing calculation the recipes already use applies). Sub-recipes are followed by their share of a batch. */
+  function recipeUsage(r, factor, out, depth) {
+    if ((depth || 0) > 4) return;
+    (r.ingredients || []).forEach(function (g) {
+      if (g.head) return;
+      var c = ingCost(g, depth);
+      if (g.inv_id) { var it = D.invById[g.inv_id]; if (it && c.cost != null && +it.cost > 0) out[g.inv_id] = (out[g.inv_id] || 0) + factor * c.cost / +it.cost; }
+      else if (g.rec_id && D.recById[g.rec_id] && c.cost != null) { var sc = recipeCost(D.recById[g.rec_id], (depth || 0) + 1).total; if (sc > 0) recipeUsage(D.recById[g.rec_id], factor * c.cost / sc, out, (depth || 0) + 1); }
+    });
+  }
+  // one plate of a menu item, from the recipes linked to it ("On the menu" in Recipes)
+  function dishUsage(name) {
+    var n = norm(name), out = {}, hit = false;
+    D.recipes.forEach(function (r) {
+      (r.menu_links || []).forEach(function (l) {
+        if (norm(l.name) !== n) return;
+        var share = r.yield_qty ? amountOf(l.qty == null ? 1 : +l.qty, l.unit || r.yield_unit, r.yield_qty, r.yield_unit) : null;
+        if (share == null) return;
+        hit = true; recipeUsage(r, share, out, 0);
+      });
+    });
+    return hit ? out : null;
+  }
+  // one portion of a recipe (its base yield = that many portions)
+  function portionUsage(r) { var out = {}; if (r && r.yield_qty) recipeUsage(r, 1 / +r.yield_qty, out, 0); return out; }
+  // one cocktail, from its build
+  function cocktailUsage(name) {
+    var n = norm(name), b = D.builds.filter(function (x) { return x.active !== false && (norm(x.menu_name || x.name) === n || norm(x.name) === n); })[0];
+    if (!b) return null;
+    var out = {};
+    (b.ingredients || []).forEach(function (g) { var it = g.inv_id && D.invById[g.inv_id], c = it ? pourCost(g) : null; if (it && c != null && +it.cost > 0) out[g.inv_id] = (out[g.inv_id] || 0) + c / +it.cost; });
+    return out;
+  }
+  // one glass, bottle, pour, beer or soft drink of an inventory item, by how it's sold
+  function drinkUnits(it, how) {
+    var C = window.EdenCosting, S = C ? C.settings : { glass_oz: 5, pour_oz: 2 }, ml = C ? C.bottleMl(it) : 750, u = String(it.unit || '').toLowerCase();
+    if (/keg/.test(u)) { var kz = (C && C.kegOz) ? C.kegOz(it) : 1984; return (S.draught_oz || 16) / kz; }
+    if (how === 'glass') return S.glass_oz * 29.5735 / ml;
+    if (how === 'pour') return S.pour_oz * 29.5735 / ml;
+    if (/case/.test(u)) { var ct = contents(it); return ct.dim === 'each' && ct.amt > 1 ? 1 / ct.amt : 1; }
+    return 1;
+  }
   function rows(menu) {
     var list = window.EdenCosting ? window.EdenCosting.menuList(menu) : [];
     var byKey = {}; list.forEach(function (m) { byKey[key(m)] = m; });
@@ -415,7 +459,7 @@
   }
 
   window.EdenMenuCost = {
-    contents: contents, pourCost: pourCost, yieldOptions: yieldOptions, yieldFor: yieldFor, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
+    contents: contents, pourCost: pourCost, dishUsage: dishUsage, portionUsage: portionUsage, cocktailUsage: cocktailUsage, drinkUnits: drinkUnits, yieldOptions: yieldOptions, yieldFor: yieldFor, load: load, show: show, yields: function () { return YIELDS; }, putRecipe: putRecipe, dropRecipe: dropRecipe, recipeCost: recipeCost, ingCost: ingCost, linkCost: linkCost,
     units: function () {   // measurements from the inventory's case sizes that aren't standard ones, for recipe unit lists
       var seen = {};
       D.inv.forEach(function (it) { var m = String(it.pack || '').toLowerCase().match(/^\s*\d+(?:\.\d+)?\s*(?:x|\/|×)?\s*([a-z][a-z ]*)$/); if (m && dim(m[1]).indexOf('u:') === 0) { var x = dim(m[1]).slice(2); if (!/^(case|cs|box|bag|pack|bottle|can|keg)$/.test(x) && x.length <= 20) seen[x] = 1; } });

@@ -97,7 +97,7 @@
   window.EdenCosting = {
     settings: S,
     setSettings: function (x) { if (x) Object.keys(S).forEach(function (k) { if (x[k] != null && +x[k] > 0) S[k] = +x[k]; }); },
-    menuList: menuList, kindOf: kindOf, linksFor: linksFor, servings: servings, oneCost: oneCost, bottleMl: bottleMl,
+    menuList: menuList, kindOf: kindOf, linksFor: linksFor, servings: servings, oneCost: oneCost, bottleMl: bottleMl, kegOz: kegOz,
     // for the count sheet: "$16 gl · $56 btl" and "21% gl · 29% btl"
     cells: function (it, list) {
       var sv = servings(it, list);

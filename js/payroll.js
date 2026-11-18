@@ -535,7 +535,8 @@
       h('a', { href: '#financials', 'data-sub': 'overview', text: 'Overview' }),
       h('a', { href: '#payroll', 'data-sub': 'week', text: 'Weekly payroll' }),
       h('a', { href: '#payroll/past', 'data-sub': 'past', text: 'Past payroll' }),
-      h('a', { href: '#payroll/rates', 'data-sub': 'rates', text: 'Pay rates' })
+      h('a', { href: '#payroll/rates', 'data-sub': 'rates', text: 'Pay rates' }),
+      h('a', { href: '#financials/products', 'data-sub': 'products', text: 'Product sales' })
     ]);
     wrap.appendChild(h('div', { cls: 'an-head' }, [h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Owner only' }), h('h1', { cls: 'sc-week', text: 'Financials' })]), tabs]));
     P.pane = h('div', { cls: 'pr-pane' });
@@ -564,6 +565,7 @@
   function paint(loading) {
     P.el.querySelectorAll('.an-tabs a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-sub') === P.sub ? 'page' : 'false'); });
     var el = P.pane; el.innerHTML = ''; P.refs = {};
+    if (P.sub === 'products') { if (window.EdenProducts) window.EdenProducts.show(el, P.ctx); return; }
     if (P.sub === 'overview') { paintOverview(el, loading); return; }
     if (P.sub === 'past') { paintPast(el, loading); return; }
     if (loading && !P.row) { el.appendChild(h('p', { cls: 'an-sub', text: 'Loading…' })); return; }
@@ -2529,7 +2531,8 @@
     show: function (ctx) {
       P.ctx = ctx;
       if (P.el !== ctx.el || !ctx.el.firstChild) { P.el = ctx.el; shell(); }
-      var sub = { rates: 'rates', overview: 'overview', past: 'past' }[ctx.sub] || 'week';
+      var sub = { rates: 'rates', overview: 'overview', past: 'past', products: 'products' }[ctx.sub] || 'week';
+      if (sub === 'products') { P.sub = sub; flush().then(function () { paint(false); }); return; }
       var first = !P.week;
       if (first) P.week = addDays(sunday(new Date()), -7);   // payroll is usually done for the week that just ended
       if (sub === 'overview' || sub === 'past') { P.sub = sub; flush().then(loadOverview); return; }
@@ -2537,6 +2540,7 @@
       else paint(false);
     },
     hide: function () { flush(); },
+    sankey: function () { return sankey.apply(null, arguments); }, chartBox: function (t, l) { return chartBox(t, l); }, CF: CF,
     _test: { squareShifts: squareShifts, sameName: sameName, splitCents: splitCents, P: P, calc: calc, payco: payco }
   };
 })();

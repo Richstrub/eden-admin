@@ -1324,6 +1324,9 @@
       if (!I.loaded && !I.loading) { render(); load().then(render); } else render();
     },
     refresh: function () { if (I.el && !I.el.hidden) render(); },
+    // from Financials → Product sales: open the monthly count (loading the inventory first if this page hasn't been opened)
+    enterCount: function () { (I.loaded ? Promise.resolve() : load()).then(function () { monthlyStart(); }); },
+    orderQty: function (it, need) { return orderQty(it, need); },
     _test: { I: I, catItems: catItems, scanInvoice: function () { scanInvoice(); } }
   };
 })();
