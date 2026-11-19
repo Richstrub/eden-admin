@@ -236,6 +236,7 @@
     if (!p) { el.appendChild(h('p', { cls: 'an-sub', text: 'No product sales yet. Drop a Square Item sales detail CSV above.' })); return; }
     var list = products(p), total = list.reduce(function (a, x) { return a + x.net; }, 0);
     el.appendChild(rangeBar(p, total, list));
+    el.appendChild(mixCharts(list, total, p));
     el.appendChild(flow(list, total));
     el.appendChild(itemsTable(list, total, p));
     el.appendChild(orderBox(p, list));
@@ -266,6 +267,72 @@
     ]);
   }
   function kpi(t, v, s) { return h('div', { cls: 'ps-kpi' }, [h('small', { text: t }), h('b', { text: v }), h('span', { text: s })]); }
+
+  /* ---------- the four mix charts: sales mix, item mix, sales by day, beverage mix ----------
+     Plain bar charts (HTML, so they reflow on a phone): one hue per Square category, in the same order everywhere,
+     a value label on every bar, and the details on hover. */
+  var PAL = ['#4f8f86', '#b0703f', '#5b8fc9', '#8a6fa8', '#c9a24b', '#5d7a64', '#c9645a', '#3f7d74', '#d39a6a', '#7a5f98', '#9d9a94', '#6aa39a'];
+  function catColors(list) {
+    var sums = {}; list.forEach(function (x) { sums[x.category || 'Other'] = (sums[x.category || 'Other'] || 0) + x.net; });
+    var order = Object.keys(sums).sort(function (a, b) { return (BEV.test(a) ? 1 : 0) - (BEV.test(b) ? 1 : 0) || sums[b] - sums[a]; }), col = {};
+    order.forEach(function (c, i) { col[c] = PAL[i % PAL.length]; });
+    return col;
+  }
+  function bars(title, sub, items, opt) {   // items: [{label, value, color, note}] → horizontal bars, % of opt.base
+    opt = opt || {};
+    var max = items.reduce(function (a, x) { return Math.max(a, x.value); }, 0) || 1, base = opt.base || items.reduce(function (a, x) { return a + x.value; }, 0) || 1;
+    return h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: title }), sub ? h('span', { text: sub }) : null]),
+      h('div', { cls: 'ps-bars' }, items.map(function (x) {
+        var pc = x.value / base * 100;
+        return h('div', { cls: 'ps-bar', title: x.label + ': ' + money(x.value) + ' · ' + pc.toFixed(1) + '%' + (x.note ? ' · ' + x.note : '') }, [
+          h('span', { cls: 'ps-bl', text: x.label }),
+          h('span', { cls: 'ps-bt' }, h('i', { style: 'width:' + Math.max(0.5, x.value / max * 100).toFixed(1) + '%;background:' + x.color })),
+          h('span', { cls: 'ps-bv', text: pc.toFixed(1) + '% · ' + money0(x.value) })
+        ]);
+      }))]);
+  }
+  function mixCharts(list, total, p) {
+    var col = catColors(list), grid = h('div', { cls: 'ps-grid' });
+    // 1. sales mix: each Square category's share of product sales
+    var cats = {}; list.forEach(function (x) { var c = x.category || 'Other'; (cats[c] = cats[c] || { v: 0, q: 0 }); cats[c].v += x.net; cats[c].q += x.qty; });
+    var catList = Object.keys(cats).filter(function (c) { return cats[c].v > 0; }).sort(function (a, b) { return cats[b].v - cats[a].v; });
+    grid.appendChild(bars('Sales mix', 'Each category’s share of product sales', catList.map(function (c) { return { label: c, value: cats[c].v, color: col[c], note: Math.round(cats[c].q) + ' sold' }; }), { base: total }));
+    // 2. item mix: the 12 best sellers, coloured by category
+    var top = list.filter(function (x) { return x.net > 0; }).sort(function (a, b) { return b.net - a.net; }).slice(0, 12);
+    grid.appendChild(bars('Item mix', 'The 12 best sellers, % of product sales', top.map(function (x) { return { label: label(x), value: x.net, color: col[x.category || 'Other'], note: qty(x.qty) + ' sold · ' + (x.category || '') }; }), { base: total }));
+    // 3. sales by day: food and beverage for each day open (by week when the period is long)
+    grid.appendChild(byDay(p, col));
+    // 4. beverage mix: each beverage category's share of beverage sales
+    var bev = catList.filter(function (c) { return BEV.test(c); }), bevTot = bev.reduce(function (a, c) { return a + cats[c].v; }, 0);
+    grid.appendChild(bev.length ? bars('Beverage mix', 'Share of beverage sales (' + money0(bevTot) + ')', bev.map(function (c) { return { label: c, value: cats[c].v, color: col[c], note: Math.round(cats[c].q) + ' sold' }; }), { base: bevTot })
+      : h('figure', { cls: 'ps-mix' }, [h('figcaption', null, h('b', { text: 'Beverage mix' })), h('p', { cls: 'an-sub', text: 'No beverage sales in this period.' })]));
+    return grid;
+  }
+  function byDay(p, col) {
+    var long = p.days > 42, by = {};
+    (X.rows || []).forEach(function (r) {
+      if (r.day < p.from || r.day > p.to) return;
+      var k = r.day;
+      if (long) { var d = new Date(r.day + 'T12:00:00'); d.setDate(d.getDate() - d.getDay()); k = iso(d); }
+      var a = by[k] = by[k] || { food: 0, bev: 0 };
+      if (isBev(r)) a.bev += r.net; else a.food += r.net;
+    });
+    var keys = Object.keys(by).sort(), max = keys.reduce(function (m, k) { return Math.max(m, by[k].food + by[k].bev); }, 0) || 1;
+    var FOOD = '#4f8f86', BEVC = '#8a6fa8';
+    var cols = keys.map(function (k) {
+      var a = by[k], t = a.food + a.bev, d = new Date(k + 'T12:00:00');
+      var lab = long ? 'wk ' + d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+      return h('div', { cls: 'ps-col', title: (long ? 'Week of ' : '') + dayLabel(k) + ': ' + money(t) + ' (food ' + money(a.food) + ', beverage ' + money(a.bev) + ')' }, [
+        h('span', { cls: 'ps-cv', text: money0(t) }),
+        h('span', { cls: 'ps-ct' }, [h('i', { style: 'height:' + (a.bev / max * 100).toFixed(1) + '%;background:' + BEVC }), h('i', { style: 'height:' + (a.food / max * 100).toFixed(1) + '%;background:' + FOOD })]),
+        h('span', { cls: 'ps-cl', text: lab })
+      ]);
+    });
+    var avg = keys.length ? keys.reduce(function (s, k) { return s + by[k].food + by[k].bev; }, 0) / keys.length : 0;
+    return h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: long ? 'Sales by week' : 'Sales by day' }), h('span', { text: 'Average ' + money0(avg) + (long ? ' a week' : ' a day open') })]),
+      h('div', { cls: 'ps-legend' }, [h('span', null, [h('i', { style: 'background:' + FOOD }), 'Food']), h('span', null, [h('i', { style: 'background:' + BEVC }), 'Beverage'])]),
+      h('div', { cls: 'ps-cols' }, cols)]);
+  }
 
   // where product sales come from: food / beverage → Square categories → the best sellers in each
   function flow(list, total) {
