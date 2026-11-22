@@ -94,7 +94,10 @@
       if (r.error) throw r.error; S.employees = r.data || [];
       S.hasEmail = !S.employees.length || S.employees.some(function (e) { return 'email' in e; });
       S.hasAccess = S.employees.some(function (e) { return 'access' in e; });
-      return loadAccounts();
+      // supabase/employee-remove.sql: removed_at marks someone taken off the roster (kept for payroll and review history)
+      var probe = S.employees.length ? Promise.resolve(S.employees.some(function (e) { return 'removed_at' in e; }))
+        : sb().from('employees').select('removed_at').limit(1).then(function (q) { return !q.error; }, function () { return false; });
+      return probe.then(function (ok) { S.hasRemoved = ok; return loadAccounts(); });
     });
   }
   function loadWeek(d) {
@@ -155,6 +158,7 @@
     var r = { id: e.id, name: e.name || '', phone: e.phone || '', position: e.position || '', active: e.active !== false };
     if (S.hasEmail) r.email = String(e.email || '').trim().toLowerCase();
     if (S.hasAccess && isOwner()) r.access = ACCESS[e.access] ? e.access : 'employee';
+    if (S.hasRemoved) r.removed_at = e.removed_at || null;
     return r;
   }
   function noEmailCol(err) { return err && (err.code === 'PGRST204' || err.code === '42703') && /email/i.test(err.message || ''); }
@@ -663,7 +667,8 @@
       else if (ac.mailer_autoconfirm === false) notes.push('When staff create their own account, Supabase emails them a confirmation link. Unless Supabase sends email through Resend (Authentication › Emails › SMTP Settings), those emails don’t reach them. The quickest way in: “Create login” below, then give them the temporary password.');
       if (notes.length) wrap.appendChild(h('div', { cls: 'ed-banner sc-onboard' }, notes.map(function (t) { return h('p', { text: t }); })));
     }
-    var list = S.employees.slice().sort(function (a, b) { return (!a.name) - (!b.name) || (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''); });
+    var removed = S.hasRemoved ? S.employees.filter(function (e) { return e.removed_at; }) : [];
+    var list = S.employees.filter(function (e) { return !(S.hasRemoved && e.removed_at); }).sort(function (a, b) { return (!a.name) - (!b.name) || (a.active === false) - (b.active === false) || (a.name || '').localeCompare(b.name || ''); });
     var heads = ['Name', 'Mobile number'].concat(S.hasEmail ? ['Email (login)'] : []).concat(['Position']).concat(S.hasAccess ? ['Permissions'] : []).concat(S.hasEmail ? ['Login'] : []).concat(['On schedule', '']);
     var table = h('table', { cls: 'sc-ptable' }, [h('thead', null, h('tr', null, heads.map(function (t) { return h('th', { text: t }); })))]);
     var tb = h('tbody');
@@ -680,9 +685,20 @@
       ph.addEventListener('blur', function () { if (phoneE164(e.phone)) { ph.value = phoneShow(e.phone); } chk(); }); chk();
       var act = h('input', { type: 'checkbox', 'aria-label': 'On schedule' }); act.checked = e.active !== false;
       act.addEventListener('change', function () { e.active = act.checked; empChanged(e); });
-      var del = h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Remove' });
+      var del = h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Remove', title: 'Take ' + (e.name || 'this person') + ' off the roster' });
       del.addEventListener('click', function () {
-        if (!del.dataset.armed) { del.dataset.armed = '1'; del.textContent = 'Confirm'; setTimeout(function () { if (del.isConnected) { delete del.dataset.armed; del.textContent = 'Remove'; } }, 3000); return; }
+        if (!del.dataset.armed) { del.dataset.armed = '1'; del.textContent = 'Confirm remove'; setTimeout(function () { if (del.isConnected) { delete del.dataset.armed; del.textContent = 'Remove'; } }, 4000); return; }
+        // off the roster: off the schedule, login stops working; payroll, pay rates and reviews stay on file (restore any time)
+        if (S.hasRemoved && e.name) {
+          var was = { active: e.active, removed_at: e.removed_at };
+          e.active = false; e.removed_at = new Date().toISOString();
+          sb().from('employees').upsert(empRow(e), { onConflict: 'id' }).then(function (r) {
+            if (r && r.error) { e.active = was.active; e.removed_at = was.removed_at; status('Couldn’t remove: ' + r.error.message, 'err'); return; }
+            if (S.row) { var before = shifts().length; S.row.shifts = shifts().filter(function (s) { return s.emp !== e.id || s.date < iso(new Date()); }); if (shifts().length !== before) changed(); }
+            render(); status((e.name || 'Employee') + ' removed from the roster. Their login no longer works; their payroll and reviews are kept. Restore them under “Removed employees”.', 'ok');
+          });
+          return;
+        }
         sb().from('employees').delete().eq('id', e.id).then(function (r) {
           if (r.error) { status('Couldn’t remove. Turn off “On schedule” instead.', 'err'); return; }
           S.employees = S.employees.filter(function (x) { return x.id !== e.id; });
@@ -732,12 +748,32 @@
     wrap.appendChild(dl);
     if (list.length) wrap.appendChild(h('div', { cls: 'sc-scroll' }, table));
     else wrap.appendChild(h('p', { cls: 'sc-empty', text: 'No employees yet. Add them here, or fill in the spreadsheet and import it.' }));
+    if (!S.hasRemoved) wrap.appendChild(h('p', { cls: 'sc-help', text: 'To take people off the roster but keep their payroll and review history, run supabase/employee-remove.sql in Supabase once. Until then, Remove deletes them for good (with their pay rates and reviews).' }));
+    if (removed.length) {
+      var det = h('details', { cls: 'sc-removed' }, [h('summary', { text: 'Removed employees (' + removed.length + ')' })]);
+      det.appendChild(h('ul', null, removed.sort(function (a, b) { return String(b.removed_at).localeCompare(String(a.removed_at)); }).map(function (e) {
+        var back = h('button', { type: 'button', cls: 'ed-btn small', text: 'Restore', on: { click: function () {
+          e.removed_at = null;
+          sb().from('employees').upsert(empRow(e), { onConflict: 'id' }).then(function (r) { if (r && r.error) { status('Couldn’t restore: ' + r.error.message, 'err'); return; } render(); status((e.name || 'Employee') + ' is back on the roster. Tick “On schedule” to schedule them again.', 'ok'); });
+        } } });
+        var gone = h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Delete forever' });
+        gone.addEventListener('click', function () {
+          if (!gone.dataset.armed) { gone.dataset.armed = '1'; gone.textContent = 'Also deletes pay rates & reviews: confirm'; setTimeout(function () { if (gone.isConnected) { delete gone.dataset.armed; gone.textContent = 'Delete forever'; } }, 5000); return; }
+          sb().from('employees').delete().eq('id', e.id).then(function (r) {
+            if (r.error) { status('Couldn’t delete: ' + r.error.message, 'err'); return; }
+            S.employees = S.employees.filter(function (x) { return x.id !== e.id; }); render(); status('Deleted.', 'ok');
+          });
+        });
+        return h('li', null, [h('div', null, [h('b', { text: e.name || 'No name' }), h('span', { text: [e.position, 'removed ' + new Date(e.removed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })].filter(Boolean).join(' · ') })]), h('div', { cls: 'sc-rbtns' }, [back, gone])]);
+      })));
+      wrap.appendChild(det);
+    }
     if (S.hasAccess) wrap.appendChild(h('div', { cls: 'sc-perm-help' }, [
       h('p', null, [h('b', { text: 'Employee: ' }), 'sees the posted schedule, requests time off, uses the message board.']),
       h('p', null, [h('b', { text: 'Manager: ' }), 'also edits and publishes the schedule, approves time off, texts the team and sees this list. Managers sign in on this site and see only the Schedule.']),
       isOwner() ? null : h('p', { text: 'Only the Owner can change permissions.' })
     ]));
-    wrap.appendChild(h('p', { cls: 'sc-help', text: 'Mobile numbers and emails are visible only to the Owner and Managers; the staff page never shows them. Turn off \u201cOn schedule\u201d for people on leave or seasonal: they drop off the schedule and can no longer sign in to the staff page. Remove deletes them.' }));
+    wrap.appendChild(h('p', { cls: 'sc-help', text: 'Mobile numbers and emails are visible only to the Owner and Managers; the staff page never shows them. Turn off \u201cOn schedule\u201d for people on leave or seasonal: they drop off the schedule and can no longer sign in to the staff page.' + (S.hasRemoved ? ' Remove takes someone off the roster (their payroll and reviews are kept; restore them under Removed employees).' : ' Remove deletes them.') }));
     S.body.appendChild(wrap);
   }
 
