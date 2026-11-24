@@ -79,10 +79,8 @@
 
   // ---------- drinks and wine: portrait, two columns, as many pages as it needs ----------
   function listHTML(menu, kind) {
-    var tabs = tabsOf(menu, kind), wine = kind === 'wine', lastTab = '';
-    var html = groupsOf(tabs).map(function (g) {
-      var head = '';
-      if (!wine && g.tab !== lastTab && tabs.length > 1) { head = '<h1 class="tab">' + esc(g.tab) + '</h1>'; lastTab = g.tab; }
+    var tabs = tabsOf(menu, kind), wine = kind === 'wine';
+    function secHTML(g, head) {
       return head + '<section class="sec">' +
         (g.items.length ? '' : '<div class="it"><h2>' + esc(g.title) + '</h2><div class="rule"></div>' + (g.note ? '<p class="note">' + esc(g.note) + '</p>' : '') + '</div>') +
         g.items.map(function (it, i) {
@@ -93,7 +91,9 @@
             '<div class="row"><span class="nm">' + esc(it.name) + '</span><span class="pr">' + pr + '</span></div>' +
             (sub ? '<p class="ds">' + esc(sub) + '</p>' : '') + (!wine && it.src ? '<p class="src">' + esc(it.src) + '</p>' : '') + '</div>';
         }).join('') + (g.noteAfter ? '<p class="note">' + esc(g.noteAfter) + '</p>' : '') + '</section>';
-    }).join('');
+    }
+    // drinks: each section of the menu (cocktails, beer, spirits, …) starts on its own piece of paper
+    var parts = wine ? [{ label: '', groups: groupsOf(tabs) }] : tabs.map(function (t) { return { label: tabs.length > 1 ? t.label : '', groups: groupsOf([t]) }; }).filter(function (x) { return x.groups.length; });
     var css = '@page{size:8.5in 11in;margin:.55in .6in .6in}' +
       '@media screen{.sheet{width:8.5in;min-height:11in;padding:.55in .6in .6in;background:#fff}}' +
       '.brand{font-size:30px;line-height:1}.head .rule{margin:9px auto 6px}.sub{text-align:center;font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#7f7a71;margin-bottom:22px}' +
@@ -102,11 +102,16 @@
       '.sec{margin-bottom:16px}.sec h2{font-size:12px;margin-bottom:5px;break-after:avoid}.sec .rule{margin-bottom:10px}' +
       '.it{margin-bottom:' + (wine ? '6px' : '9px') + '}.nm{font-size:' + (wine ? '13px' : '15px') + ';line-height:1.2}.pr{font-size:' + (wine ? '13px' : '14.5px') + '}.gl{color:#7f7a71}' +
       '.ds{font-size:' + (wine ? '9px' : '9.8px') + ';line-height:1.35;margin-top:1px}.src{font-size:11px;line-height:1.25}' +
-      '.note{font-size:11.5px;margin:0 0 8px}.foot{font-size:9px;margin-top:14px;column-span:all}';
+      '.note{font-size:11.5px;margin:0 0 8px}.foot{font-size:9px;margin-top:14px;column-span:all}' +
+      '.sheet{break-after:page;page-break-after:always}.sheet:last-of-type{break-after:auto;page-break-after:auto}.tab{margin-top:0}';
     var title = wine ? 'Wine List' : 'Drinks';
-    var body = '<div class="sheet"><header class="head"><div class="brand">EDEN</div><div class="rule"></div><p class="sub">' + title + '</p></header>' +
-      '<div class="body">' + (html || '<p class="note">Nothing on this menu yet.</p>') + '</div>' +
-      (wine ? '<p class="foot">Prices are per bottle; wines poured by the glass show the glass price first.</p>' : '') + '</div>';
+    if (!parts.length) parts = [{ label: '', groups: [] }];
+    var body = parts.map(function (pt) {
+      var html = pt.groups.map(function (g, i) { return secHTML(g, i === 0 && pt.label ? '<h1 class="tab">' + esc(pt.label) + '</h1>' : ''); }).join('');
+      return '<div class="sheet"><header class="head"><div class="brand">EDEN</div><div class="rule"></div><p class="sub">' + title + '</p></header>' +
+        '<div class="body">' + (html || '<p class="note">Nothing on this menu yet.</p>') + '</div>' +
+        (wine ? '<p class="foot">Prices are per bottle; wines poured by the glass show the glass price first.</p>' : '') + '</div>';
+    }).join('');
     return page('Eden ' + title.toLowerCase(), css, body, title + ' · portrait', false);
   }
 
