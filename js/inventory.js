@@ -244,11 +244,12 @@
       I.cat === 'bev' && window.EdenCosting ? h('th', { cls: 'iv-pcog', text: 'Cost %', title: 'Cost of goods: cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null
     ])));
     I.menuAll = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
-    var lastSec = null, tb = null;
+    var lastSec = null, tb = null, lastSub = null;
     items.forEach(function (it) {
       if (it.section !== lastSec) {
         lastSec = it.section;
-        tb = h('tbody', { cls: 'iv-group' });
+        var newSub = I.cat === 'bev' && lastSub != null && subOf(it) !== lastSub; lastSub = subOf(it);
+        tb = h('tbody', { cls: 'iv-group' + (newSub ? ' iv-newsheet' : '') });
         var secItems = items.filter(function (x) { return x.section === it.section; });
         tb.appendChild(h('tr', { cls: 'iv-sec' }, h('td', { colspan: String(ncol) }, [h('b', { text: it.section || 'Other' }), h('span', { text: secItems.length + ' item' + (secItems.length === 1 ? '' : 's') })])));
         table.appendChild(tb);
@@ -1282,17 +1283,22 @@
       });
       var cols = '<th class="it">Item</th><th class="u">Unit</th>' + (o.vendor ? '<th class="v">Vendor</th>' : '') + (o.par ? '<th class="p">Par</th>' : '') + (o.last ? '<th class="l">Last' + (last ? '<small>' + esc(last.count_date.slice(5).replace('-', '/')) + '</small>' : '') + '</th>' : '') + '<th class="c">Count</th><th class="nt">Notes</th>' + (cid === 'bev' ? '<th class="mn">On the menu</th><th class="pc">Cost %</th>' : '');
       var ncol = 4 + (cid === 'bev' ? 2 : 0) + (o.vendor ? 1 : 0) + (o.par ? 1 : 0) + (o.last ? 1 : 0);
-      var body = '', curSub = null, curSec = null;
-      items.forEach(function (it) {
-        if (cid === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; body += '<tr class="sub"><td colspan="' + ncol + '">' + esc(SUBN[curSub] || curSub) + '</td></tr>'; }
-        if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; body += '<tr class="sec"><td colspan="' + ncol + '">' + esc(curSec) + '</td></tr>'; }
-        var lv = last && last.counts[it.id] != null ? last.counts[it.id] : null;
-        var nm = showName(it), iv = cid === 'food' ? invName(it) : '';
-        body += '<tr><td class="it">' + esc(nm) + (iv && keyOf(iv) !== keyOf(nm) ? '<small>' + esc(iv) + '</small>' : '') + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(unitText(it)) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn">' + esc(onMenuText(it, mlist)) + '</td><td class="pc">' + esc(cogText(it, mlist)) + '</td>' : '') + '</tr>';
-      });
-      for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn"></td><td class="pc"></td>' : '') + '</tr>';
-      return '<section class="page"><header><div><h1>Eden · ' + esc(c.label) + ' inventory</h1><span>' + items.length + ' items · write in anything missing at the end</span></div><div class="who"><span>Date <i></i></span><span>Counted by <i></i></span></div></header>' +
-        '<table><thead><tr>' + cols + '</tr></thead><tbody>' + body + '</tbody></table></section>';
+      // beverages: Beer, Wine, Liquor and N/A each start on a new sheet of paper
+      var groups = [];
+      if (cid === 'bev') ['beer', 'wine', 'liquor', 'na'].forEach(function (k) { var g = items.filter(function (it) { return subOf(it) === k; }); if (g.length) groups.push({ label: SUBN[k] || k, items: g }); });
+      else groups.push({ label: '', items: items });
+      return groups.map(function (g) {
+        var body = '', curSec = null;
+        g.items.forEach(function (it) {
+          if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; body += '<tr class="sec"><td colspan="' + ncol + '">' + esc(curSec) + '</td></tr>'; }
+          var lv = last && last.counts[it.id] != null ? last.counts[it.id] : null;
+          var nm = showName(it), iv = cid === 'food' ? invName(it) : '';
+          body += '<tr><td class="it">' + esc(nm) + (iv && keyOf(iv) !== keyOf(nm) ? '<small>' + esc(iv) + '</small>' : '') + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(unitText(it)) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn">' + esc(onMenuText(it, mlist)) + '</td><td class="pc">' + esc(cogText(it, mlist)) + '</td>' : '') + '</tr>';
+        });
+        for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn"></td><td class="pc"></td>' : '') + '</tr>';
+        return '<section class="page"><header><div><h1>Eden · ' + esc(c.label) + ' inventory' + (g.label ? ' · ' + esc(g.label) : '') + '</h1><span>' + g.items.length + ' items · write in anything missing at the end</span></div><div class="who"><span>Date <i></i></span><span>Counted by <i></i></span></div></header>' +
+          '<table><thead><tr>' + cols + '</tr></thead><tbody>' + body + '</tbody></table></section>';
+      }).join('');
     }).join('');
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden inventory count sheet</title><style>' +
       '@page{size:letter;margin:.35in}body{font:8.5pt/1.2 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +

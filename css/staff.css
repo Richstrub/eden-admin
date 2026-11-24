@@ -3392,3 +3392,5 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-pcog{font-size:.84rem;white-space:nowrap;font-variant-numeric:tabular-nums;color:#4a4e53}
 .iv-pcog.hi{color:#a3392b}
 @media print{#viewInventory .iv-table th.iv-pcog,#viewInventory .iv-table td.iv-pcog{display:table-cell!important}}
+/* beverages: Beer, Wine, Liquor and N/A each start a new sheet when printed */
+@media print{#viewInventory .iv-table tbody.iv-newsheet{break-before:page;page-break-before:always}}
