@@ -227,9 +227,10 @@
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
     // beverages: "On the menu" and "Cost %" sit at the far right instead of mid-table
     I.showCost = I.cat !== 'bev' && !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
-    var ncol = (I.showCost ? 13 : 11) + 1 + (I.cat === 'bev' ? 2 : 0);
+    var ncol = (I.showCost ? 13 : 11) + 2 + (I.cat === 'bev' ? 2 : 0);
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
+      h('th', { cls: 'iv-drag', 'aria-label': 'Drag to reorder' }),
       h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
@@ -242,9 +243,12 @@
       if (it.section !== lastSec) {
         lastSec = it.section;
         var newSub = I.cat === 'bev' && lastSub != null && subOf(it) !== lastSub; lastSub = subOf(it);
-        tb = h('tbody', { cls: 'iv-group' + (newSub ? ' iv-newsheet' : '') });
+        tb = h('tbody', { cls: 'iv-group' + (newSub ? ' iv-newsheet' : ''), 'data-sec': it.section || '' });
         var secItems = items.filter(function (x) { return x.section === it.section; });
-        tb.appendChild(h('tr', { cls: 'iv-sec' }, h('td', { colspan: String(ncol) }, [h('b', { text: it.section || 'Other' }), h('span', { text: secItems.length + ' item' + (secItems.length === 1 ? '' : 's') })])));
+        (function (sec) {
+          tb.appendChild(h('tr', { cls: 'iv-sec' }, h('td', { colspan: String(ncol) }, [h('b', { text: sec || 'Other' }), h('span', { text: secItems.length + ' item' + (secItems.length === 1 ? '' : 's') }),
+            h('button', { type: 'button', cls: 'iv-secadd', title: 'Add an item to ' + (sec || 'Other'), text: '+ Add item', on: { click: function () { editItem(null, { section: sec || '' }); } } })])));
+        })(it.section);
         table.appendChild(tb);
       }
       tb.appendChild(itemRow(it, prev));
@@ -289,7 +293,9 @@
     var cc = I.showCost ? window.EdenCosting.cells(it, I.menuList) : null;
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
     var names = invNames(it);
-    var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
+    var grip = h('span', { cls: 'iv-handle', title: 'Drag to move', 'aria-label': 'Drag to move ' + showName(it), text: '⠿' });
+    var tr = h('tr', { cls: 'iv-row', 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
+      h('td', { cls: 'iv-drag' }, grip),
       h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it)])]),
       h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
         names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
@@ -314,7 +320,53 @@
       I.cat === 'bev' && window.EdenCosting ? (function () { var b = window.EdenCosting.cells(it, I.menuAll || []); return h('td', { cls: 'iv-pcog' + (b && b.worst >= 0.35 ? ' hi' : ''), title: b ? b.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '', text: b ? b.pct : '' }); })() : null
     ]);
     refresh();
+    grip.addEventListener('pointerdown', function (e) { dragRow(e, tr, it, grip); });
     return tr;
+  }
+  // drag a row by its handle to another spot, in its section or another one (mouse, finger or pencil)
+  function dragRow(e, tr, it, grip) {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    var table = tr.closest('table'), line = h('div', { cls: 'iv-dropline' }), slot = null, moved = false, sy = e.clientY;
+    document.body.appendChild(line);
+    try { grip.setPointerCapture(e.pointerId); } catch (x) {}
+    function slots() {
+      var out = [];
+      [].forEach.call(table.querySelectorAll('tbody.iv-group'), function (tb) {
+        var rows = [].filter.call(tb.querySelectorAll('tr.iv-row'), function (r) { return r.offsetParent !== null; });
+        rows.forEach(function (r, i) { out.push({ tb: tb, before: r, y: r.getBoundingClientRect().top }); });
+        if (rows.length) out.push({ tb: tb, before: null, y: rows[rows.length - 1].getBoundingClientRect().bottom });
+      });
+      return out;
+    }
+    var timer = null, lastY = sy;
+    function place(y) {
+      var best = null, bd = 1e9; slots().forEach(function (sl) { var d = Math.abs(sl.y - y); if (d < bd) { bd = d; best = sl; } });
+      slot = best; if (!best) return;
+      var r = (table.closest('.iv-scroll') || table).getBoundingClientRect();
+      line.style.top = (best.y - 1) + 'px'; line.style.left = Math.max(r.left, 0) + 'px'; line.style.width = Math.min(r.width, window.innerWidth) + 'px'; line.style.display = 'block';
+    }
+    function scroller() { var y = lastY, d = y < 70 ? -14 : y > window.innerHeight - 70 ? 14 : 0; if (d) { window.scrollBy(0, d); var m = document.querySelector('.sb-main'); if (m) m.scrollTop += d; place(y); } }
+    function move(ev) { lastY = ev.clientY; if (!moved && Math.abs(ev.clientY - sy) < 4) return; if (!moved) { moved = true; tr.classList.add('iv-dragging'); timer = setInterval(scroller, 30); } place(ev.clientY); }
+    function up() {
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', cancel);
+      clearInterval(timer); line.remove(); tr.classList.remove('iv-dragging');
+      if (!moved || !slot) return;
+      var sec = slot.tb.getAttribute('data-sec') || '';
+      var ids = [].map.call(slot.tb.querySelectorAll('tr.iv-row'), function (r) { return r.getAttribute('data-id'); }).filter(function (id) { return id !== it.id; });
+      var at = slot.before ? ids.indexOf(slot.before.getAttribute('data-id')) : ids.length; if (at < 0) at = ids.length;
+      ids.splice(at, 0, it.id);
+      var byId = byIdMap(), changed = [], from = it.section || '';
+      ids.forEach(function (id, i) { var x = byId[id]; if (!x) return; if (x.sort !== i * 10 || (x.id === it.id && (x.section || '') !== sec)) { x.sort = i * 10; if (x.id === it.id) x.section = sec; changed.push(x); } });
+      if (!changed.length) return;
+      var sc = document.scrollingElement, y0 = sc ? sc.scrollTop : 0;
+      status('Saving the new order…', 'dirty');
+      saveItems(changed).then(function () { status(from !== sec ? 'Moved ' + showName(it) + ' to ' + (sec || 'Other') + '.' : 'Order saved.', 'ok'); }, saveErr);
+      render(); if (sc) sc.scrollTop = y0;
+      var row = I.el.querySelector('tr[data-id="' + it.id + '"]'); if (row) row.classList.add('iv-moved');
+    }
+    function cancel() { moved = false; up(); }
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', cancel);
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
   // move an item to another section from its row
@@ -925,9 +977,9 @@
     var rs = recipesFor(it.id);
     return h('p', { cls: 'sc-sub', text: rs.length ? 'Used in: ' + rs.map(function (x) { return x.name; }).join(', ') + '. The recipe carries the cost to the menu item.' : 'Not in a recipe yet. When you write a recipe, search for this ingredient name to cost it from this item.' });
   }
-  function editItem(it) {
+  function editItem(it, preset) {
     var isNew = !it;
-    it = it || { id: uid(), category: I.cat, section: '', name: '', unit: '', pack: '', vendor: '', par: null, cost: null, sort: 0 };
+    it = it || Object.assign({ id: uid(), category: I.cat, section: '', name: '', unit: '', pack: '', vendor: '', par: null, cost: null, sort: 0 }, preset || {});
     var isFoodIt = it.category === 'food', histRows = null;
     var catItemsAll = I.items.filter(function (x) { return x.category === I.cat; });
     var f = {
