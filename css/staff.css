@@ -3384,3 +3384,6 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
   #viewInventory .iv-cpo,#viewInventory .iv-menu,#viewInventory .iv-pct{display:none!important}
   #viewInventory .iv-audit,#viewInventory .iv-tool{display:none!important}
 }
+/* beverages: how each is on the menu, printed at the far right of "Print this page" */
+.iv-pmenu{display:none}
+@media print{#viewInventory .iv-table th.iv-pmenu,#viewInventory .iv-table td.iv-pmenu{display:table-cell!important;max-width:1.8in;white-space:normal}}
