@@ -3482,3 +3482,8 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-namesub{flex-wrap:wrap}
 .iv-namesub .iv-menusel{width:auto!important;max-width:210px!important;font-size:.74rem!important;padding:2px 6px!important}
 .iv-pmenu .iv-pmtext{font-size:.84rem;color:#4a4e53;margin:0}
+/* Counted in: a dropdown on each row */
+.iv-unittext{display:none}
+.iv-table select.iv-unitsel{width:auto;max-width:130px;font-size:.84rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px;color:var(--ink);cursor:pointer}
+.iv-table select.iv-unitsel:hover,.iv-table select.iv-unitsel:focus{border-color:var(--line)!important;background:#fff}
+@media print{.iv-unitsel{display:none!important}.iv-unittext{display:inline}}

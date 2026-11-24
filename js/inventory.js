@@ -303,7 +303,7 @@
         names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
-      h('td', { cls: 'iv-unit', text: unitText(it) }),
+      h('td', { cls: 'iv-unit' }, [unitSelect(it), h('span', { cls: 'iv-unittext', text: unitText(it) })]),
       h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); })),
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
@@ -399,6 +399,51 @@
       else { var m = list[+v]; it.menu_refs = [{ tab: m.tab, name: m.name, desc: m.desc || '' }]; }
       status('Saving…', 'dirty');
       saveItems([it]).then(function () { status(v === '__none' ? 'Unlinked ' + showName(it) + ' from the menu.' : 'Matched ' + showName(it) + ' to “' + list[+v].name + '” on the menu.', 'ok'); }, function (e) { it.menu_refs = old; render(); saveErr(e); });
+      var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
+    });
+    return sel;
+  }
+  // "Counted in", picked on the row from the units that fit what's being counted
+  var BOTTLE_ML = [750, 1000, 375, 1500, 1750, 500, 200, 50];
+  function mlLabel(ml) { return ml >= 1000 ? (ml / 1000) + ' L' : ml + ' ml'; }
+  function packMl(it) { var t = String((it.pack || '') + ' ' + (it.name || '')).toLowerCase(), m; if ((m = t.match(/(\d+(?:\.\d+)?)\s*ml\b/))) return +m[1]; if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre)\b/))) return Math.round(+m[1] * 1000); return null; }
+  function isBrew(it) { return /coffee|espresso|decaf|\btea\b|chai|matcha|oolong|rooibos|tisane/i.test((it.section || '') + ' ' + (it.name || '')); }
+  function unitChoices(it) {
+    var g = it.category === 'bev' ? subOf(it) : it.category;
+    if (g === 'wine' || g === 'liquor') return { bottles: true, groups: [['Bottles', BOTTLE_ML.map(function (ml) { return ['bottle@' + ml, mlLabel(ml) + ' bottle']; })], ['Other', [['case', 'case'], ['each', 'each']].concat(g === 'wine' ? [['keg', 'keg']] : [])]] };
+    if (g === 'beer') return { groups: [['Beer', [['can', 'can'], ['bottle', 'bottle'], ['keg', 'keg'], ['case', 'case'], ['each', 'each']]]] };
+    if (g === 'na' && isBrew(it)) return { groups: [['By weight', [['lb', 'lb'], ['oz', 'oz'], ['g', 'g'], ['kg', 'kg']]], ['Other', [['bag', 'bag'], ['box', 'box'], ['each', 'each']]]] };
+    if (g === 'na') return { groups: [['', [['each', 'each'], ['can', 'can'], ['bottle', 'bottle'], ['case', 'case'], ['gal', 'gal'], ['qt', 'qt']]]] };
+    if (g === 'food') return { groups: [['By weight', [['lb', 'lb'], ['1/4 lb', '1/4 lb'], ['1/2 lb', '1/2 lb'], ['oz', 'oz'], ['kg', 'kg'], ['g', 'g']]], ['By count', [['each', 'each'], ['case', 'case'], ['dozen', 'dozen'], ['bunch', 'bunch']]], ['By volume', [['gal', 'gal'], ['qt', 'qt'], ['pt', 'pt']]]] };
+    return { groups: [['', [['each', 'each'], ['case', 'case'], ['box', 'box'], ['pack', 'pack'], ['sleeve', 'sleeve'], ['roll', 'roll'], ['bag', 'bag']]]] };
+  }
+  function unitSelect(it) {
+    var ch = unitChoices(it), u = it.unit || '';
+    var cur = ch.bottles && /^(bottle|btl|bottles)$/i.test(u) ? 'bottle@' + (packMl(it) || 750) : u;
+    var sel = h('select', { cls: 'iv-unitsel', 'aria-label': 'Counted in: ' + showName(it), title: 'What it’s counted in' });
+    if (!u) sel.appendChild(h('option', { value: '', text: 'Pick a unit…' }));
+    var have = {};
+    ch.groups.forEach(function (g) { var og = g[0] ? h('optgroup', { label: g[0] }) : sel; g[1].forEach(function (o) { have[o[0]] = 1; og.appendChild(h('option', { value: o[0], text: o[1] })); }); if (og !== sel) sel.appendChild(og); });
+    if (cur && !have[cur]) sel.insertBefore(h('option', { value: cur, text: cur.indexOf('bottle@') === 0 ? mlLabel(+cur.slice(7)) + ' bottle' : cur }), sel.firstChild);
+    sel.value = cur;
+    sel.addEventListener('change', function () {
+      var v = sel.value; if (!v || v === cur) return;
+      var old = { unit: it.unit, pack: it.pack, cost: it.cost, par: it.par }, said = '';
+      var nu = v.indexOf('bottle@') === 0 ? 'bottle' : v;
+      if (v.indexOf('bottle@') === 0) {
+        var ml = +v.slice(7), lab = ml >= 1000 ? (ml / 1000) + 'L' : ml + 'ml', pk = String(it.pack || '');
+        it.pack = /(\d+(?:\.\d+)?)\s*(ml|l|lt|ltr|liter|litre)\b/i.test(pk) ? pk.replace(/(\d+(?:\.\d+)?)\s*(ml|l|lt|ltr|liter|litre)\b/i, lab) : (pk ? lab + ' ' + pk : lab);
+      }
+      var a = GRAMS[old.unit], b = GRAMS[nu];
+      if (a && b && old.unit !== nu) {   // lb → oz: the cost and par follow, so the value on hand stays the same
+        var k = b / a;
+        if (hasCost(it)) it.cost = Math.round(+it.cost * k * 10000) / 10000;
+        if (it.par != null) it.par = Math.round(+it.par / k * 100) / 100;
+        said = ' Cost is now ' + money(+it.cost || 0) + ' per ' + nu + (it.par != null ? ', par ' + qty(it.par) : '') + '.';
+      } else if (old.unit && old.unit !== nu && hasCost(it) && v.indexOf('bottle@') !== 0) said = ' Check the cost: it’s still ' + money(+it.cost) + ', now per ' + nu + '.';
+      it.unit = nu;
+      status('Saving…', 'dirty');
+      saveItems([it]).then(function () { status('Counted in ' + (v.indexOf('bottle@') === 0 ? mlLabel(+v.slice(7)) + ' bottles' : nu) + '.' + said, 'ok'); }, function (e) { Object.assign(it, old); render(); saveErr(e); });
       var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
     });
     return sel;
