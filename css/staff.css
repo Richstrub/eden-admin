@@ -3555,3 +3555,7 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
   .sb-collapsed .sb-bar .sb-pin{margin-left:0}}
 @media print{.sb-pin{display:none!important}}
 @media (min-width:1024px){.sb-bar .sb-pin{width:auto}}
+/* On hand: always wide enough for 0.00 (and 100.00), even on a narrow iPad table */
+.iv-table td.iv-ohc{min-width:96px;width:96px}
+.iv-table input.iv-oh{width:84px!important;min-width:84px;font-variant-numeric:tabular-nums;padding:7px 8px}
+@media print{#viewInventory .iv-table td.iv-ohc{min-width:0;width:auto}#viewInventory .iv-table input.iv-oh{width:42px!important;min-width:0}}
