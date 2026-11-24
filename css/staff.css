@@ -3467,3 +3467,9 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-secadd{float:right;background:none;border:1px solid transparent;border-radius:8px;padding:2px 10px;font:inherit;font-size:.8rem;color:var(--ember);cursor:pointer}
 .iv-secadd:hover{border-color:rgba(176,112,63,.4);background:#fff}
 @media print{.iv-drag,.iv-secadd{display:none!important}}
+/* wine & spirits not on the menu */
+.iv-offmenu td{background:#ece8e1}
+.iv-offmenu .iv-nameinp{color:#6b6f74}
+.iv-offkey{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--stone)}
+.iv-offkey::before{content:"";width:14px;height:14px;border-radius:3px;background:#ece8e1;border:1px solid var(--line)}
+@media print{.iv-offmenu td{background:#e6e6e6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}

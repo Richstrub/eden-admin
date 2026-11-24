@@ -221,7 +221,7 @@
     var vsel = h('select', { cls: 'iv-vsel', 'aria-label': 'Vendor' }, [h('option', { value: '', text: 'All vendors' })].concat(vlist.map(function (v) { return h('option', { value: v, text: v }); }), [h('option', { value: '__none', text: 'No vendor set' })]));
     vsel.value = I.vendor || '';
     vsel.addEventListener('change', function () { I.vendor = vsel.value; applyFilter(); });
-    wrap.appendChild(h('div', { cls: 'iv-bar' }, [find, vsel, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
+    wrap.appendChild(h('div', { cls: 'iv-bar' }, [find, vsel, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
 
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
@@ -294,7 +294,9 @@
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
     var names = invNames(it);
     var grip = h('span', { cls: 'iv-handle', title: 'Drag to move', 'aria-label': 'Drag to move ' + showName(it), text: '⠿' });
-    var tr = h('tr', { cls: 'iv-row', 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
+    // wine and spirits that aren't on the menu or linked to a menu item: shaded
+    var off = it.category === 'bev' && (subOf(it) === 'wine' || subOf(it) === 'liquor') && window.EdenCosting && !window.EdenCosting.linksFor(it, I.menuAll || []).length;
+    var tr = h('tr', { cls: 'iv-row' + (off ? ' iv-offmenu' : ''), title: off ? 'Not on the menu or linked to a menu item — click ✎ to link it' : null, 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-drag' }, grip),
       h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it)])]),
       h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
