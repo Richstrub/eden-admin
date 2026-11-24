@@ -471,6 +471,85 @@
       ])
     ]);
   }
+  // the item on the menu guests see: what it says there, and adding it
+  function guestMenuFor(it) {
+    var C = window.EdenCosting, tabs = menu().tabs || [], out = [];
+    if (it.category === 'bev' && C) {
+      var links = C.linksFor(it, C.menuList(menu()));
+      tabs.forEach(function (t) { (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (m) { if (m && links.some(function (l) { return l.tab === t.id && l.name === m.name && (l.desc || '') === (m.desc || ''); })) out.push({ t: t, g: g, m: m }); }); }); });
+    } else if (it.category === 'food') {
+      var words = uniq([showName(it), it.name].map(keyOf)).filter(function (w) { return w.length > 2; }), recs = recipesFor(it.id).map(function (r) { return keyOf(r.name); });
+      tabs.forEach(function (t) { if (!/food|kitchen/i.test(t.id + ' ' + t.label)) return; (t.groups || []).forEach(function (g) { (g.items || []).forEach(function (m) {
+        if (!m || !m.name) return; var txt = keyOf(m.name + ' ' + (m.desc || ''));
+        if (recs.indexOf(keyOf(m.name)) !== -1 || words.some(function (w) { return txt.indexOf(w) !== -1; })) out.push({ t: t, g: g, m: m, via: recs.indexOf(keyOf(m.name)) !== -1 ? 'recipe' : 'mentioned' });
+      }); }); });
+    }
+    return out;
+  }
+  function menuPanel(it, closeIt) {
+    if (it.category === 'paper') return h('span');
+    var hits = guestMenuFor(it), wine = function (t) { return /wine/i.test(t.id + ' ' + t.label); };
+    var priceText = function (t, m) { return wine(t) ? [m.glass ? '$' + String(m.glass).replace(/^\$/, '') + ' glass' : '', (m.bottle || m.price) ? '$' + String(m.bottle || m.price).replace(/^\$/, '') + ' bottle' : ''].filter(Boolean).join(' · ') : m.price ? '$' + String(m.price).replace(/^\$/, '') : ''; };
+    var cards = hits.map(function (x) {
+      var m = x.m, rows = [['Menu', (x.t.label || x.t.id) + ' · ' + (x.g.title || '')], ['Price', priceText(x.t, m)], ['Description', m.desc], ['Grape', m.grape], ['Region', m.appellation || (wine(x.t) ? m.src : '')], ['Country', m.country], ['Producer / source', wine(x.t) ? '' : m.src], ['Pairing', m.pair ? m.pair + (m.pairPrice ? ' · $' + m.pairPrice : '') : ''], ['Shown to guests', m.hidden ? 'No — hidden' : 'Yes'], x.via ? ['How it’s linked', x.via === 'recipe' ? 'A recipe with this ingredient has this name' : 'Named in the dish'] : null].filter(function (r) { return r && r[1]; });
+      return h('div', { cls: 'iv-gm' }, [h('b', { text: m.name }), h('dl', { cls: 'iv-facts' }, rows.reduce(function (a, r) { return a.concat([h('dt', { text: r[0] }), h('dd', { text: r[1] })]); }, []))]);
+    });
+    var box = h('div', { cls: 'iv-gmenu' }, [h('div', { cls: 'iv-gmh' }, [h('b', { text: 'On the guest menu' }), h('a', { href: '#menu', cls: 'sc-link', text: 'Open the menu editor →', on: { click: function () { closeIt(); } } })])]);
+    if (cards.length) cards.forEach(function (c) { box.appendChild(c); });
+    else box.appendChild(h('p', { cls: 'iv-muted', text: it.category === 'food' ? 'No dish on the Kitchen menu uses or names this yet.' : 'Not on the menu guests see.' }));
+    if (it.category === 'food') return box;   // dishes are added from Recipes, not one ingredient
+    box.appendChild(addToMenuForm(it, closeIt, !!cards.length));
+    return box;
+  }
+  function addToMenuForm(it, closeIt, already) {
+    var tabs = (menu().tabs || []).filter(function (t) { return !/food|kitchen/i.test(t.id + ' ' + t.label); });
+    var can = I.ctx.addMenuItem && (!I.ctx.canAddMenu || I.ctx.canAddMenu());
+    var g = subOf(it), want = g === 'wine' ? /wine/i : g === 'liquor' ? /spirit/i : isBrew(it) ? /coffee|tea/i : /beer|soft/i;
+    var tabSel = h('select', { 'aria-label': 'Menu' }, tabs.map(function (t) { return h('option', { value: t.id, text: t.label || t.id }); }));
+    var def = tabs.filter(function (t) { return want.test(t.id + ' ' + t.label); })[0]; if (def) tabSel.value = def.id;
+    var grpSel = h('select', { 'aria-label': 'Section' });
+    var C = window.EdenCosting;
+    var f = { name: h('input', { type: 'text', value: showName(it) }), desc: h('input', { type: 'text', placeholder: 'What guests read under the name' }),
+      price: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 14' }), glass: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 16' }), bottle: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 64' }),
+      grape: h('input', { type: 'text', placeholder: 'e.g. Cabernet Franc' }), region: h('input', { type: 'text', placeholder: 'e.g. Finger Lakes, NY' }), src: h('input', { type: 'text', placeholder: 'Producer · place, e.g. Albany Distilling · Albany, NY' }) };
+    var wineRows = h('div', null, [h('div', { cls: 'sc-row2' }, [lbl('Glass price ($)', f.glass), lbl('Bottle price ($)', f.bottle)]), h('div', { cls: 'sc-row2' }, [lbl('Grape', f.grape), lbl('Region', f.region)])]);
+    var otherRows = h('div', { cls: 'sc-row2' }, [lbl('Price ($)', f.price), lbl('Producer / source', f.src)]);
+    var hint = h('p', { cls: 'iv-pcalc' }), msg = h('p', { cls: 'sc-msg', role: 'status' });
+    function isWineTab() { return /wine/i.test(tabSel.value + ' ' + (tabSel.selectedOptions[0] || {}).textContent); }
+    function paintGroups() {
+      var t = tabs.filter(function (x) { return x.id === tabSel.value; })[0]; grpSel.innerHTML = '';
+      ((t && t.groups) || []).forEach(function (gr) { grpSel.appendChild(h('option', { value: gr.id, text: gr.title || gr.id })); });
+      var sec = keyOf(it.section).replace(/ (wine|beer)$/, ''), best = ((t && t.groups) || []).filter(function (gr) { var k = keyOf(gr.title); return k && (sec.indexOf(k) !== -1 || k.indexOf(sec) !== -1); })[0];
+      if (best) grpSel.value = best.id;
+      wineRows.hidden = !isWineTab(); otherRows.hidden = isWineTab(); paintHint();
+    }
+    function paintHint() {   // the cost % it would run at
+      if (!C || !hasCost(it)) { hint.textContent = ''; return; }
+      var one = C.oneCost(it), ml = C.bottleMl(it), S = C.settings, parts = [];
+      if (isWineTab()) { var gp = num(f.glass.value), bp = num(f.bottle.value); if (gp) parts.push(C.pctText(one * S.glass_oz * 29.5735 / ml / gp) + ' by the glass'); if (bp) parts.push(C.pctText(one / bp) + ' by the bottle'); }
+      else { var p = num(f.price.value); if (p) parts.push(C.pctText((g === 'liquor' ? one * S.pour_oz * 29.5735 / ml : one) / p) + (g === 'liquor' ? ' for a ' + S.pour_oz + ' oz pour' : '')); }
+      hint.textContent = parts.length ? 'Cost ' + parts.join(' · ') : '';
+    }
+    tabSel.addEventListener('change', paintGroups); [f.glass, f.bottle, f.price].forEach(function (x) { x.addEventListener('input', paintHint); });
+    paintGroups();
+    var btn = h('button', { type: 'button', cls: 'ed-btn', text: 'Add to the guest menu', disabled: !can, on: { click: add } });
+    function add() {
+      var name = f.name.value.trim(); if (!name) { msg.textContent = 'Give it the name guests will see.'; return; }
+      if (!grpSel.value) { msg.textContent = 'Pick a section of the menu.'; return; }
+      var clean = function (x) { var v = num(x.value); return v != null ? String(v) : ''; }, item;
+      if (isWineTab()) { var bp = clean(f.bottle), gp = clean(f.glass); if (!bp && !gp) { msg.textContent = 'Put in a glass or bottle price.'; return; } item = { name: name, desc: f.desc.value.trim(), glass: gp, bottle: bp, price: bp || gp, grape: f.grape.value.trim(), appellation: f.region.value.trim(), src: f.region.value.trim() }; }
+      else { var pr = clean(f.price); if (!pr) { msg.textContent = 'Put in the menu price.'; return; } item = { name: name, desc: f.desc.value.trim(), price: pr, src: f.src.value.trim() }; }
+      btn.disabled = true; msg.textContent = 'Adding to the menu…';
+      I.ctx.addMenuItem({ tab: tabSel.value, gid: grpSel.value, item: item }).then(function (ok) {
+        if (!ok) { btn.disabled = false; msg.textContent = 'Couldn’t add it to the menu. Open the menu editor and try again.'; return; }
+        if (I.costCols) { it.menu_refs = [{ tab: tabSel.value, name: item.name, desc: item.desc }]; saveItems([it]).catch(function () {}); }
+        closeIt(); render(); status('Added “' + name + '” to the ' + (tabSel.selectedOptions[0] || {}).textContent + ' menu' + (I.costCols ? ' and linked it to this item' : '') + '. It’s on the website now.', 'ok');
+      });
+    }
+    return h('details', { cls: 'iv-gadd', open: already ? null : '' }, [h('summary', { text: already ? '+ Add it to the menu again (another section or size)' : '+ Add it to the guest menu' }),
+      can ? null : h('p', { cls: 'iv-muted', text: 'Only people who can edit the menu can add to it.' }),
+      h('div', { cls: 'sc-row2' }, [lbl('Menu', tabSel), lbl('Section', grpSel)]), lbl('Name guests see', f.name), lbl('Description', f.desc), wineRows, otherRows, hint, msg, h('div', { cls: 'iv-info-a' }, [btn])]);
+  }
   function countsOf(it) {
     return I.counts.filter(function (c) { return c.category === it.category && c.counts && c.counts[it.id] != null; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })
       .map(function (c) { return { date: c.count_date, n: +c.counts[it.id], by: c.counted_by || '' }; });
@@ -488,7 +567,7 @@
       sec('On scanned invoices', lines.length, lines.length ? h('table', { cls: 'iv-mini' }, [h('thead', null, h('tr', null, [h('th', { text: 'Date' }), h('th', { text: 'Vendor · line' }), h('th', { cls: 'r', text: 'Qty' }), h('th', { cls: 'r', text: 'Price' }), h('th', { cls: 'r', text: 'Total' })])),
         h('tbody', null, lines.slice(0, 30).map(function (x) { var L = x.L; return h('tr', null, [h('td', { text: shortDay(x.v.invoice_date) }), h('td', null, [x.v.vendor || '', h('small', { text: L.description })]), h('td', { cls: 'r', text: [L.qty != null ? qty(+L.qty) : '', L.unit || ''].join(' ').trim() }), h('td', { cls: 'r', text: L.unit_price != null ? money(+L.unit_price) : '' }), h('td', { cls: 'r', text: L.extended != null ? money(+L.extended) : '' })]); }))]) : h('p', { cls: 'iv-muted', text: 'Not on a scanned invoice in the last year.' })),
       it.category === 'food' ? sec('Used in recipes', recs.length, recs.length ? h('ul', { cls: 'iv-rlist2' }, recs.map(function (r) { return h('li', { text: r.name }); })) : h('p', { cls: 'iv-muted', text: 'Not in a recipe yet.' })) : null,
-      it.category === 'bev' ? sec('On the menu', menuL.length, menuL.length ? h('ul', { cls: 'iv-rlist2' }, menuL.map(function (m) { return h('li', { text: (m.tabLabel || m.tab) + ' · ' + (m.group ? m.group + ' · ' : '') + m.name }); })) : h('p', { cls: 'iv-muted', text: 'Not on the menu or linked to a menu item.' })) : null
+      null
     ]);
   }
   function priceBtn(it) {
@@ -1339,6 +1418,7 @@
         });
       };
       loadHist();
+      msg.parentNode.insertBefore(menuPanel(it, function () { m.close(); }), msg);
       msg.parentNode.insertBefore(itemActivity(it), msg);
     }
     convLbl();

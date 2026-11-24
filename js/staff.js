@@ -237,7 +237,7 @@
     } else if (v === 'inventory') {
       status('');
       if (!store.loaded) loadAll().catch(function () {}); // menu, for "add from the menu" 
-      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName, arg: invArg, sub: sub,
+      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName, arg: invArg, sub: sub, addMenuItem: function (o) { return ed.canWrite ? addMenuItem(o) : Promise.resolve(false); }, canAddMenu: function () { return !!ed.canWrite; },
         getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'prep') {
       status('');

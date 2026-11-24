@@ -3517,3 +3517,10 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-act{border-top:1px solid var(--line);padding:8px 0}
 .iv-act summary{cursor:pointer;font-size:.9rem}
 .iv-act .iv-mini{margin-top:6px}
+/* item window: on the guest menu */
+.iv-gmenu{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:12px 14px;margin:14px 0}
+.iv-gmh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.iv-gm{border-top:1px solid rgba(0,0,0,.06);padding:10px 0}
+.iv-gm>b{display:block;font-family:var(--serif);font-weight:500;font-size:1.1rem;margin-bottom:6px}
+.iv-gadd{border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+.iv-gadd summary{cursor:pointer;color:var(--ember);font-size:.9rem;margin-bottom:8px}
