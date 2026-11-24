@@ -3445,3 +3445,14 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-table input.iv-par:focus{border-color:var(--ember)!important;background:#fff;outline:0}
 .iv-table input.iv-par.bad{border-color:#a3392b!important}
 @media print{#viewInventory .iv-table input.iv-par{border:0!important;padding:0;width:auto;max-width:40px;font-size:7pt}}
+/* section dropdown on each row */
+.iv-table td.iv-tool{white-space:nowrap}
+.iv-table select.iv-secsel{width:auto;max-width:130px;font-size:.78rem;padding:4px 6px;margin-right:6px;color:#6b6f74;background:transparent;border:1px solid transparent!important;border-radius:6px;cursor:pointer}
+.iv-table select.iv-secsel:hover,.iv-table select.iv-secsel:focus{border-color:var(--line)!important;background:#fff;color:var(--ink)}
+@keyframes ivMoved{from{background:#f6e6d4}to{background:transparent}}
+.iv-moved td{animation:ivMoved 2.4s ease-out}
+.iv-namesub{display:flex;align-items:center;gap:6px;margin-top:2px}
+.iv-namesub small{margin:0!important}
+.iv-namesub .iv-secsel{margin:0 0 0 -6px!important;font-size:.74rem!important;padding:2px 6px!important}
+.iv-namesub small+.iv-secsel{margin-left:0!important}
+@media print{.iv-secsel{display:none!important}#viewInventory .iv-namesub{display:inline;margin:0}}

@@ -290,7 +290,7 @@
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
     var names = invNames(it);
     var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
-      h('td', { cls: 'iv-name' }, [nameInput(it), it.pack ? h('small', { text: it.pack }) : null]),
+      h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it)])]),
       h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
         names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
@@ -317,6 +317,27 @@
     return tr;
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
+  // move an item to another section from its row
+  function catSections(cid) { return uniq((SECTIONS[cid] || []).concat(I.items.filter(function (x) { return x.category === cid; }).map(function (x) { return x.section; }))); }
+  function secSelect(it) {
+    var list = catSections(it.category); if (it.section && list.indexOf(it.section) === -1) list.unshift(it.section);
+    var sel = h('select', { cls: 'iv-secsel', 'aria-label': 'Section for ' + showName(it), title: 'Move to another section' },
+      (it.section ? [] : [h('option', { value: '', text: 'Other' })]).concat(list.map(function (x) { return h('option', { value: x, text: x }); }), [h('option', { value: '__new', text: 'New section…' })]));
+    sel.value = it.section || '';
+    sel.addEventListener('change', function () {
+      var v = sel.value;
+      if (v === '__new') { v = (window.prompt('Name of the new section:') || '').trim(); if (!v) { sel.value = it.section || ''; return; } }
+      if (v === (it.section || '')) return;
+      var old = it.section, sc = document.scrollingElement, y = sc ? sc.scrollTop : 0;
+      it.section = v;
+      if (it.category === 'bev' && I.sub && I.sub !== 'all' && subOf(it) !== I.sub) I.sub = 'all';   // moved to Beer/Wine/Liquor/N/A: keep it in view
+      status('Moving to ' + v + '…', 'dirty');
+      saveItems([it]).then(function () { status('Moved ' + showName(it) + ' to ' + v + '.', 'ok'); }, function (e) { it.section = old; render(); saveErr(e); });
+      render(); if (sc) sc.scrollTop = y;
+      var row = I.el.querySelector('[data-oh="' + it.id + '"]'); if (row) { var tr = row.closest('tr'); tr.classList.add('iv-moved'); tr.scrollIntoView({ block: 'center' }); }
+    });
+    return sel;
+  }
   // the par, typed right on the sheet; saves on Enter or when you leave the box
   function parInput(it, after) {
     var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'iv-par', value: qty(it.par), 'aria-label': 'Par: ' + showName(it), autocomplete: 'off', title: 'Par: how much to keep on hand' });
