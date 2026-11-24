@@ -296,7 +296,7 @@
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
       h('td', { cls: 'iv-unit', text: unitText(it) }),
-      h('td', { cls: 'r', text: qty(it.par) }),
+      h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); })),
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
       order,
@@ -317,6 +317,29 @@
     return tr;
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
+  // the par, typed right on the sheet; saves on Enter or when you leave the box
+  function parInput(it, after) {
+    var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'iv-par', value: qty(it.par), 'aria-label': 'Par: ' + showName(it), autocomplete: 'off', title: 'Par: how much to keep on hand' });
+    inp.addEventListener('focus', function () { inp.select(); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var all = [].slice.call(I.el.querySelectorAll('.iv-par')).filter(function (x) { return x.closest('tr').style.display !== 'none'; });
+        var i = all.indexOf(inp) + (e.key === 'ArrowUp' ? -1 : 1);
+        if (all[i]) { all[i].focus(); } else inp.blur();
+      } else if (e.key === 'Escape') { inp.value = qty(it.par); inp.blur(); }
+    });
+    inp.addEventListener('change', function () {
+      var t = inp.value.trim(), v = t === '' ? null : num(t);
+      if (t !== '' && (v == null || v < 0)) { inp.classList.add('bad'); return; }
+      inp.classList.remove('bad');
+      if (v === it.par || (v != null && it.par != null && +it.par === v)) return;
+      var old = it.par; it.par = v; after();
+      status('Saving par…', 'dirty');
+      saveItems([it]).then(function () { status('Par saved', 'ok'); }, function (e) { it.par = old; inp.value = qty(old); after(); saveErr(e); });
+    });
+    return inp;
+  }
   function nameInput(it) {
     var field = nameField(it);
     var used = recipesFor(it.id).map(function (x) { return x.name; }).join(', ');
