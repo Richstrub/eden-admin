@@ -3387,3 +3387,8 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 /* beverages: how each is on the menu, printed at the far right of "Print this page" */
 .iv-pmenu{display:none}
 @media print{#viewInventory .iv-table th.iv-pmenu,#viewInventory .iv-table td.iv-pmenu{display:table-cell!important;max-width:1.8in;white-space:normal}}
+/* beverages: On the menu + Cost % at the far right, on screen and on paper */
+.iv-pmenu{display:table-cell;font-size:.84rem;color:#4a4e53;min-width:150px}
+.iv-pcog{font-size:.84rem;white-space:nowrap;font-variant-numeric:tabular-nums;color:#4a4e53}
+.iv-pcog.hi{color:#a3392b}
+@media print{#viewInventory .iv-table th.iv-pcog,#viewInventory .iv-table td.iv-pcog{display:table-cell!important}}

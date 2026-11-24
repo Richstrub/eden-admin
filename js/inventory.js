@@ -232,14 +232,16 @@
 
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
-    I.showCost = !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
-    var ncol = (I.showCost ? 13 : 11) + (I.cat === 'food' ? 1 : 0) + (I.cat === 'bev' ? 1 : 0);
+    // beverages: "On the menu" and "Cost %" sit at the far right instead of mid-table
+    I.showCost = I.cat !== 'bev' && !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
+    var ncol = (I.showCost ? 13 : 11) + (I.cat === 'food' ? 1 : 0) + (I.cat === 'bev' ? 2 : 0);
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
       h('th', { cls: 'iv-name', text: 'Item', title: I.cat === 'food' ? 'Your name for it — click to type. Recipes use this name.' : null }), I.cat === 'food' ? h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What the newest invoice calls it' }) : null, h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
-      h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' }), I.cat === 'bev' ? h('th', { cls: 'iv-pmenu', text: 'On the menu' }) : null
+      h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' }), I.cat === 'bev' ? h('th', { cls: 'iv-pmenu', text: 'On the menu' }) : null,
+      I.cat === 'bev' && window.EdenCosting ? h('th', { cls: 'iv-pcog', text: 'Cost %', title: 'Cost of goods: cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null
     ])));
     I.menuAll = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
     var lastSec = null, tb = null;
@@ -253,7 +255,7 @@
       }
       tb.appendChild(itemRow(it, prev));
     });
-    var foot = h('tfoot', null, h('tr', null, [h('td', { colspan: String(ncol - 2 - (I.cat === 'bev' ? 1 : 0) - (I.showCost ? 2 : 0)), text: 'Total value on hand' }), I.showCost ? h('td', { cls: 'iv-menu' }) : null, I.showCost ? h('td', { cls: 'iv-pct' }) : null, h('td', { cls: 'r', id: 'ivTotal', text: money(value) }), h('td', { cls: 'iv-tool' }), I.cat === 'bev' ? h('td', { cls: 'iv-pmenu' }) : null]));
+    var foot = h('tfoot', null, h('tr', null, [h('td', { colspan: String(ncol - 2 - (I.cat === 'bev' ? 2 : 0) - (I.showCost ? 2 : 0)), text: 'Total value on hand' }), I.showCost ? h('td', { cls: 'iv-menu' }) : null, I.showCost ? h('td', { cls: 'iv-pct' }) : null, h('td', { cls: 'r', id: 'ivTotal', text: money(value) }), h('td', { cls: 'iv-tool' }), I.cat === 'bev' ? h('td', { cls: 'iv-pmenu' }) : null, I.cat === 'bev' && window.EdenCosting ? h('td', { cls: 'iv-pcog' }) : null]));
     table.appendChild(foot);
     wrap.appendChild(h('div', { cls: 'sc-scroll iv-scroll' }, table));
     wrap.appendChild(h('div', { cls: 'iv-more' }, moreTools()));
@@ -300,7 +302,7 @@
       food ? h('td', { cls: 'iv-inv', title: invName(it), text: invName(it) }) : null,
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
-      h('td', { cls: 'iv-unit', text: it.unit || '' }),
+      h('td', { cls: 'iv-unit', text: unitText(it) }),
       h('td', { cls: 'r', text: qty(it.par) }),
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
@@ -314,7 +316,8 @@
       I.showCost ? h('td', { cls: 'iv-pct' + (cc && cc.worst >= 0.35 ? ' hi' : ''), title: tip, text: cc ? cc.pct : '' }) : null,
       val,
       h('td', { cls: 'iv-tool' }, h('button', { type: 'button', cls: 'iv-edit', 'aria-label': 'Edit ' + it.name, title: 'Edit item', text: '✎', on: { click: function () { editItem(it); } } })),
-      I.cat === 'bev' ? h('td', { cls: 'iv-pmenu', text: onMenuText(it, I.menuAll || []) }) : null
+      I.cat === 'bev' ? h('td', { cls: 'iv-pmenu', text: onMenuText(it, I.menuAll || []) }) : null,
+      I.cat === 'bev' && window.EdenCosting ? (function () { var b = window.EdenCosting.cells(it, I.menuAll || []); return h('td', { cls: 'iv-pcog' + (b && b.worst >= 0.35 ? ' hi' : ''), title: b ? b.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '', text: b ? b.pct : '' }); })() : null
     ]);
     refresh();
     return tr;
@@ -1277,17 +1280,17 @@
         var ia = order.indexOf(a.section), ib = order.indexOf(b.section); if (ia < 0) ia = 999; if (ib < 0) ib = 999;
         return sa - sb || ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
       });
-      var cols = '<th class="it">Item</th><th class="u">Unit</th>' + (o.vendor ? '<th class="v">Vendor</th>' : '') + (o.par ? '<th class="p">Par</th>' : '') + (o.last ? '<th class="l">Last' + (last ? '<small>' + esc(last.count_date.slice(5).replace('-', '/')) + '</small>' : '') + '</th>' : '') + '<th class="c">Count</th><th class="nt">Notes</th>' + (cid === 'bev' ? '<th class="mn">On the menu</th>' : '');
-      var ncol = 4 + (cid === 'bev' ? 1 : 0) + (o.vendor ? 1 : 0) + (o.par ? 1 : 0) + (o.last ? 1 : 0);
+      var cols = '<th class="it">Item</th><th class="u">Unit</th>' + (o.vendor ? '<th class="v">Vendor</th>' : '') + (o.par ? '<th class="p">Par</th>' : '') + (o.last ? '<th class="l">Last' + (last ? '<small>' + esc(last.count_date.slice(5).replace('-', '/')) + '</small>' : '') + '</th>' : '') + '<th class="c">Count</th><th class="nt">Notes</th>' + (cid === 'bev' ? '<th class="mn">On the menu</th><th class="pc">Cost %</th>' : '');
+      var ncol = 4 + (cid === 'bev' ? 2 : 0) + (o.vendor ? 1 : 0) + (o.par ? 1 : 0) + (o.last ? 1 : 0);
       var body = '', curSub = null, curSec = null;
       items.forEach(function (it) {
         if (cid === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; body += '<tr class="sub"><td colspan="' + ncol + '">' + esc(SUBN[curSub] || curSub) + '</td></tr>'; }
         if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; body += '<tr class="sec"><td colspan="' + ncol + '">' + esc(curSec) + '</td></tr>'; }
         var lv = last && last.counts[it.id] != null ? last.counts[it.id] : null;
         var nm = showName(it), iv = cid === 'food' ? invName(it) : '';
-        body += '<tr><td class="it">' + esc(nm) + (iv && keyOf(iv) !== keyOf(nm) ? '<small>' + esc(iv) + '</small>' : '') + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(it.unit) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn">' + esc(onMenuText(it, mlist)) + '</td>' : '') + '</tr>';
+        body += '<tr><td class="it">' + esc(nm) + (iv && keyOf(iv) !== keyOf(nm) ? '<small>' + esc(iv) + '</small>' : '') + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(unitText(it)) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn">' + esc(onMenuText(it, mlist)) + '</td><td class="pc">' + esc(cogText(it, mlist)) + '</td>' : '') + '</tr>';
       });
-      for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn"></td>' : '') + '</tr>';
+      for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td>' + (cid === 'bev' ? '<td class="mn"></td><td class="pc"></td>' : '') + '</tr>';
       return '<section class="page"><header><div><h1>Eden · ' + esc(c.label) + ' inventory</h1><span>' + items.length + ' items · write in anything missing at the end</span></div><div class="who"><span>Date <i></i></span><span>Counted by <i></i></span></div></header>' +
         '<table><thead><tr>' + cols + '</tr></thead><tbody>' + body + '</tbody></table></section>';
     }).join('');
@@ -1299,7 +1302,7 @@
       'table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{font-size:6.5pt;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1.5px solid #111;padding:2px 4px}th small{display:block;font-weight:400;letter-spacing:0;text-transform:none}' +
       'td{border-bottom:1px solid #bbb;padding:1px 4px;vertical-align:middle;height:.2in}tr{break-inside:avoid;page-break-inside:avoid}' +
       'td.it small{color:#666;font-size:6.5pt;margin-left:5px}td.u,td.p,td.l,td.v{color:#444;font-size:7.5pt;white-space:nowrap}td.p,td.l,th.p,th.l{text-align:right;width:.55in}' +
-      'td.c,th.c{width:.75in;text-align:center}td.c{border:1px solid #111;background:#fff}td.nt,th.nt{width:1.3in}td.mn,th.mn{width:1.7in;font-size:7pt;color:#333}th.mn{font-size:6.5pt;color:#111}table:has(th.mn) td.nt,table:has(th.mn) th.nt{width:.9in}' +
+      'td.c,th.c{width:.75in;text-align:center}td.c{border:1px solid #111;background:#fff}td.nt,th.nt{width:1.3in}td.mn,th.mn{width:1.45in;font-size:7pt;color:#333}td.pc,th.pc{width:.95in;font-size:7pt;color:#333}th.mn,th.pc{font-size:6.5pt;color:#111}table:has(th.mn) td.nt,table:has(th.mn) th.nt{width:.7in}' +
       'tr.sec td{background:#eee;font-weight:700;font-size:7pt;text-transform:uppercase;letter-spacing:.06em;height:auto;padding:2px 4px;border-bottom:1px solid #111}' +
       'tr.sub td{font:600 10.5pt Georgia,serif;height:auto;padding:7px 4px 2px;border-bottom:2px solid #111}' +
       '.backside{break-before:page;page-break-before:always;break-after:page;page-break-after:always;height:9.5in;display:flex;align-items:center;justify-content:center;color:#999;font-size:9pt}' +
@@ -1312,6 +1315,22 @@
     w.document.open(); w.document.write(html); w.document.close();
   }
   // how a beverage is on the menu right now (hidden menu items don't count): "$16 glass · $56 bottle · in Negroni"
+  function cogText(it, list) { var b = window.EdenCosting ? window.EdenCosting.cells(it, list) : null; return b ? b.pct : ''; }
+  // beverages: the counting unit with the bottle size when the pack or name gives one — "bottle · 750 ml", "bottle · 1 L"
+  function unitText(it) {
+    var u = it.unit || '';
+    if (it.category !== 'bev') return u;
+    var t = String((it.pack || '') + ' ' + (it.name || '')).toLowerCase(), m, size = '';
+    if ((m = t.match(/(\d+(?:\.\d+)?)\s*ml\b/))) size = +m[1] >= 1000 ? +m[1] / 1000 + ' L' : m[1] + ' ml';
+    else if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre)\b/))) size = m[1] + ' L';
+    else if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:fl\.?\s*)?oz\b/))) size = m[1] + ' oz';
+    else if (/magnum/.test(t)) size = '1.5 L';
+    else if (/\b(1\/2|half)\s*(bbl|barrel|keg)|1\/2\s*keg/.test(t)) size = '½ keg';
+    else if (/\b(1\/6|sixtel)/.test(t)) size = '⅙ keg';
+    else if (/^(bottle|btl|bottles)$/i.test(u) && subOf(it) === 'wine') size = '750 ml';
+    if (!size || u.toLowerCase().indexOf(size.toLowerCase()) !== -1) return u;
+    return u ? u + ' · ' + size : size;
+  }
   function onMenuText(it, list) {
     if (!window.EdenCosting) return '';
     var C = window.EdenCosting, sv = C.servings(it, list);
