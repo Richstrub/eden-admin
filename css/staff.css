@@ -3358,3 +3358,29 @@ tr.mc-none th b{color:#6b665e}
 .sc-removed{margin-top:16px;border:1px solid #e6dfd3;border-radius:12px;padding:10px 14px;background:#fff}.sc-removed summary{cursor:pointer;font-weight:600}
 .sc-removed ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}.sc-removed li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border-top:1px solid #f0ebe3}
 .sc-removed li div:first-child{display:grid}.sc-removed li span{font-size:.8rem;color:#7a7d81}.sc-rbtns{display:flex;gap:6px;flex-wrap:wrap}
+/* food sheet: type your own item name; what the invoice calls it sits beside it */
+.iv-table input.iv-nameinp{width:100%;min-width:150px;border:1px solid transparent!important;background:transparent;box-shadow:none;font:inherit;color:var(--ink);padding:4px 6px;margin:-4px -6px;border-radius:6px}
+.iv-table input.iv-nameinp:hover{border-color:var(--line)!important}
+.iv-table input.iv-nameinp:focus{border-color:var(--ember)!important;background:#fff;outline:0}
+.iv-nameinp::placeholder{color:#9a9da1;font-style:italic}
+.iv-name .iv-nameinp+small{display:block;margin-top:2px}
+td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media print{
+  @page{size:letter portrait;margin:.3in}
+  #viewInventory .iv-table{font-size:7pt;line-height:1.15}
+  #viewInventory .iv-table th{font-size:6pt;padding:2px 3px}
+  #viewInventory .iv-table td{padding:1px 3px}
+  #viewInventory .iv-sec td{padding:3px 3px 1px;font-size:7pt}
+  #viewInventory .iv-printhead{font-size:9pt;padding-bottom:3px;margin-bottom:4px}
+  #viewInventory .iv-oh{width:42px;font-size:7pt;padding:0 2px}
+  #viewInventory .iv-nameinp{border:0;padding:0;margin:0;min-width:0;font-size:7pt}
+  #viewInventory .iv-table td,#viewInventory .iv-table td *{font-size:7pt!important}
+  #viewInventory .iv-table td small,#viewInventory td.iv-inv{font-size:6pt!important}
+  #viewInventory .iv-name small,#viewInventory .iv-name .iv-nameinp+small{display:inline;margin:0 0 0 4px}
+  #viewInventory .iv-table input.iv-nameinp{width:auto;display:inline;border:0;padding:0;margin:0;min-width:0}
+  #viewInventory .iv-sec b{font-size:8pt!important}
+  #viewInventory .iv-table tfoot td{padding:3px;font-size:8pt!important}
+  #viewInventory td.iv-inv{font-size:6.5pt;max-width:1.6in}
+  #viewInventory .iv-cpo,#viewInventory .iv-menu,#viewInventory .iv-pct{display:none!important}
+  #viewInventory .iv-audit,#viewInventory .iv-tool{display:none!important}
+}

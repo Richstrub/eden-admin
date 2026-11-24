@@ -113,7 +113,7 @@
       var move = I.items.filter(function (it) { return it.category === 'food' && NA_RE.test(String(it.section || '')); });
       if (move.length) { move.forEach(function (it) { it.category = 'bev'; }); saveItems(move).then(function () { status('Moved ' + move.length + ' soft drink, juice, coffee and tea item' + (move.length === 1 ? '' : 's') + ' to Beverages → N/A.', 'ok'); }, function () {}); }
       I.settingsOn = !!res[4];
-      return Promise.all([loadAlerts(), loadAudit()]);
+      return Promise.all([loadAlerts(), loadAudit(), loadInvLines()]);
     }, function (e) {
       I.loading = false; I.loaded = true;
       if (isMissing(e)) I.missing = true;
@@ -236,7 +236,7 @@
     var ncol = (I.showCost ? 13 : 11) + (I.cat === 'food' ? 1 : 0);
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
-      h('th', { cls: 'iv-name', text: 'Item' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), I.cat === 'food' ? h('th', { cls: 'iv-rec', text: 'Ingredient name' }) : null, h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'iv-name', text: 'Item', title: I.cat === 'food' ? 'Your name for it — click to type. Recipes use this name.' : null }), I.cat === 'food' ? h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What the newest invoice calls it' }) : null, h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' })
@@ -291,13 +291,15 @@
     inp.addEventListener('focus', function () { inp.select(); });
     var cc = I.showCost ? window.EdenCosting.cells(it, I.menuList) : null;
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
-    var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
-      h('td', { cls: 'iv-name' }, [h('button', { type: 'button', cls: 'iv-namebtn', title: 'Edit item', text: it.name, on: { click: function () { editItem(it); } } }),
+    var food = I.cat === 'food';
+    var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + (food ? invName(it) : '') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
+      food ? h('td', { cls: 'iv-name' }, [nameInput(it), it.pack ? h('small', { text: it.pack }) : null])
+        : h('td', { cls: 'iv-name' }, [h('button', { type: 'button', cls: 'iv-namebtn', title: 'Edit item', text: it.name, on: { click: function () { editItem(it); } } }),
         it.pack ? h('small', { text: it.pack }) : null]),
+      food ? h('td', { cls: 'iv-inv', title: invName(it), text: invName(it) }) : null,
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
       h('td', { cls: 'iv-unit', text: it.unit || '' }),
-      I.cat === 'food' ? h('td', { cls: 'iv-rec', title: recipesFor(it.id).map(function (x) { return x.name; }).join(', ') ? 'Used in: ' + recipesFor(it.id).map(function (x) { return x.name; }).join(', ') : 'Not in a recipe yet' }, it.ingredient ? h('span', { text: it.ingredient }) : h('span', { cls: 'iv-none', text: '—' })) : null,
       h('td', { cls: 'r', text: qty(it.par) }),
       h('td', { cls: 'r iv-last', text: qty(last) }),
       h('td', { cls: 'r iv-ohc' }, inp),
@@ -314,6 +316,25 @@
     ]);
     refresh();
     return tr;
+  }
+  // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
+  function nameInput(it) {
+    var field = I.ingCol ? 'ingredient' : 'name';
+    var used = recipesFor(it.id).map(function (x) { return x.name; }).join(', ');
+    var inp = h('input', { type: 'text', cls: 'iv-nameinp', value: showName(it), placeholder: it.name, 'aria-label': 'Item name: ' + it.name, autocomplete: 'off', spellcheck: 'false',
+      title: used ? 'Used in: ' + used : 'Type your name for this item' });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } else if (e.key === 'Escape') { inp.value = showName(it); inp.blur(); } });
+    inp.addEventListener('change', function () {
+      var v = inp.value.trim().replace(/\s+/g, ' ');
+      if (field === 'name' && !v) { inp.value = it.name; return; }
+      var old = it[field];
+      if ((old || '') === v) return;
+      it[field] = v;
+      if (!v) inp.value = showName(it);
+      status('Saving…', 'dirty');
+      saveItems([it]).then(function () { status('Saved', 'ok'); }, function (e) { it[field] = old; inp.value = showName(it); saveErr(e); });
+    });
+    return inp;
   }
   function totals() {
     var value = 0, counted = 0, below = 0, items = catItems();
@@ -565,6 +586,16 @@
   }
 
   /* ---------- price changes from invoices (supabase/inventory-costing.sql): an alert until someone marks them seen ---------- */
+  // what each item is called on its newest invoice (by invoice date), for the food sheet's "On the invoice" column
+  function loadInvLines() {
+    return sb().from('inventory_prices').select('item_id,invoice_line,price_date,created_at').order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(5000).then(function (r) {
+      if (r.error) return;
+      var m = {}; (r.data || []).forEach(function (p) { if (p.invoice_line && !m[p.item_id]) m[p.item_id] = p.invoice_line; });
+      I.invLine = m;
+    }, function () {});
+  }
+  function invName(it) { return (I.invLine && I.invLine[it.id]) || it.name || ''; }
+  function showName(it) { return it.category === 'food' && I.ingCol ? (it.ingredient || it.name || '') : (it.name || ''); }
   function loadAlerts() {
     var since = new Date(Date.now() - 90 * 864e5).toISOString();
     return sb().from('inventory_prices').select('id,item_id,price_date,vendor,unit_cost,old_cost,created_at').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', since).order('created_at', { ascending: false }).limit(200).then(function (r) {
@@ -1250,28 +1281,29 @@
         if (cid === 'bev' && subOf(it) !== curSub) { curSub = subOf(it); curSec = null; body += '<tr class="sub"><td colspan="' + ncol + '">' + esc(SUBN[curSub] || curSub) + '</td></tr>'; }
         if ((it.section || 'Other') !== curSec) { curSec = it.section || 'Other'; body += '<tr class="sec"><td colspan="' + ncol + '">' + esc(curSec) + '</td></tr>'; }
         var lv = last && last.counts[it.id] != null ? last.counts[it.id] : null;
-        body += '<tr><td class="it">' + esc(it.name) + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(it.unit) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td></tr>';
+        var nm = showName(it), iv = cid === 'food' ? invName(it) : '';
+        body += '<tr><td class="it">' + esc(nm) + (iv && keyOf(iv) !== keyOf(nm) ? '<small>' + esc(iv) + '</small>' : '') + (it.pack ? '<small>' + esc(it.pack) + '</small>' : '') + '</td><td class="u">' + esc(it.unit) + '</td>' + (o.vendor ? '<td class="v">' + esc(it.vendor) + '</td>' : '') + (o.par ? '<td class="p">' + num(it.par) + '</td>' : '') + (o.last ? '<td class="l">' + num(lv) + '</td>' : '') + '<td class="c"></td><td class="nt"></td></tr>';
       });
       for (var i = 0; i < 4; i++) body += '<tr class="blank"><td class="it"></td><td class="u"></td>' + (o.vendor ? '<td></td>' : '') + (o.par ? '<td></td>' : '') + (o.last ? '<td></td>' : '') + '<td class="c"></td><td class="nt"></td></tr>';
       return '<section class="page"><header><div><h1>Eden · ' + esc(c.label) + ' inventory</h1><span>' + items.length + ' items · write in anything missing at the end</span></div><div class="who"><span>Date <i></i></span><span>Counted by <i></i></span></div></header>' +
         '<table><thead><tr>' + cols + '</tr></thead><tbody>' + body + '</tbody></table></section>';
     }).join('');
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden inventory count sheet</title><style>' +
-      '@page{size:letter;margin:.45in}body{font:10pt/1.25 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '@page{size:letter;margin:.35in}body{font:8.5pt/1.2 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
       '.page{break-after:page;page-break-after:always}.page:last-child{break-after:auto;page-break-after:auto}' +
-      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;gap:16px}header h1{font:600 17pt Georgia,serif;margin:0}header span{font-size:8.5pt;color:#555}' +
+      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;gap:16px}header h1{font:600 13pt Georgia,serif;margin:0}header span{font-size:8.5pt;color:#555}' +
       '.who{display:flex;gap:16px}.who span{font-size:9pt;color:#111;display:flex;align-items:flex-end;gap:6px}.who i{display:inline-block;width:1.3in;border-bottom:1px solid #111;height:14px}' +
-      'table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1.5px solid #111;padding:4px 6px}th small{display:block;font-weight:400;letter-spacing:0;text-transform:none}' +
-      'td{border-bottom:1px solid #bbb;padding:4px 6px;vertical-align:middle;height:.27in}tr{break-inside:avoid;page-break-inside:avoid}' +
-      'td.it small{color:#666;font-size:7.5pt;margin-left:6px}td.u,td.p,td.l,td.v{color:#444;font-size:8.5pt;white-space:nowrap}td.p,td.l,th.p,th.l{text-align:right;width:.55in}' +
-      'td.c,th.c{width:.85in;text-align:center}td.c{border:1.5px solid #111;background:#fff}td.nt,th.nt{width:1.6in}' +
-      'tr.sec td{background:#eee;font-weight:700;font-size:8.5pt;text-transform:uppercase;letter-spacing:.06em;height:auto;padding:5px 6px;border-bottom:1px solid #111}' +
-      'tr.sub td{font:600 13pt Georgia,serif;height:auto;padding:12px 6px 4px;border-bottom:2px solid #111}' +
+      'table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{font-size:6.5pt;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1.5px solid #111;padding:2px 4px}th small{display:block;font-weight:400;letter-spacing:0;text-transform:none}' +
+      'td{border-bottom:1px solid #bbb;padding:1px 4px;vertical-align:middle;height:.2in}tr{break-inside:avoid;page-break-inside:avoid}' +
+      'td.it small{color:#666;font-size:6.5pt;margin-left:5px}td.u,td.p,td.l,td.v{color:#444;font-size:7.5pt;white-space:nowrap}td.p,td.l,th.p,th.l{text-align:right;width:.55in}' +
+      'td.c,th.c{width:.75in;text-align:center}td.c{border:1px solid #111;background:#fff}td.nt,th.nt{width:1.3in}' +
+      'tr.sec td{background:#eee;font-weight:700;font-size:7pt;text-transform:uppercase;letter-spacing:.06em;height:auto;padding:2px 4px;border-bottom:1px solid #111}' +
+      'tr.sub td{font:600 10.5pt Georgia,serif;height:auto;padding:7px 4px 2px;border-bottom:2px solid #111}' +
       '.backside{break-before:page;page-break-before:always;break-after:page;page-break-after:always;height:9.5in;display:flex;align-items:center;justify-content:center;color:#999;font-size:9pt}' +
       '@media screen{body{width:7.6in;margin:0 auto}}' +
       '</style></head><body>' + pages +
       // printed two-sided, each sheet starts on the front of a new piece of paper: after a sheet with an odd number of pages, add a blank back
-      '<script>window.onload=function(){var H=10.1*96,ps=[].slice.call(document.querySelectorAll(".page"));ps.forEach(function(p,i){if(i===ps.length-1)return;var th=p.querySelector("thead"),hh=th?th.offsetHeight:0,h=p.offsetHeight,n=Math.ceil(h/H);n=Math.ceil((h+(n-1)*hh)/H);if(n%2===1){var b=document.createElement("div");b.className="backside";b.textContent="This side intentionally left blank";p.parentNode.insertBefore(b,p.nextSibling);}});setTimeout(function(){window.print()},250)}<\/script></body></html>';
+      '<script>window.onload=function(){var H=10.3*96,ps=[].slice.call(document.querySelectorAll(".page"));ps.forEach(function(p,i){if(i===ps.length-1)return;var th=p.querySelector("thead"),hh=th?th.offsetHeight:0,h=p.offsetHeight,n=Math.ceil(h/H);n=Math.ceil((h+(n-1)*hh)/H);if(n%2===1){var b=document.createElement("div");b.className="backside";b.textContent="This side intentionally left blank";p.parentNode.insertBefore(b,p.nextSibling);}});setTimeout(function(){window.print()},250)}<\/script></body></html>';
     var w = window.open('', '_blank');
     if (!w) return false;
     w.document.open(); w.document.write(html); w.document.close();
