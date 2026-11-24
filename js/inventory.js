@@ -2151,7 +2151,7 @@
       extra = h('div', null, [h('h3', { text: 'For recipes' }), h('p', { cls: 'iv-muted', text: 'Each item’s cost per lb / oz / g is on its row (under Cost) and in its Edit window.' }),
         dear.length ? h('p', { cls: 'iv-muted', text: dear.length + ' items have a recipe cost per weight.' }) : null]);
     }
-    var open = I.cpOpen !== false;
+    var open = !!I.cpOpen;   // starts folded up: the arrow opens it
     var body = h('div', { cls: 'iv-pbody', hidden: !open }, [
       h('div', { cls: 'iv-pboxes iv-pboxes4' }, boxes),
       h('div', { cls: 'iv-rgrid' }, [
@@ -2163,8 +2163,9 @@
       stale.length ? h('details', { cls: 'iv-stale' }, [h('summary', { text: stale.length + ' cost' + (stale.length === 1 ? '' : 's') + ' not updated from an invoice in 90+ days' }),
         h('ul', { cls: 'iv-rlist2' }, stale.slice(0, 80).map(function (s) { return h('li', null, [link(s.it), ' · ' + money(+s.it.cost) + (s.it.unit ? ' / ' + s.it.unit : '') + ' · ' + (s.last ? 'last invoice ' + shortDay(s.last.price_date) : 'typed in, never from an invoice')]); }))]) : null
     ]);
-    var tog = h('button', { type: 'button', cls: 'ed-btn small', text: open ? 'Hide' : 'Show', on: { click: function () { I.cpOpen = body.hidden; body.hidden = !body.hidden; tog.textContent = body.hidden ? 'Show' : 'Hide'; } } });
-    return h('div', { cls: 'is-bar iv-pricing iv-cpricing' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: 'Pricing · ' + catOf(cid).label + (cid === 'bev' && I.sub && I.sub !== 'all' ? ' · ' + SUBN_UI[I.sub] : '') }), h('span', { text: pctOf(withCost, items.length) + '% have a cost · ' + changes.length + ' price change' + (changes.length === 1 ? '' : 's') + ' in 90 days · ' + stale.length + ' not updated in 90+ days' })]), tog]), body]);
+    var tog = h('button', { type: 'button', cls: 'iv-chev', 'aria-expanded': open ? 'true' : 'false', 'aria-label': open ? 'Hide pricing detail' : 'Show pricing detail', title: open ? 'Hide the detail' : 'Show the detail' });
+    function flip() { I.cpOpen = body.hidden; body.hidden = !body.hidden; tog.setAttribute('aria-expanded', body.hidden ? 'false' : 'true'); tog.setAttribute('aria-label', body.hidden ? 'Show pricing detail' : 'Hide pricing detail'); tog.title = body.hidden ? 'Show the detail' : 'Hide the detail'; }
+    return h('div', { cls: 'is-bar iv-pricing iv-cpricing' }, [h('div', { cls: 'is-bar-h iv-fold', on: { click: function (e) { if (e.target.closest('a,input,select')) return; flip(); } } }, [h('div', null, [h('b', { text: 'Pricing · ' + catOf(cid).label + (cid === 'bev' && I.sub && I.sub !== 'all' ? ' · ' + SUBN_UI[I.sub] : '') }), h('span', { text: pctOf(withCost, items.length) + '% have a cost · ' + changes.length + ' price change' + (changes.length === 1 ? '' : 's') + ' in 90 days · ' + stale.length + ' not updated in 90+ days' })]), tog]), body]);
   }
   function removeItem(it) {
     if (!confirm('Remove “' + showName(it) + '” from the ' + catOf(it.category).label.toLowerCase() + ' inventory? Past counts for it are kept but won’t show.')) return;

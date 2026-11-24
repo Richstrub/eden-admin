@@ -3569,3 +3569,9 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-h1row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .iv-sec .iv-secadd{float:none;margin-left:12px;vertical-align:baseline}
 @media print{.iv-h1row .ed-btn{display:none!important}}
+/* folding bar: click it (or the arrow) to open the detail */
+.iv-fold{cursor:pointer;user-select:none;-webkit-user-select:none}
+.iv-chev{flex:none;width:34px;height:34px;border:1px solid rgba(0,0,0,.12);border-radius:50%;background:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:#5d5952;padding:0}
+.iv-chev::before{content:"";width:9px;height:9px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .2s ease}
+.iv-chev[aria-expanded=true]::before{transform:translateY(2px) rotate(-135deg)}
+.iv-fold:hover .iv-chev{border-color:var(--ember);color:var(--ember)}
