@@ -145,6 +145,59 @@
       if (!I.pending) status('Count saved.', 'ok');
     });
   }
+  // save the count now (not on the timer) and tell how it went
+  function saveNow() {
+    clearTimeout(I.saveT);
+    return new Promise(function (res) {
+      (function go() {
+        if (I.saving) { setTimeout(go, 200); return; }
+        var r = countRow(); if (!r) { I.pending = false; res(null); return; }
+        I.saving = true; I.pending = false;
+        sb().from('inventory_counts').upsert({ id: r.id, category: r.category, count_date: r.count_date, counts: r.counts, counted_by: r.counted_by || '' }, { onConflict: 'id' }).then(function (x) {
+          I.saving = false; if (x.error) { I.pending = true; res({ error: x.error }); } else res({ row: r });
+        }, function (e) { I.saving = false; I.pending = true; res({ error: e }); });
+      })();
+    });
+  }
+  function startCount() {
+    flush();
+    var cat = catOf(I.cat), d = h('input', { type: 'date', value: iso(new Date()) }), info = h('p', { cls: 'sc-sub' });
+    function paint() {
+      var r = I.counts.filter(function (c) { return c.category === I.cat && c.count_date === d.value; })[0], n = r ? Object.keys(r.counts || {}).length : 0;
+      info.textContent = n ? 'There’s already a ' + cat.label.toLowerCase() + ' count for that day with ' + n + ' item' + (n === 1 ? '' : 's') + ' in it. Starting opens it so you can keep going.' : 'Every On hand box starts empty. The last count shows beside each item.';
+      clr.hidden = !n;
+    }
+    var clr = h('button', { type: 'button', cls: 'ed-btn small danger', text: 'Clear that count and start over', on: { click: function () {
+      var r = I.counts.filter(function (c) { return c.category === I.cat && c.count_date === d.value; })[0]; if (!r) return;
+      if (!confirm('Clear the ' + dayLabel(d.value) + ' ' + cat.label.toLowerCase() + ' count? What was typed for that day is erased.')) return;
+      r.counts = {}; I.date = d.value; saveNow().then(function () { m.close(); render(); focusFirst(); status('Cleared. Start counting.', 'ok'); });
+    } } });
+    d.addEventListener('change', paint);
+    var m = modal('Start a new inventory · ' + cat.label, [lbl('Count date', d), info],
+      [clr, h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Start counting', on: { click: function () { if (!d.value) return; I.date = d.value; I.filter = ''; m.close(); render(); focusFirst(); status('Counting ' + cat.label.toLowerCase() + ' for ' + dayLabel(I.date) + '. Type what’s on hand; it saves as you go.', 'ok'); } } })]);
+    paint();
+  }
+  function focusFirst() { var f = I.el.querySelector('.iv-oh'); if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } }
+  function saveInventory() {
+    var cat = catOf(I.cat), items = catItems();
+    status('Saving the inventory…', 'dirty');
+    saveNow().then(function (x) {
+      if (!x) { status('Nothing counted yet for ' + dayLabel(I.date) + '.', 'err'); return; }
+      if (x.error) { saveErr(x.error); return; }
+      var r = x.row, counted = items.filter(function (it) { return r.counts[it.id] != null; }), left = items.filter(function (it) { return r.counts[it.id] == null; });
+      var val = counted.reduce(function (a, it) { return a + (hasCost(it) ? r.counts[it.id] * +it.cost : 0); }, 0);
+      var below = counted.filter(function (it) { return it.par != null && r.counts[it.id] < +it.par; }).length;
+      status('Inventory saved.', 'ok');
+      var m = modal('Inventory saved · ' + cat.label, [
+        h('p', { cls: 'iv-pcalc', text: money(val) + ' on hand' }),
+        h('p', { cls: 'sc-sub', text: dayLabel(I.date) + ' · ' + counted.length + ' of ' + items.length + ' counted' + (below ? ' · ' + below + ' below par' : '') + (r.counted_by ? ' · counted by ' + r.counted_by : '') }),
+        left.length ? h('div', null, [h('b', { text: left.length + ' not counted' }), h('ul', { cls: 'iv-rlist2' }, left.slice(0, 25).map(function (it) { return h('li', { text: showName(it) + (it.section ? ' · ' + it.section : '') }); }).concat(left.length > 25 ? [h('li', { cls: 'iv-muted', text: '…and ' + (left.length - 25) + ' more' })] : []))]) : h('p', { text: 'Every item is counted.' })
+      ], [h('button', { type: 'button', cls: 'ed-btn small', text: 'Open the report', on: { click: function () { m.close(); report(I.date); } } }), h('span', { cls: 'sc-sp' }),
+        left.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Keep counting', on: { click: function () { m.close(); var it = left[0], inp = I.el.querySelector('[data-oh="' + it.id + '"]'); if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus(); } } } }) : null,
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })]);
+    });
+  }
   function setCount(it, v) {
     var r = countRow();
     if (!r) { r = { id: I.cat + ':' + I.date, category: I.cat, count_date: I.date, counts: {}, counted_by: I.ctx.name || '' }; I.counts.push(r); }
@@ -196,6 +249,11 @@
 
     wrap.appendChild(catPricing());
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Items & counts' }));
+    var curRow = countRow(), ncount = curRow ? Object.keys(curRow.counts || {}).length : 0;
+    wrap.appendChild(h('div', { cls: 'iv-startbar' }, [
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Start a new inventory', on: { click: startCount } }),
+      h('span', { text: 'Counting ' + cat.label.toLowerCase() + ' for ' + dayLabel(I.date) + (ncount ? ' · ' + ncount + ' counted so far' : ' · nothing counted yet') })
+    ]));
     var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
@@ -257,6 +315,10 @@
     var foot = h('tfoot', null, h('tr', null, [h('td', { colspan: String(ncol - 2 - (I.cat === 'bev' ? 2 : 0) - (I.showCost ? 2 : 0)), text: 'Total value on hand' }), I.showCost ? h('td', { cls: 'iv-menu' }) : null, I.showCost ? h('td', { cls: 'iv-pct' }) : null, h('td', { cls: 'r', id: 'ivTotal', text: money(value) }), h('td', { cls: 'iv-tool' }), I.cat === 'bev' ? h('td', { cls: 'iv-pmenu' }) : null, I.cat === 'bev' && window.EdenCosting ? h('td', { cls: 'iv-pcog' }) : null]));
     table.appendChild(foot);
     wrap.appendChild(h('div', { cls: 'sc-scroll iv-scroll' }, table));
+    wrap.appendChild(h('div', { cls: 'iv-savebar' }, [
+      h('span', { text: 'Counts save as you type. Save inventory makes sure everything is in, and shows what’s left.' }),
+      h('button', { type: 'button', cls: 'ed-btn iv-savebtn', text: 'Save inventory', on: { click: saveInventory } })
+    ]));
     wrap.appendChild(h('div', { cls: 'iv-more' }, moreTools()));
     // print header (only shows when printing)
     wrap.insertBefore(h('div', { cls: 'iv-printhead' }, [h('b', { text: 'EDEN · ' + cat.label + ' inventory' }), h('span', { text: dayLabel(I.date) + (cur && cur.counted_by ? ' · counted by ' + cur.counted_by : '') })]), wrap.firstChild);
