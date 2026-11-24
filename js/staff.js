@@ -175,7 +175,7 @@
     var calFocus = null;   // #calendar/e/<date>/<event id>: open the calendar on that day with the event showing (from Today)
     if (v.indexOf('calendar/e/') === 0) { var cm = /^calendar\/e\/(\d{4}-\d{2}-\d{2})\/(.*)$/.exec(v); if (cm) calFocus = { date: cm[1], id: decodeURIComponent(cm[2]) }; v = 'calendar'; }
     var invArg = '';
-    if (v.indexOf('inventory/') === 0) { invArg = v.slice(10); v = 'inventory'; }   // back from connecting the scanner's Google Drive folder
+    if (v.indexOf('inventory/') === 0) { invArg = v.slice(10); if (/^(food|beverages|dry)$/.test(invArg)) { sub = invArg; invArg = ''; } v = 'inventory'; }   // back from connecting the scanner's Google Drive folder
     var mailArg = '';
     if (v.indexOf('email/') === 0) { mailArg = v.slice(6); v = 'email'; }   // back from connecting a mailbox with Google
     if (!VIEWS[v] || ((v === 'schedule' || v === 'catering') && !isMgr()) || (v === 'menu' && role === 'scheduler') || ((v === 'prep' || v === 'inventory' || v === 'temps') && !canPrep()) || ((v === 'analytics' || v === 'payroll' || v === 'partners') && role !== 'owner') || (v === 'email' && !canMail()) || (v === 'eod' && !isMgr()) || (v === 'promo' && !isMgr()) || (v === 'employees' && !isMgr()) || (v === 'reviews' && !isMgr()) || (v === 'menucosts' && !isMgr()) || (SECT && SECT_OF[v] && SECT[SECT_OF[v]] === false)) { v = 'home'; sub = ''; }
@@ -193,7 +193,7 @@
     document.querySelectorAll('#app [data-view]').forEach(function (a) { var dv = a.getAttribute('data-view'); a.setAttribute('aria-current', (exact ? dv === full : dv === v) ? 'true' : 'false'); });
     $('edSave').hidden = v !== 'menu';
     $('printMenusBtn').hidden = v !== 'menu' || !window.EdenMenuPrint;
-    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll', past: 'Past payroll', products: 'Product sales' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'analytics' && sub === 'logins' ? 'Staff logins' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : '';
+    var pg = PAGES[v] || ['', ''], subName = v === 'payroll' ? ({ rates: 'Pay rates', week: 'Payroll', past: 'Past payroll', products: 'Product sales' }[sub] || '') : v === 'analytics' && sub === 'history' ? 'History' : v === 'analytics' && sub === 'logins' ? 'Staff logins' : v === 'eod' ? ({ past: 'Past reports', download: 'Download reports' }[sub] || (sub ? 'Report' : '')) : v === 'promo' ? (sub === 'list' ? 'Guest list' : sub ? 'Email' : '') : v === 'employees' && sub === 'permissions' ? 'Permissions' : v === 'inventory' ? ({ food: 'Food', beverages: 'Beverages', dry: 'Dry goods' }[sub] || '') : '';
     document.title = v === 'home' ? 'Today · Eden Staff' : (subName ? subName + ' · ' : '') + pg[1] + ' · Eden Staff';
     var crumb = $('sbCrumb'); crumb.innerHTML = '';
     if (pg[0]) { var g = document.createElement('span'); g.className = 'sb-crumb-g'; g.textContent = pg[0] + ' /'; crumb.appendChild(g); crumb.appendChild(document.createTextNode(' ')); }
@@ -237,7 +237,7 @@
     } else if (v === 'inventory') {
       status('');
       if (!store.loaded) loadAll().catch(function () {}); // menu, for "add from the menu" 
-      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName, arg: invArg,
+      if (window.EdenInventory) window.EdenInventory.show({ sb: sb, el: $('viewInventory'), status: status, role: role, name: staffName, arg: invArg, sub: sub,
         getMenu: function () { return menuData || assembleMenu() || null; } });
     } else if (v === 'prep') {
       status('');

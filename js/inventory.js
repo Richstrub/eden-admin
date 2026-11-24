@@ -1,6 +1,6 @@
 /* Eden staff site: inventory.
  *
- * Three inventories, each its own tab: Food, Paper goods, and Beverages (Beer, Wine, Liquor, N/A). Each has a list of
+ * Three inventories, each its own page (#inventory/food, /beverages, /dry) under an overview (#inventory): Food, Dry goods, and Beverages (Beer, Wine, Liquor, N/A). Each has a list of
  * items (grouped by section, with unit, pack size, vendor, par and cost) and dated counts. Pick a count
  * date, type what's on hand, and it saves as you go; the last count, what to order (par minus on hand)
  * and the value on hand are worked out for you.
@@ -11,7 +11,7 @@
   'use strict';
   var CATS = [
     { id: 'food', label: 'Food', short: 'Food' },
-    { id: 'paper', label: 'Paper goods', short: 'Paper' },
+    { id: 'paper', label: 'Dry goods', short: 'Dry goods' },
     { id: 'bev', label: 'Beverages', short: 'Beverage' }
   ];
   // Beverages is split into Beer, Wine, Liquor and N/A (non-alcoholic) by each item's section
@@ -113,7 +113,7 @@
       var move = I.items.filter(function (it) { return it.category === 'food' && NA_RE.test(String(it.section || '')); });
       if (move.length) { move.forEach(function (it) { it.category = 'bev'; }); saveItems(move).then(function () { status('Moved ' + move.length + ' soft drink, juice, coffee and tea item' + (move.length === 1 ? '' : 's') + ' to Beverages → N/A.', 'ok'); }, function () {}); }
       I.settingsOn = !!res[4];
-      return Promise.all([loadAlerts(), loadAudit(), loadInvLines()]);
+      return Promise.all([loadAlerts(), loadAudit(), loadInvLines(), loadMatch()]);
     }, function (e) {
       I.loading = false; I.loaded = true;
       if (isMissing(e)) I.missing = true;
@@ -167,6 +167,7 @@
       ]));
       return;
     }
+    if (I.page === 'overview') { renderOverview(wrap); return; }
     var cat = catOf(I.cat), items = catItems();
     var counts = {}; CATS.forEach(function (c) { counts[c.id] = I.items.filter(function (it) { return it.category === c.id; }).length; });
 
@@ -174,27 +175,16 @@
     var date = h('input', { type: 'date', value: I.date, 'aria-label': 'Count date' });
     date.addEventListener('change', function () { if (date.value) { flush(); I.date = date.value; render(); } });
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Inventory' }), h('h1', { cls: 'sc-week', text: cat.label })]),
+      h('div', null, [h('p', { cls: 'sc-eyebrow' }, h('a', { href: '#inventory', cls: 'iv-back', text: '← Inventory' })), h('h1', { cls: 'sc-week', text: cat.label })]),
       h('div', { cls: 'iv-tools' }, [
         h('label', { cls: 'sc-f iv-date' }, [h('span', { text: 'Count date' }), date]),
         window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
-        window.EdenInvoiceScan && window.EdenInvoiceScan.vendors ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Vendors', title: 'Spending and delivery charges by vendor, from scanned invoices', on: { click: function () { window.EdenInvoiceScan.vendors(scanApi()); } } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
-        h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Enter monthly count', title: 'Type in the month’s count for Food, Paper goods and Beverages, then see the report', on: { click: monthlyStart } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Reports', title: 'A report for every inventory count', on: { click: reportsList } }),
-        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', title: 'A blank sheet to count on, for Food, Paper goods and Beverages', on: { click: countSheet } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', title: 'A blank sheet to count on', on: { click: countSheet } }),
         h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } }),
         h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
       ])
     ]));
-    if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
-    var audit = auditCard(); if (audit) wrap.appendChild(audit);
-    var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
-    wrap.appendChild(pricingPanel());
-    wrap.appendChild(h('div', { cls: 'sc-tabs iv-tabs', role: 'tablist' }, CATS.map(function (c) {
-      return h('button', { type: 'button', role: 'tab', 'aria-selected': c.id === I.cat ? 'true' : 'false', 'data-cat': c.id, on: { click: function () { if (c.id !== I.cat) { flush(); I.cat = c.id; I.filter = ''; render(); } } } },
-        [c.label, counts[c.id] ? h('span', { cls: 'sc-count', text: String(counts[c.id]) }) : null]);
-    })));
     if (I.cat === 'bev') {
       var bevAll = I.items.filter(function (it) { return it.category === 'bev'; });
       wrap.appendChild(h('div', { cls: 'iv-subtabs', role: 'tablist', 'aria-label': 'Beverages' }, SUBS.map(function (x) {
@@ -204,6 +194,9 @@
       })));
     }
 
+    wrap.appendChild(catPricing());
+    wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Items & counts' }));
+    var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
     items.forEach(function (it) {
@@ -228,16 +221,16 @@
     var vsel = h('select', { cls: 'iv-vsel', 'aria-label': 'Vendor' }, [h('option', { value: '', text: 'All vendors' })].concat(vlist.map(function (v) { return h('option', { value: v, text: v }); }), [h('option', { value: '__none', text: 'No vendor set' })]));
     vsel.value = I.vendor || '';
     vsel.addEventListener('change', function () { I.vendor = vsel.value; applyFilter(); });
-    wrap.appendChild(h('div', { cls: 'iv-bar' }, [find, vsel, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically.' })]));
+    wrap.appendChild(h('div', { cls: 'iv-bar' }, [find, vsel, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
 
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
     // beverages: "On the menu" and "Cost %" sit at the far right instead of mid-table
     I.showCost = I.cat !== 'bev' && !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
-    var ncol = (I.showCost ? 13 : 11) + (I.cat === 'food' ? 1 : 0) + (I.cat === 'bev' ? 2 : 0);
+    var ncol = (I.showCost ? 13 : 11) + 1 + (I.cat === 'bev' ? 2 : 0);
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
-      h('th', { cls: 'iv-name', text: 'Item', title: I.cat === 'food' ? 'Your name for it — click to type. Recipes use this name.' : null }), I.cat === 'food' ? h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What the newest invoice calls it' }) : null, h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' }), I.cat === 'bev' ? h('th', { cls: 'iv-pmenu', text: 'On the menu' }) : null,
@@ -295,12 +288,11 @@
     inp.addEventListener('focus', function () { inp.select(); });
     var cc = I.showCost ? window.EdenCosting.cells(it, I.menuList) : null;
     var tip = cc ? cc.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '';
-    var food = I.cat === 'food';
-    var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + (food ? invName(it) : '') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
-      food ? h('td', { cls: 'iv-name' }, [nameInput(it), it.pack ? h('small', { text: it.pack }) : null])
-        : h('td', { cls: 'iv-name' }, [h('button', { type: 'button', cls: 'iv-namebtn', title: 'Edit item', text: it.name, on: { click: function () { editItem(it); } } }),
-        it.pack ? h('small', { text: it.pack }) : null]),
-      food ? h('td', { cls: 'iv-inv', title: invName(it), text: invName(it) }) : null,
+    var names = invNames(it);
+    var tr = h('tr', { cls: 'iv-row', 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
+      h('td', { cls: 'iv-name' }, [nameInput(it), it.pack ? h('small', { text: it.pack }) : null]),
+      h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
+        names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
       h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
       h('td', { cls: 'iv-unit', text: unitText(it) }),
@@ -316,7 +308,8 @@
       I.showCost ? h('td', { cls: 'iv-menu', title: tip, text: cc ? cc.menu : '' }) : null,
       I.showCost ? h('td', { cls: 'iv-pct' + (cc && cc.worst >= 0.35 ? ' hi' : ''), title: tip, text: cc ? cc.pct : '' }) : null,
       val,
-      h('td', { cls: 'iv-tool' }, h('button', { type: 'button', cls: 'iv-edit', 'aria-label': 'Edit ' + it.name, title: 'Edit item', text: '✎', on: { click: function () { editItem(it); } } })),
+      h('td', { cls: 'iv-tool' }, [h('button', { type: 'button', cls: 'iv-edit', 'aria-label': 'Edit ' + it.name, title: 'Edit item', text: '✎', on: { click: function () { editItem(it); } } }),
+        h('button', { type: 'button', cls: 'iv-edit iv-rm', 'aria-label': 'Remove ' + it.name, title: 'Remove from the inventory', text: '✕', on: { click: function () { removeItem(it); } } })]),
       I.cat === 'bev' ? h('td', { cls: 'iv-pmenu', text: onMenuText(it, I.menuAll || []) }) : null,
       I.cat === 'bev' && window.EdenCosting ? (function () { var b = window.EdenCosting.cells(it, I.menuAll || []); return h('td', { cls: 'iv-pcog' + (b && b.worst >= 0.35 ? ' hi' : ''), title: b ? b.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '', text: b ? b.pct : '' }); })() : null
     ]);
@@ -325,7 +318,7 @@
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
   function nameInput(it) {
-    var field = I.ingCol ? 'ingredient' : 'name';
+    var field = nameField(it);
     var used = recipesFor(it.id).map(function (x) { return x.name; }).join(', ');
     var inp = h('input', { type: 'text', cls: 'iv-nameinp', value: showName(it), placeholder: it.name, 'aria-label': 'Item name: ' + it.name, autocomplete: 'off', spellcheck: 'false',
       title: used ? 'Used in: ' + used : 'Type your name for this item' });
@@ -510,7 +503,7 @@
     var by = new Map(); bev.forEach(function (it) { C.linksFor(it, list).forEach(function (m) { if (!by.has(m)) by.set(m, it); }); });
     return wines.map(function (m) { return { m: m, item: by.get(m) || null }; });
   }
-  function scanApi() { return { wines: wineList, menuRefs: !!I.costCols, recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); Promise.all([loadAlerts(), loadAudit()]).then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
+  function scanApi() { return { wines: wineList, menuRefs: !!I.costCols, recipes: I.recipes || [], recipesFor: recipesFor, ingCol: I.ingCol, ingNames: ingNames, sections: function (cat) { return uniq((SECTIONS[cat] || []).concat(I.items.filter(function (x) { return x.category === cat; }).map(function (x) { return x.section; }))); }, items: I.items, saveItems: saveItems, sb: sb(), status: status, done: function () { render(); Promise.all([loadAlerts(), loadAudit(), loadInvLines(), loadMatch()]).then(render); }, modal: modal, h: h, cat: I.cat, uid: uid, orderCols: I.orderCols }; }
   function rcvText(it) {   // "case (5 lb)", "bottle", or blank when it comes in the way it's counted
     var r = it.order_unit || '';
     if (!r || r === it.unit) return r ? r : '';
@@ -523,7 +516,7 @@
   function scanInvoice() { flush(); window.EdenInvoiceScan.open(scanApi()); }
 
   /* ---------- pricing coverage: how many items have a cost and a menu price, by category; items not on the menu ---------- */
-  var GROUPS = [['food', 'Food'], ['paper', 'Paper goods'], ['beer', 'Beer'], ['wine', 'Wine'], ['liquor', 'Liquor'], ['na', 'N/A']];
+  var GROUPS = [['food', 'Food'], ['paper', 'Dry goods'], ['beer', 'Beer'], ['wine', 'Wine'], ['liquor', 'Liquor'], ['na', 'N/A']];
   function groupOf(it) { return it.category === 'bev' ? subOf(it) : it.category; }
   function sellable(g) { return g === 'beer' || g === 'wine' || g === 'liquor' || g === 'na'; }
   function menuText() {   // every word on the menu, for checking kitchen ingredients against it
@@ -583,7 +576,7 @@
       var xs = (byG[g[0]] || []).sort(function (a, b) { return String(a.name).localeCompare(b.name); }); if (!xs.length) return;
       text.push('', g[1].toUpperCase()); xs.forEach(function (it) { text.push('• ' + it.name + (it.vendor ? ' (' + it.vendor + ')' : '')); });
       body.push(h('div', { cls: 'iv-ovendor' }, [h('h3', { text: g[1] + ' · ' + xs.length }), h('ul', { cls: 'iv-olist' }, xs.map(function (it) {
-        return h('li', null, [h('button', { type: 'button', cls: 'sc-link', text: it.name, on: { click: function () { m.close(); I.cat = it.category; if (it.category === 'bev') I.sub = subOf(it); render(); editItem(it); } } }), it.section ? h('small', { text: ' ' + it.section + (it.vendor ? ' · ' + it.vendor : '') }) : null]);
+        return h('li', null, [h('button', { type: 'button', cls: 'sc-link', text: it.name, on: { click: function () { m.close(); editItem(it); } } }), it.section ? h('small', { text: ' ' + it.section + (it.vendor ? ' · ' + it.vendor : '') }) : null]);
       }))]));
     });
     var m = modal('Not on the menu · ' + off.length, body, [h('span', { cls: 'sc-sp' }),
@@ -594,14 +587,15 @@
   /* ---------- price changes from invoices (supabase/inventory-costing.sql): an alert until someone marks them seen ---------- */
   // what each item is called on its newest invoice (by invoice date), for the food sheet's "On the invoice" column
   function loadInvLines() {
-    return sb().from('inventory_prices').select('item_id,invoice_line,price_date,created_at').order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(5000).then(function (r) {
+    return sb().from('inventory_prices').select('item_id,invoice_line,price_date,created_at,unit_cost,vendor').order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(5000).then(function (r) {
       if (r.error) return;
-      var m = {}; (r.data || []).forEach(function (p) { if (p.invoice_line && !m[p.item_id]) m[p.item_id] = p.invoice_line; });
-      I.invLine = m;
+      var m = {}, hist = {}; (r.data || []).forEach(function (p) { if (p.invoice_line && !m[p.item_id]) m[p.item_id] = p.invoice_line; (hist[p.item_id] = hist[p.item_id] || []).push(p); });
+      I.invLine = m; I.priceHist = hist;
     }, function () {});
   }
-  function invName(it) { return (I.invLine && I.invLine[it.id]) || it.name || ''; }
+  function invName(it) { var n = invNames(it); return (n[0] && n[0].desc) || (I.invLine && I.invLine[it.id]) || it.name || ''; }
   function showName(it) { return it.category === 'food' && I.ingCol ? (it.ingredient || it.name || '') : (it.name || ''); }
+  function nameField(it) { return it.category === 'food' && I.ingCol ? 'ingredient' : 'name'; }
   function loadAlerts() {
     var since = new Date(Date.now() - 90 * 864e5).toISOString();
     return sb().from('inventory_prices').select('id,item_id,price_date,vendor,unit_cost,old_cost,created_at').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', since).order('created_at', { ascending: false }).limit(200).then(function (r) {
@@ -1384,9 +1378,341 @@
     m.el.__text = text;
   }
 
+  /* ---------- pages: Overview (#inventory) and one page each for Food, Beverages and Dry goods ---------- */
+  var SLUG = { food: 'food', bev: 'beverages', paper: 'dry' }, FROM_SLUG = { food: 'food', beverages: 'bev', dry: 'paper' };
+  function goCat(cid) { location.hash = '#inventory/' + SLUG[cid]; }
+  function hasCost(it) { return it.cost != null && it.cost !== ''; }
+  function byIdMap() { var m = {}; I.items.forEach(function (it) { m[it.id] = it; }); return m; }
+  function latestCount(cid, onOrBefore) {
+    return I.counts.filter(function (c) { return c.category === cid && c.counts && Object.keys(c.counts).length && (!onOrBefore || c.count_date <= onOrBefore); })
+      .sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0] || null;
+  }
+  function countValue(row, byId) {
+    if (!row) return 0; byId = byId || byIdMap(); var v = 0;
+    Object.keys(row.counts || {}).forEach(function (id) { var it = byId[id], n = row.counts[id]; if (it && n != null && hasCost(it)) v += n * +it.cost; });
+    return v;
+  }
+  function pctOf(a, b) { return b ? Math.round(a / b * 100) : 0; }
+  function pctText1(v) { return v == null || !isFinite(v) ? '—' : (v * 100).toFixed(1) + '%'; }
+  function shortDay(d) { return d ? parseDay(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }
+
+  // scanned invoices and the names they use: inventory_invoices (lines carry the item they were matched to) and inventory_item_links
+  // (vendor + item code or description → inventory item, which the scanner uses to match the next invoice)
+  function normS(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function lineKeyOf(L) { return L.code ? 'code:' + normS(L.code) : 'desc:' + normS(L.description); }
+  function loadMatch() {
+    var since = iso(new Date(Date.now() - 400 * 864e5));
+    return Promise.all([
+      sb().from('inventory_invoices').select('id,invoice_date,vendor,invoice_no,total,fees_total,lines,created_at').gte('invoice_date', since).order('invoice_date', { ascending: false }).limit(1000).then(function (r) { return r.error ? null : r.data || []; }, function () { return null; }),
+      sb().from('inventory_item_links').select('vendor_key,line_key,item_id,per_unit,updated_at').limit(5000).then(function (r) { return r.error ? null : r.data || []; }, function () { return null; })
+    ]).then(function (res) { I.invoices = res[0]; I.links = res[1]; indexNames(); });
+  }
+  function indexNames() {
+    var seen = {};   // vendor_key|line_key → { vendor, desc, date, price, item_id (from the newest invoice line), n }
+    (I.invoices || []).forEach(function (v) {
+      (v.lines || []).forEach(function (L) {
+        if (!L || !L.description) return;
+        var k = normS(v.vendor) + '|' + lineKeyOf(L), s = seen[k];
+        if (!s) s = seen[k] = { key: k, vendor_key: normS(v.vendor), line_key: lineKeyOf(L), vendor: v.vendor || '', desc: L.description, date: v.invoice_date, price: L.unit_price, unit: L.unit || '', item_id: L.item_id || null, n: 0, inv: [] };
+        s.n++; s.inv.push(v.id);
+        if (!s.item_id && L.item_id) s.item_id = L.item_id;
+      });
+    });
+    var linked = {}; (I.links || []).forEach(function (l) { linked[l.vendor_key + '|' + l.line_key] = l; });
+    var byItem = {};
+    Object.keys(seen).forEach(function (k) { var s = seen[k], l = linked[k]; s.link = l || null; s.item = l ? l.item_id : s.item_id; if (s.item) (byItem[s.item] = byItem[s.item] || []).push(s); });
+    Object.keys(linked).forEach(function (k) {
+      if (seen[k]) return; var l = linked[k];
+      (byItem[l.item_id] = byItem[l.item_id] || []).push({ key: k, vendor_key: l.vendor_key, line_key: l.line_key, vendor: l.vendor_key, desc: l.line_key.replace(/^(code|desc):/, (l.line_key.indexOf('code:') === 0 ? 'item # ' : '')), date: String(l.updated_at || '').slice(0, 10), link: l, item: l.item_id, n: 0, inv: [] });
+    });
+    Object.keys(byItem).forEach(function (id) { byItem[id].sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); }); });
+    I.names = byItem; I.seenLines = seen;
+  }
+  function invNames(it) { return (I.names && I.names[it.id]) || []; }
+  function hiddenLines() { try { return JSON.parse(localStorage.getItem('ivHideLines') || '{}'); } catch (e) { return {}; } }
+  function unmatchedLines() {
+    var hid = hiddenLines(), since = iso(new Date(Date.now() - 120 * 864e5));
+    return Object.keys(I.seenLines || {}).map(function (k) { return I.seenLines[k]; }).filter(function (s) { return !s.item && !hid[s.key] && String(s.date || '') >= since && !/deliver|fuel|surcharge|deposit|credit|tax|freight|fee\b/i.test(s.desc); })
+      .sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+  }
+  // point an invoice name at an item (or at nothing): the link the scanner uses next time, and the item on the invoices already saved
+  function setMatch(s, itemId) {
+    var ops = [];
+    if (itemId) ops.push(sb().from('inventory_item_links').upsert([{ vendor_key: s.vendor_key, line_key: s.line_key, item_id: itemId, per_unit: s.link && +s.link.per_unit > 0 && s.link.item_id === itemId ? +s.link.per_unit : 1, updated_at: new Date().toISOString() }], { onConflict: 'vendor_key,line_key' }).then(function (r) { if (r.error) throw r.error; }));
+    else ops.push(sb().from('inventory_item_links').delete().eq('vendor_key', s.vendor_key).eq('line_key', s.line_key).then(function (r) { if (r.error) throw r.error; }));
+    (I.invoices || []).forEach(function (v) {
+      if (s.inv.indexOf(v.id) === -1) return; var changed = false;
+      var lines = (v.lines || []).map(function (L) { if (L && normS(v.vendor) === s.vendor_key && lineKeyOf(L) === s.line_key && (L.item_id || null) !== (itemId || null)) { changed = true; return Object.assign({}, L, { item_id: itemId || null }); } return L; });
+      if (changed) { v.lines = lines; ops.push(sb().from('inventory_invoices').update({ lines: lines }).eq('id', v.id).then(function () {}, function () {})); }
+    });
+    status('Saving…', 'dirty');
+    return Promise.all(ops).then(function () { return loadMatch(); }).then(function () { status(itemId ? 'Matched. The next invoice with “' + s.desc + '” goes to that item.' : 'Unmatched “' + s.desc + '”.', 'ok'); render(); },
+      function (e) { status(isPerm(e) ? 'Your role can’t change invoice matches.' : 'Couldn’t save the match. Try again.', 'err'); });
+  }
+  function itemOptions(cid, cur) {
+    var sel = h('select', { cls: 'iv-msel', 'aria-label': 'Match to an item' }, [h('option', { value: '', text: cur ? 'Move to another item…' : 'Match to an item…' })]);
+    CATS.filter(function (c) { return !cid || c.id === cid || !cur; }).sort(function (a, b) { return (b.id === cid) - (a.id === cid); }).forEach(function (c) {
+      var g = h('optgroup', { label: c.label });
+      I.items.filter(function (it) { return it.category === c.id && it.active !== false && it.id !== cur; }).sort(function (a, b) { return showName(a).localeCompare(showName(b)); })
+        .forEach(function (it) { g.appendChild(h('option', { value: it.id, text: showName(it) + (it.vendor ? ' · ' + it.vendor : '') })); });
+      if (g.children.length) sel.appendChild(g);
+    });
+    return sel;
+  }
+  function matchDialog(it) {
+    var names = invNames(it), body = [];
+    body.push(h('p', { cls: 'sc-sub', text: 'What each vendor calls “' + showName(it) + '” on its invoices. When one of these comes in on a scanned invoice, it’s put on this item automatically. Move a name to another item, or unmatch it, if it was matched wrong.' }));
+    if (!I.invoices && !I.links) body.push(h('p', { cls: 'sc-empty', text: 'Scanned invoices aren’t set up yet (supabase/invoices.sql).' }));
+    else if (!names.length) body.push(h('p', { cls: 'sc-empty', text: 'No invoice names matched to this item yet.' }));
+    else body.push(h('ul', { cls: 'iv-mlist' }, names.map(function (s) {
+      var mv = itemOptions(it.category, it.id);
+      mv.addEventListener('change', function () { if (mv.value) { m.close(); setMatch(s, mv.value); } });
+      return h('li', null, [h('div', null, [h('b', { text: s.desc }), h('span', { text: [s.vendor, s.date ? 'last on ' + shortDay(s.date) : '', s.price != null && s.price !== '' ? money(+s.price) + (s.unit ? ' / ' + s.unit : '') : '', s.n > 1 ? 'on ' + s.n + ' invoices' : ''].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'iv-mtools' }, [mv, h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Unmatch', on: { click: function () { m.close(); setMatch(s, null); } } })])]);
+    })));
+    var un = unmatchedLines();
+    if (un.length) {
+      var find = h('input', { type: 'search', placeholder: 'Find an invoice line that isn’t matched yet…', 'aria-label': 'Find an invoice line' });
+      var ul = h('ul', { cls: 'iv-mlist iv-mpick' });
+      var paint = function () {
+        var q = normS(find.value); ul.innerHTML = '';
+        un.filter(function (s) { return !q || normS(s.desc + ' ' + s.vendor).indexOf(q) !== -1; }).slice(0, 40).forEach(function (s) {
+          ul.appendChild(h('li', null, [h('div', null, [h('b', { text: s.desc }), h('span', { text: [s.vendor, shortDay(s.date), s.price != null && s.price !== '' ? money(+s.price) + (s.unit ? ' / ' + s.unit : '') : ''].filter(Boolean).join(' · ') })]),
+            h('button', { type: 'button', cls: 'ed-btn small', text: 'Match to this item', on: { click: function () { m.close(); setMatch(s, it.id); } } })]));
+        });
+        if (!ul.children.length) ul.appendChild(h('li', { cls: 'sc-empty', text: 'No unmatched lines like that.' }));
+      };
+      find.addEventListener('input', paint); paint();
+      body.push(h('h3', { cls: 'iv-mh', text: 'Add an invoice name' }), find, ul);
+    }
+    var m = modal('Invoice names · ' + showName(it), body, [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })], true);
+  }
+  function unmatchedCard() {
+    if (!I.invoices) return null;
+    var un = unmatchedLines(); if (!un.length) return null;
+    var open = !!I.unOpen;
+    var ul = h('ul', { cls: 'is-inbox iv-mlist', hidden: !open }, un.slice(0, 60).map(function (s) {
+      var sel = itemOptions(I.cat, null);
+      sel.addEventListener('change', function () { if (sel.value) setMatch(s, sel.value); });
+      return h('li', null, [h('div', null, [h('b', { text: s.desc }), h('span', { text: [s.vendor, shortDay(s.date), s.price != null && s.price !== '' ? money(+s.price) + (s.unit ? ' / ' + s.unit : '') : ''].filter(Boolean).join(' · ') })]),
+        h('div', { cls: 'iv-mtools' }, [sel, h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Not inventory', title: 'Hide it from this list (on this device)', on: { click: function () { var hd = hiddenLines(); hd[s.key] = 1; try { localStorage.setItem('ivHideLines', JSON.stringify(hd)); } catch (e) {} render(); } } })])]);
+    }));
+    var tog = h('button', { type: 'button', cls: 'ed-btn small', text: open ? 'Hide' : 'Show', on: { click: function () { I.unOpen = !I.unOpen; ul.hidden = !I.unOpen; tog.textContent = I.unOpen ? 'Hide' : 'Show'; } } });
+    return h('div', { cls: 'is-bar iv-unmatched' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: un.length + ' invoice line' + (un.length === 1 ? '' : 's') + ' not matched to an item' }), h('span', { text: 'From the last 4 months of scanned invoices, every vendor. Match each to the item we call it, and the scanner remembers.' })]), tog]), ul]);
+  }
+
+  // purchases by category between two dates (after `from`, up to and including `to`): matched lines go to their item's category,
+  // the rest of an invoice (and its fees) follows its main category
+  function bought(from, to, fromIncl) {
+    var byId = byIdMap(), buy = { food: 0, paper: 0, bev: 0, n: 0, vendors: {} };
+    (I.invoices || []).forEach(function (v) {
+      var d = v.invoice_date; if (!d || d > to || (from && (fromIncl ? d < from : d <= from))) return;
+      var g = { food: 0, paper: 0, bev: 0 }, loose = 0;
+      (v.lines || []).forEach(function (L) { var a = +L.extended || 0, it = L.item_id && byId[L.item_id]; if (it && g[it.category] != null) g[it.category] += a; else loose += a; });
+      var top = Object.keys(g).sort(function (a, b) { return g[b] - g[a]; })[0]; g[top] += loose;
+      var lsum = g.food + g.paper + g.bev, tot = +v.total > 0 ? +v.total : lsum + (+v.fees_total || 0);
+      Object.keys(g).forEach(function (k) { buy[k] += lsum ? g[k] * tot / lsum : 0; });
+      buy.vendors[v.vendor || 'Unknown'] = (buy.vendors[v.vendor || 'Unknown'] || 0) + tot; buy.n++;
+    });
+    return buy;
+  }
+  function salesBetween(from, to) {
+    if (!I.weeks || !from) return null;
+    var s = { food: 0, bev: 0, net: 0, weeks: 0 };
+    I.weeks.forEach(function (x) { var sm = x.summary; if (!sm) return; var end = iso(new Date(parseDay(x.week_start).getTime() + 6 * 864e5)); if (end <= from || x.week_start > to) return; s.food += +sm.food || 0; s.bev += +sm.bev || 0; s.net += +sm.net || 0; s.weeks++; });
+    return s.weeks ? s : null;
+  }
+  function loadWeeks() {
+    if (I.weeksLoading || I.weeks !== undefined) return;
+    I.weeksLoading = true;
+    sb().from('payroll_weeks').select('week_start,summary:rows->_summary').gte('week_start', iso(new Date(Date.now() - 400 * 864e5))).then(function (r) { I.weeks = r.error ? null : r.data || []; }, function () { I.weeks = null; })
+      .then(function () { I.weeksLoading = false; if (I.page === 'overview') render(); });
+  }
+
+  function renderOverview(wrap) {
+    wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
+      h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Inventory' })]),
+      h('div', { cls: 'iv-tools' }, [
+        window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
+        window.EdenInvoiceScan && window.EdenInvoiceScan.vendors ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Vendors', title: 'Spending and delivery charges by vendor, from scanned invoices', on: { click: function () { window.EdenInvoiceScan.vendors(scanApi()); } } }) : null,
+        h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Enter monthly count', title: 'Type in the month’s count for Food, Dry goods and Beverages, then see the report', on: { click: monthlyStart } }),
+        h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', on: { click: countSheet } }),
+        h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } })
+      ])
+    ]));
+    // scanned invoices
+    wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Scanned invoices' }));
+    if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
+    wrap.appendChild(recentInvoices());
+    var audit = auditCard(); if (audit) wrap.appendChild(audit);
+    var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
+    // what's on hand now
+    wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Current inventory' }));
+    wrap.appendChild(invOverview());
+    // reports
+    wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Reports' }));
+    loadWeeks();
+    wrap.appendChild(periodReport());
+    // pricing
+    wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Pricing' }));
+    wrap.appendChild(pricingPanel());
+  }
+  function recentInvoices() {
+    if (!I.invoices) return h('p', { cls: 'sc-sub', text: 'Scanned invoices show here once supabase/invoices.sql is run in Supabase.' });
+    var list = I.invoices.slice(0, 8);
+    if (!list.length) return h('p', { cls: 'sc-sub', text: 'No invoices scanned yet. Use Scan invoice.' });
+    var d30 = iso(new Date(Date.now() - 30 * 864e5)), spent30 = I.invoices.filter(function (v) { return v.invoice_date >= d30; }).reduce(function (a, v) { return a + (+v.total || 0); }, 0);
+    return h('div', { cls: 'iv-card' }, [
+      h('div', { cls: 'iv-card-h' }, [h('b', { text: 'Recent invoices' }), h('span', { text: money(spent30) + ' on invoices dated in the last 30 days' })]),
+      h('table', { cls: 'iv-mini' }, [h('thead', null, h('tr', null, [h('th', { text: 'Date' }), h('th', { text: 'Vendor' }), h('th', { cls: 'r', text: 'Lines matched' }), h('th', { cls: 'r', text: 'Total' })])),
+        h('tbody', null, list.map(function (v) {
+          var ls = (v.lines || []).filter(function (L) { return L && L.description; }), mt = ls.filter(function (L) { return L.item_id; }).length;
+          return h('tr', null, [h('td', { text: shortDay(v.invoice_date) }), h('td', { text: (v.vendor || 'Unknown') + (v.invoice_no ? ' · #' + v.invoice_no : '') }), h('td', { cls: 'r' + (mt < ls.length ? ' iv-warn' : ''), text: mt + ' of ' + ls.length }), h('td', { cls: 'r', text: v.total != null ? money(+v.total) : '—' })]);
+        }))])
+    ]);
+  }
+  function invOverview() {
+    var byId = byIdMap(), total = 0;
+    var cards = CATS.map(function (c) {
+      var items = I.items.filter(function (it) { return it.category === c.id && it.active !== false; });
+      var row = latestCount(c.id), val = countValue(row, byId); total += val;
+      var counted = row ? items.filter(function (it) { return row.counts[it.id] != null; }).length : 0;
+      var below = row ? items.filter(function (it) { var n = row.counts[it.id]; return n != null && it.par != null && n < +it.par; }).length : 0;
+      var nocost = items.filter(function (it) { return !hasCost(it); }).length;
+      var subs = null;
+      if (c.id === 'bev' && row) { subs = {}; items.forEach(function (it) { var n = row.counts[it.id]; if (n != null && hasCost(it)) subs[subOf(it)] = (subs[subOf(it)] || 0) + n * +it.cost; }); }
+      return h('a', { cls: 'iv-ocard', href: '#inventory/' + SLUG[c.id] }, [
+        h('span', { cls: 'iv-ocard-k', text: c.label }),
+        h('b', { text: row ? money(val) : '—' }),
+        h('small', { text: row ? 'on hand · counted ' + shortDay(row.count_date) : 'not counted yet' }),
+        h('ul', null, [
+          h('li', { text: items.length + (items.length === 1 ? ' item' : ' items') + (row ? ' · ' + counted + ' counted' : '') }),
+          row ? h('li', { cls: below ? 'iv-warn' : '', text: below + ' below par' }) : null,
+          nocost ? h('li', { cls: 'iv-warn', text: nocost + ' without a cost' }) : null
+        ].concat(subs ? ['beer', 'wine', 'liquor', 'na'].filter(function (k) { return subs[k]; }).map(function (k) { return h('li', { text: SUBN_UI[k] + ': ' + money(subs[k]) }); }) : [])),
+        h('em', { text: 'Open ' + c.label + ' →' })
+      ]);
+    });
+    return h('div', null, [h('div', { cls: 'iv-ocards' }, cards), h('p', { cls: 'iv-ototal', text: 'Total on hand at the latest counts: ' + money(total) })]);
+  }
+  var SUBN_UI = { beer: 'Beer', wine: 'Wine', liquor: 'Liquor', na: 'N/A' };
+  var PERIODS = [['month', 'Month', 1], ['quarter', 'Quarter', 3], ['half', '6 months', 6], ['year', '1 year', 12]];
+  function periodReport() {
+    var p = PERIODS.filter(function (x) { return x[0] === (I.period || 'month'); })[0];
+    var endD = iso(new Date()), s = new Date(); s.setMonth(s.getMonth() - p[2]); var startD = iso(s), byId = byIdMap();
+    var seg = h('div', { cls: 'sc-seg iv-seg', role: 'tablist' }, PERIODS.map(function (x) {
+      return h('button', { type: 'button', role: 'tab', 'aria-selected': x[0] === p[0] ? 'true' : 'false', text: x[1], on: { click: function () { I.period = x[0]; render(); } } });
+    }));
+    var rows = CATS.map(function (c) {
+      var inP = I.counts.filter(function (r) { return r.category === c.id && r.counts && Object.keys(r.counts).length && r.count_date > startD && r.count_date <= endD; }).sort(function (a, b) { return a.count_date < b.count_date ? -1 : 1; });
+      var open = latestCount(c.id, startD) || inP[0] || null, close = latestCount(c.id, endD);
+      if (open && close && open.count_date === close.count_date && !latestCount(c.id, startD)) open = null;
+      var b = open && close ? bought(open.count_date, close.count_date)[c.id] : null;
+      var used = open && close && open !== close ? countValue(open, byId) + b - countValue(close, byId) : null;
+      var sl = open && close ? salesBetween(open.count_date, close.count_date) : null;
+      var sales = sl ? (c.id === 'food' ? sl.food : c.id === 'bev' ? sl.bev : sl.net) : null;
+      return { c: c, open: open, close: close, b: b, used: used, sales: sales, counts: inP };
+    });
+    var spent = bought(startD, endD, true);
+    var M = function (v) { return v == null ? '—' : (v < 0 ? '−' : '') + money(Math.abs(v)); };
+    var T = rows.reduce(function (a, r) { if (r.used != null) { a.used += r.used; a.sales += r.sales || 0; } return a; }, { used: 0, sales: 0 });
+    var tbl = h('table', { cls: 'iv-mini iv-prep' }, [
+      h('thead', null, h('tr', null, [h('th', { text: '' }), h('th', { cls: 'r', text: 'Start count' }), h('th', { cls: 'r', text: 'Bought' }), h('th', { cls: 'r', text: 'End count' }), h('th', { cls: 'r', text: 'Used' }), h('th', { cls: 'r', text: 'Sales' }), h('th', { cls: 'r', text: 'Cost %' })])),
+      h('tbody', null, rows.map(function (r) {
+        return h('tr', null, [h('td', null, [h('b', { text: r.c.label })]),
+          h('td', { cls: 'r' }, r.open ? [M(countValue(r.open, byId)), h('small', { text: shortDay(r.open.count_date) })] : '—'),
+          h('td', { cls: 'r', text: M(r.b) }),
+          h('td', { cls: 'r' }, r.close ? [M(countValue(r.close, byId)), h('small', { text: shortDay(r.close.count_date) })] : '—'),
+          h('td', { cls: 'r' }, [h('b', { text: M(r.used) })]),
+          h('td', { cls: 'r', text: r.sales ? M(r.sales) : '—' }),
+          h('td', { cls: 'r', text: r.used != null && r.sales ? pctText1(r.used / r.sales) : '—' })]);
+      })),
+      h('tfoot', null, h('tr', null, [h('td', { text: 'Total' }), h('td'), h('td'), h('td'), h('td', { cls: 'r', text: M(T.used) }), h('td', { cls: 'r', text: T.sales ? M(T.sales) : '—' }), h('td', { cls: 'r', text: T.sales ? pctText1(T.used / T.sales) : '—' })]))
+    ]);
+    var vend = Object.keys(spent.vendors).sort(function (a, b) { return spent.vendors[b] - spent.vendors[a]; }).slice(0, 8);
+    var countsIn = rows.reduce(function (a, r) { r.counts.forEach(function (x) { (a[x.count_date] = a[x.count_date] || []).push(r.c.label); }); return a; }, {});
+    var days = Object.keys(countsIn).sort().reverse();
+    return h('div', { cls: 'iv-card' }, [
+      h('div', { cls: 'iv-card-h' }, [h('div', null, [h('b', { text: 'Inventory report · ' + p[1].toLowerCase().replace(/^1 year$/, 'year') }), h('span', { text: shortDay(startD) + ' – ' + shortDay(endD) })]), seg]),
+      tbl,
+      h('p', { cls: 'iv-note', text: 'Used = start count + bought − end count, from the count on or before the start of the period to the latest count. Counts are valued at today’s costs. Bought is from scanned invoices between the two counts. Sales come from payroll weeks' + (I.weeks === null ? ' (only the Owner can see them)' : '') + '; dry goods are against all net sales.' }),
+      h('div', { cls: 'iv-rgrid' }, [
+        h('div', null, [h('h3', { text: 'Spent on invoices · ' + money(spent.food + spent.paper + spent.bev) }),
+          h('ul', { cls: 'iv-rlist2' }, [h('li', { text: 'Food: ' + money(spent.food) }), h('li', { text: 'Beverages: ' + money(spent.bev) }), h('li', { text: 'Dry goods: ' + money(spent.paper) }), h('li', { cls: 'iv-muted', text: spent.n + ' invoice' + (spent.n === 1 ? '' : 's') + ' dated in the period' })])]),
+        h('div', null, [h('h3', { text: 'Top vendors' }), vend.length ? h('ul', { cls: 'iv-rlist2' }, vend.map(function (v) { return h('li', { text: v + ': ' + money(spent.vendors[v]) }); })) : h('p', { cls: 'iv-muted', text: 'No invoices in this period.' })]),
+        h('div', null, [h('h3', { text: 'Counts in the period' }), days.length ? h('ul', { cls: 'iv-rlist2' }, days.map(function (d) { return h('li', null, [h('button', { type: 'button', cls: 'sc-link', text: shortDay(d), on: { click: function () { report(d); } } }), ' · ' + countsIn[d].join(', ')]); })) : h('p', { cls: 'iv-muted', text: 'No counts in this period.' }),
+          h('button', { type: 'button', cls: 'ed-btn small', text: 'Every count’s report', on: { click: reportsList } })])
+      ])
+    ]);
+  }
+
+  // a category's own pricing detail
+  function catPricing() {
+    var cid = I.cat, items = I.items.filter(function (it) { return it.category === cid && it.active !== false && (cid !== 'bev' || !I.sub || I.sub === 'all' || subOf(it) === I.sub); });
+    var d90 = iso(new Date(Date.now() - 90 * 864e5)), withCost = items.filter(hasCost).length, fresh = 0, stale = [], changes = [];
+    items.forEach(function (it) {
+      var hs = (I.priceHist && I.priceHist[it.id]) || [], last = hs[0];
+      if (last && last.price_date >= d90) fresh++; else if (hasCost(it)) stale.push({ it: it, last: last });
+      var win = hs.filter(function (p) { return p.price_date >= d90; });
+      if (win.length) {
+        var before = hs.filter(function (p) { return p.price_date < d90; })[0] || (win.length > 1 ? win[win.length - 1] : null);
+        if (before && +before.unit_cost) { var ch = (+win[0].unit_cost - +before.unit_cost) / +before.unit_cost; if (Math.abs(ch) >= 0.005) changes.push({ it: it, was: before, now: win[0], ch: ch }); }
+      }
+    });
+    changes.sort(function (a, b) { return Math.abs(b.ch) - Math.abs(a.ch); });
+    var up = changes.filter(function (x) { return x.ch > 0; }).length;
+    var ids = {}; items.forEach(function (it) { ids[it.id] = 1; });
+    var vend = {}, spent = 0;
+    (I.invoices || []).forEach(function (v) { if (!v.invoice_date || v.invoice_date < d90) return; (v.lines || []).forEach(function (L) { if (L && L.item_id && ids[L.item_id]) { var a = +L.extended || 0; vend[v.vendor || 'Unknown'] = (vend[v.vendor || 'Unknown'] || 0) + a; spent += a; } }); });
+    var vlist = Object.keys(vend).sort(function (a, b) { return vend[b] - vend[a]; }).slice(0, 8);
+    var link = function (it) { return h('button', { type: 'button', cls: 'sc-link', text: showName(it), on: { click: function () { editItem(it); } } }); };
+    var box = function (label, big, sub) { return h('div', { cls: 'iv-pbox' }, [h('span', { text: label }), h('b', { text: big }), h('small', { text: sub })]); };
+    var boxes = [box('Have a cost', withCost + ' of ' + items.length, pctOf(withCost, items.length) + '%'), box('Cost from an invoice · 90 days', fresh + ' of ' + items.length, stale.length + ' not updated in 90+ days'), box('Price changes · 90 days', String(changes.length), up + ' up · ' + (changes.length - up) + ' down')];
+    var extra = null;
+    if (cid === 'bev' && window.EdenCosting) {
+      var list = I.menuAll || window.EdenCosting.menuList(menu()), sv = [];
+      items.forEach(function (it) { var c = window.EdenCosting.cells(it, list); if (c) c.sv.forEach(function (x) { if (!x.part && x.pct != null) sv.push({ it: it, x: x }); }); });
+      var priced = items.filter(function (it) { return hasMenuPrice(it, list); }).length;
+      var avg = sv.length ? sv.reduce(function (a, s) { return a + s.x.pct; }, 0) / sv.length : null;
+      boxes.push(box('On the menu with a price', priced + ' of ' + items.length, 'average cost ' + pctText1(avg)));
+      sv.sort(function (a, b) { return b.x.pct - a.x.pct; });
+      extra = h('div', null, [h('h3', { text: 'Highest cost %' }), sv.length ? h('table', { cls: 'iv-mini' }, h('tbody', null, sv.slice(0, 10).map(function (s) { return h('tr', null, [h('td', null, link(s.it)), h('td', { text: s.x.label }), h('td', { cls: 'r', text: window.EdenCosting.money(s.x.price) }), h('td', { cls: 'r' + (s.x.pct >= 0.35 ? ' iv-warn' : ''), text: pctText1(s.x.pct) })]); }))) : h('p', { cls: 'iv-muted', text: 'Nothing matched to a menu price yet.' })]);
+    } else if (cid === 'food') {
+      var inRec = items.filter(function (it) { return recipesFor(it.id).length; }).length;
+      boxes.push(box('Used in a recipe', inRec + ' of ' + items.length, 'recipes cost from these prices'));
+      var dear = items.filter(function (it) { return hasCost(it) && forRecipes(it).short; }).map(function (it) { return { it: it, fr: forRecipes(it) }; });
+      extra = h('div', null, [h('h3', { text: 'For recipes' }), h('p', { cls: 'iv-muted', text: 'Each item’s cost per lb / oz / g is on its row (under Cost) and in its Edit window.' }),
+        dear.length ? h('p', { cls: 'iv-muted', text: dear.length + ' items have a recipe cost per weight.' }) : null]);
+    }
+    var open = I.cpOpen !== false;
+    var body = h('div', { cls: 'iv-pbody', hidden: !open }, [
+      h('div', { cls: 'iv-pboxes iv-pboxes4' }, boxes),
+      h('div', { cls: 'iv-rgrid' }, [
+        h('div', null, [h('h3', { text: 'Price changes · last 90 days' }), changes.length ? h('table', { cls: 'iv-mini' }, [h('thead', null, h('tr', null, [h('th', { text: 'Item' }), h('th', { cls: 'r', text: 'Was' }), h('th', { cls: 'r', text: 'Now' }), h('th', { cls: 'r', text: 'Change' })])),
+          h('tbody', null, changes.slice(0, 15).map(function (x) { return h('tr', null, [h('td', null, [link(x.it), h('small', { text: (x.now.vendor || '') + ' · ' + shortDay(x.now.price_date) })]), h('td', { cls: 'r', text: money(+x.was.unit_cost) }), h('td', { cls: 'r', text: money(+x.now.unit_cost) }), h('td', { cls: 'r' }, h('span', { cls: 'iv-chg ' + (x.ch > 0 ? 'up' : 'down'), text: (x.ch > 0 ? '▲ +' : '▼ ') + Math.round(x.ch * 1000) / 10 + '%' }))]); }))]) : h('p', { cls: 'iv-muted', text: 'No price changes from invoices in the last 90 days.' })]),
+        h('div', null, [h('h3', { text: 'Spend by vendor · last 90 days' + (spent ? ' · ' + money(spent) : '') }), vlist.length ? h('table', { cls: 'iv-mini' }, h('tbody', null, vlist.map(function (v) { return h('tr', null, [h('td', { text: v }), h('td', { cls: 'r', text: money(vend[v]) }), h('td', { cls: 'r iv-muted', text: pctOf(vend[v], spent) + '%' })]); }))) : h('p', { cls: 'iv-muted', text: 'No matched invoice lines in the last 90 days.' })]),
+        extra
+      ]),
+      stale.length ? h('details', { cls: 'iv-stale' }, [h('summary', { text: stale.length + ' cost' + (stale.length === 1 ? '' : 's') + ' not updated from an invoice in 90+ days' }),
+        h('ul', { cls: 'iv-rlist2' }, stale.slice(0, 80).map(function (s) { return h('li', null, [link(s.it), ' · ' + money(+s.it.cost) + (s.it.unit ? ' / ' + s.it.unit : '') + ' · ' + (s.last ? 'last invoice ' + shortDay(s.last.price_date) : 'typed in, never from an invoice')]); }))]) : null
+    ]);
+    var tog = h('button', { type: 'button', cls: 'ed-btn small', text: open ? 'Hide' : 'Show', on: { click: function () { I.cpOpen = body.hidden; body.hidden = !body.hidden; tog.textContent = body.hidden ? 'Show' : 'Hide'; } } });
+    return h('div', { cls: 'is-bar iv-pricing iv-cpricing' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: 'Pricing · ' + catOf(cid).label + (cid === 'bev' && I.sub && I.sub !== 'all' ? ' · ' + SUBN_UI[I.sub] : '') }), h('span', { text: pctOf(withCost, items.length) + '% have a cost · ' + changes.length + ' price change' + (changes.length === 1 ? '' : 's') + ' in 90 days · ' + stale.length + ' not updated in 90+ days' })]), tog]), body]);
+  }
+  function removeItem(it) {
+    if (!confirm('Remove “' + showName(it) + '” from the ' + catOf(it.category).label.toLowerCase() + ' inventory? Past counts for it are kept but won’t show.')) return;
+    sb().from('inventory_items').delete().eq('id', it.id).then(function (r) {
+      if (r.error) { status(isPerm(r.error) ? 'Your role can’t change the inventory.' : 'Couldn’t remove it. Try again.', 'err'); return; }
+      I.items = I.items.filter(function (x) { return x.id !== it.id; }); status('Removed ' + showName(it) + '.', 'ok'); render();
+    });
+  }
+
   window.EdenInventory = {
     show: function (ctx) {
       I.ctx = ctx; I.el = ctx.el;
+      var pc = FROM_SLUG[ctx.sub || ''];
+      if (pc && pc !== I.cat) { flush(); I.filter = ''; }
+      I.page = pc ? 'cat' : 'overview'; if (pc) I.cat = pc;
       if (ctx.arg && /^drive/.test(ctx.arg) && window.EdenInvoiceScan) { var arg = ctx.arg; setTimeout(function () { window.EdenInvoiceScan.handleArg(scanApi(), arg); }, 0); }
       if (!I.loaded && !I.loading) { render(); load().then(render); } else render();
     },
