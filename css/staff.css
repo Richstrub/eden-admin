@@ -3487,3 +3487,20 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-table select.iv-unitsel{width:auto;max-width:130px;font-size:.84rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px;color:var(--ink);cursor:pointer}
 .iv-table select.iv-unitsel:hover,.iv-table select.iv-unitsel:focus{border-color:var(--line)!important;background:#fff}
 @media print{.iv-unitsel{display:none!important}.iv-unittext{display:inline}}
+/* typing invoice prices, vendor and received-in on the row */
+.iv-pricebtn{display:block;background:none;border:0;padding:2px 0 0;font:inherit;font-size:.8rem;color:var(--ink);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums}
+.iv-pricebtn small{color:var(--stone);font-size:.74rem}
+.iv-pricebtn:hover{color:var(--ember)}
+.iv-pricebtn.none{color:var(--ember);font-size:.78rem}
+.iv-table input.iv-vendinp{width:110px;font:inherit;font-size:.86rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px;color:var(--ink);box-shadow:none}
+.iv-table input.iv-vendinp:hover{border-color:var(--line)!important}
+.iv-table input.iv-vendinp:focus{border-color:var(--ember)!important;background:#fff;outline:0}
+.iv-table input.iv-vendinp::placeholder{color:#c9c3b8}
+.iv-rcved{display:flex;flex-direction:column;gap:3px}
+.iv-table select.iv-rcvsel{width:auto;max-width:120px;font-size:.84rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px;color:var(--ink);cursor:pointer}
+.iv-table select.iv-rcvsel:hover,.iv-table select.iv-rcvsel:focus{border-color:var(--line)!important;background:#fff}
+.iv-rcvof{font-size:.78rem;color:var(--stone);white-space:nowrap;padding-left:6px}
+.iv-table input.iv-pcinp{width:44px;font:inherit;font-size:.8rem;padding:2px 4px;border:1px solid var(--line)!important;border-radius:5px;text-align:right}
+.iv-table input.iv-pcinp.bad{border-color:#a3392b!important}
+.iv-pcalc{font-family:var(--serif);font-size:1.1rem;margin:6px 0 0;min-height:1.4em}
+@media print{.iv-pricebtn,.iv-vendinp,.iv-rcved{display:none!important}}

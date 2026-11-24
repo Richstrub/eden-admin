@@ -228,6 +228,7 @@
     // beverages: "On the menu" and "Cost %" sit at the far right instead of mid-table
     I.showCost = I.cat !== 'bev' && !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
     var ncol = (I.showCost ? 13 : 11) + 2 + (I.cat === 'bev' ? 2 : 0);
+    wrap.appendChild(datalist('ivVendRow', vendorList()));
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
       h('th', { cls: 'iv-drag', 'aria-label': 'Drag to reorder' }),
@@ -299,10 +300,10 @@
     var tr = h('tr', { cls: 'iv-row' + (off ? ' iv-offmenu' : ''), title: off ? 'Not on the menu or linked to a menu item — click ✎ to link it' : null, 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-drag' }, grip),
       h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it), it.category === 'bev' && I.costCols && window.EdenCosting ? menuSelect(it) : null])]),
-      h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
-        names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
-      h('td', { cls: 'iv-vend', text: it.vendor || '' }),
-      h('td', { cls: 'iv-unit iv-rcv', text: rcvText(it) }),
+      h('td', { cls: 'iv-inv' }, [h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
+        names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' }))), priceBtn(it)]),
+      h('td', { cls: 'iv-vend' }, [vendorInput(it), h('span', { cls: 'iv-unittext', text: it.vendor || '' })]),
+      h('td', { cls: 'iv-unit iv-rcv' }, I.orderCols ? [rcvEditor(it), h('span', { cls: 'iv-unittext', text: rcvText(it) })] : rcvText(it)),
       h('td', { cls: 'iv-unit' }, [unitSelect(it), h('span', { cls: 'iv-unittext', text: unitText(it) })]),
       h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); })),
       h('td', { cls: 'r iv-last', text: qty(last) }),
@@ -447,6 +448,109 @@
       var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
     });
     return sel;
+  }
+  /* ---------- typing a price in by hand, the way a scanned invoice line would: it goes into the price history (a later,
+     newer invoice scan replaces it as the cost), and the vendor + name on the invoice are remembered for the scanner ---------- */
+  function priceBtn(it) {
+    var lp = lastPrice(it);
+    return h('button', { type: 'button', cls: 'iv-pricebtn' + (lp ? '' : ' none'), title: 'Type in a price from an invoice', on: { click: function () { priceDialog(it); } } },
+      lp ? [money(+lp.invoice_price || +lp.unit_cost) + (lp.invoice_unit ? ' / ' + lp.invoice_unit : ''), h('small', { text: ' · ' + shortDay(lp.price_date).replace(/, \d{4}$/, '') + (lp.invoice_id ? '' : ' · typed in') })] : '+ Enter price');
+  }
+  function lastPrice(it) { var hs = (I.priceHist && I.priceHist[it.id]) || []; return hs[0] || null; }
+  function vendorList() { return uniq(I.items.map(function (x) { return x.vendor; }).concat((I.invoices || []).map(function (v) { return v.vendor; }))).sort(function (a, b) { return a.localeCompare(b); }); }
+  var RCV_UNITS = ['case', 'each', 'bottle', 'can', 'keg', 'lb', 'oz', 'kg', 'g', 'gal', 'qt', 'box', 'bag', 'pack', 'dozen', 'bunch', 'flat', 'tray', 'sleeve', 'roll'];
+  function priceDialog(it) {
+    var cu = it.unit || 'each', lp = lastPrice(it);
+    var rcvSel = h('select', { 'aria-label': 'Price is per' }, uniq([it.order_unit || cu, cu].concat(RCV_UNITS)).map(function (u) { return h('option', { value: u, text: u === cu ? u + ' (what it’s counted in)' : u }); }));
+    var f = {
+      line: h('input', { type: 'text', value: (invNames(it)[0] && invNames(it)[0].desc) || (lp && lp.invoice_line) || it.name || '', placeholder: 'What the invoice calls it' }),
+      vendor: h('input', { type: 'text', value: it.vendor || (lp && lp.vendor) || '', list: 'ivVendRow', placeholder: 'e.g. Sysco' }),
+      date: h('input', { type: 'date', value: iso(new Date()) }),
+      price: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'e.g. 42.50', value: '' }),
+      per: h('input', { type: 'text', inputmode: 'decimal', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: 'e.g. 12' })
+    };
+    rcvSel.value = it.order_unit || cu;
+    var perWrap = lbl('How many ' + cu + ' in one', f.per), perLbl = perWrap.querySelector('span');
+    var out = h('p', { cls: 'iv-pcalc' }), msg = h('p', { cls: 'sc-msg', role: 'status' });
+    function perUnit() {   // counted units in one received unit
+      var r = rcvSel.value;
+      if (r === cu) return 1;
+      if (GRAMS[r] && GRAMS[cu]) return GRAMS[r] / GRAMS[cu];
+      var n = num(f.per.value); return n > 0 ? n : null;
+    }
+    function paint() {
+      var r = rcvSel.value, conv = r === cu || (GRAMS[r] && GRAMS[cu]);
+      perWrap.hidden = !!conv; perLbl.textContent = 'How many ' + cu + ' in one ' + r;
+      var p = num(f.price.value), k = perUnit();
+      out.textContent = p != null && k ? '= ' + money(p / k) + ' per ' + cu + (hasCost(it) ? ' (now ' + money(+it.cost) + ')' : '') : p != null ? 'Fill in how many ' + cu + ' come in one ' + r + '.' : '';
+    }
+    [f.price, f.per].forEach(function (x) { x.addEventListener('input', paint); }); rcvSel.addEventListener('change', paint); paint();
+    var m = modal('Enter a price · ' + showName(it), [
+      h('p', { cls: 'sc-sub', text: 'Type it in the way it’s on the invoice. It goes into the price history like a scanned line, and becomes the cost unless a newer invoice is already in. Scanning a later invoice replaces it.' }),
+      h('div', { cls: 'sc-row2' }, [lbl('Name on the invoice', f.line), lbl('Vendor', f.vendor)]),
+      h('div', { cls: 'sc-row2' }, [lbl('Invoice price ($)', f.price), lbl('Price is per', rcvSel)]),
+      h('div', { cls: 'sc-row2' }, [perWrap, lbl('Invoice date', f.date)]),
+      out, msg
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Save price', on: { click: save } })]);
+    setTimeout(function () { f.price.focus(); }, 30);
+    f.price.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    function save() {
+      var p = num(f.price.value), k = perUnit(), d = f.date.value || iso(new Date()), vendor = f.vendor.value.trim(), line = f.line.value.trim() || it.name, r = rcvSel.value;
+      if (p == null || p < 0) { msg.textContent = 'Type the price from the invoice.'; f.price.focus(); return; }
+      if (!k) { msg.textContent = 'Fill in how many ' + cu + ' come in one ' + r + '.'; f.per.focus(); return; }
+      var c = Math.round(p / k * 10000) / 10000, newest = !lp || String(d) >= String(lp.price_date);
+      var row = { item_id: it.id, price_date: d, vendor: vendor, invoice_line: line, invoice_price: p, invoice_unit: r, per_unit: k, unit_cost: c, old_cost: hasCost(it) ? +it.cost : null };
+      msg.textContent = 'Saving…';
+      sb().from('inventory_prices').insert(row).then(function (res) {
+        if (res.error) throw res.error;
+        var old = { cost: it.cost, vendor: it.vendor, order_unit: it.order_unit, per_case: it.per_case };
+        if (newest) it.cost = c;
+        if (vendor) it.vendor = vendor;
+        if (I.orderCols) { it.order_unit = r === cu ? '' : r; if (r !== cu && !(GRAMS[r] && GRAMS[cu])) it.per_case = k; }
+        var jobs = [saveItems([it]).catch(function (e) { Object.assign(it, old); throw e; })];
+        if (vendor && line) jobs.push(sb().from('inventory_item_links').upsert([{ vendor_key: normS(vendor), line_key: 'desc:' + normS(line), item_id: it.id, per_unit: k, updated_at: new Date().toISOString() }], { onConflict: 'vendor_key,line_key' }).then(function () {}, function () {}));
+        return Promise.all(jobs);
+      }).then(function () {
+        m.close();
+        status('Saved ' + money(p) + ' per ' + r + (newest ? ': cost is now ' + money(c) + ' per ' + cu + '.' : ' to the history (a newer invoice price is still the cost).'), 'ok');
+        return Promise.all([loadInvLines(), loadMatch()]).then(function () { return rechain(it.id, { date: d }); });
+      }, function (e) { msg.textContent = isPerm(e) ? 'Your role can’t change prices.' : 'Couldn’t save. Check your connection and try again.'; });
+    }
+  }
+  // vendor, typed on the row
+  function vendorInput(it) {
+    var inp = h('input', { type: 'text', cls: 'iv-vendinp', value: it.vendor || '', list: 'ivVendRow', placeholder: 'Vendor', 'aria-label': 'Vendor for ' + showName(it), autocomplete: 'off' });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } else if (e.key === 'Escape') { inp.value = it.vendor || ''; inp.blur(); } });
+    inp.addEventListener('change', function () {
+      var v = inp.value.trim(), old = it.vendor || ''; if (v === old) return;
+      it.vendor = v; status('Saving…', 'dirty');
+      saveItems([it]).then(function () { status(v ? 'Vendor saved.' : 'Vendor cleared.', 'ok'); var tr = inp.closest('tr'); if (tr) tr.setAttribute('data-vendor', v); }, function (e) { it.vendor = old; inp.value = old; saveErr(e); });
+    });
+    return inp;
+  }
+  // received in: how it comes on the invoice, and how many counted units are in one
+  function rcvEditor(it) {
+    var cu = it.unit || 'each';
+    var sel = h('select', { cls: 'iv-rcvsel', 'aria-label': 'Received in: ' + showName(it), title: 'How it comes on the invoice' }, [h('option', { value: '', text: 'Same as counted' })].concat(uniq((it.order_unit ? [it.order_unit] : []).concat(RCV_UNITS)).filter(function (u) { return u !== cu; }).map(function (u) { return h('option', { value: u, text: u }); })));
+    sel.value = it.order_unit && it.order_unit !== cu ? it.order_unit : '';
+    var conv = function (r) { return GRAMS[r] && GRAMS[cu]; };
+    var n = h('input', { type: 'text', inputmode: 'decimal', cls: 'iv-pcinp', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: '#', 'aria-label': cu + ' in one ' + (sel.value || 'case') });
+    var of = h('span', { cls: 'iv-rcvof' }, ['of ', n, ' ' + cu]);
+    of.hidden = !sel.value || !!conv(sel.value);
+    function save(msgText) {
+      status('Saving…', 'dirty');
+      saveItems([it]).then(function () { status(msgText, 'ok'); }, saveErr);
+    }
+    sel.addEventListener('change', function () {
+      it.order_unit = sel.value; of.hidden = !sel.value || !!conv(sel.value);
+      if (!sel.value) { save('Received the same way it’s counted.'); return; }
+      if (!of.hidden && !n.value) { n.focus(); status('How many ' + cu + ' in one ' + sel.value + '?', 'dirty'); it.per_case = null; }
+      save('Received in ' + sel.value + (of.hidden || !n.value ? '' : ' of ' + n.value + ' ' + cu) + '.');
+    });
+    n.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); n.blur(); } });
+    n.addEventListener('change', function () { var v = num(n.value); if (n.value.trim() && !(v > 0)) { n.classList.add('bad'); return; } n.classList.remove('bad'); it.per_case = v; save(sel.value + ' of ' + qty(v) + ' ' + cu + '.'); });
+    return h('div', { cls: 'iv-rcved' }, [sel, of]);
   }
   // move an item to another section from its row
   function catSections(cid) { return uniq((SECTIONS[cid] || []).concat(I.items.filter(function (x) { return x.category === cid; }).map(function (x) { return x.section; }))); }
@@ -762,7 +866,7 @@
   /* ---------- price changes from invoices (supabase/inventory-costing.sql): an alert until someone marks them seen ---------- */
   // what each item is called on its newest invoice (by invoice date), for the food sheet's "On the invoice" column
   function loadInvLines() {
-    return sb().from('inventory_prices').select('item_id,invoice_line,price_date,created_at,unit_cost,vendor').order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(5000).then(function (r) {
+    return sb().from('inventory_prices').select('item_id,invoice_id,invoice_line,invoice_price,invoice_unit,price_date,created_at,unit_cost,vendor').order('price_date', { ascending: false }).order('created_at', { ascending: false }).limit(5000).then(function (r) {
       if (r.error) return;
       var m = {}, hist = {}; (r.data || []).forEach(function (p) { if (p.invoice_line && !m[p.item_id]) m[p.item_id] = p.invoice_line; (hist[p.item_id] = hist[p.item_id] || []).push(p); });
       I.invLine = m; I.priceHist = hist;
