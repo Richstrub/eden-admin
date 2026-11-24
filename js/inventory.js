@@ -437,36 +437,70 @@
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
   // match a beverage to what guests see on the menu (wine list, spirits, bar, beer & soft drinks, coffee & tea), right from its row
-  function menuSelect(it) {
-    var C = window.EdenCosting, list = I.menuAll || C.menuList(menu());
-    var linked = C.linksFor(it, list), refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];
-    var sub = subOf(it), rank = function (m) {
+  // a search box with a drop-down list: type to narrow it, arrows + Enter or a tap to pick
+  function searchPick(o) {
+    var inp = h('input', { type: 'search', cls: 'iv-sp-in' + (o.cls ? ' ' + o.cls : ''), value: o.value || '', placeholder: o.placeholder || 'Search…', autocomplete: 'off', spellcheck: 'false', 'aria-label': o.label || 'Search', 'aria-autocomplete': 'list' });
+    var pop = null, hits = [], at = -1;
+    function close() { if (pop) { pop.remove(); pop = null; } window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); }
+    function place() { if (!pop) return; var r = inp.getBoundingClientRect(), below = window.innerHeight - r.bottom; pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px'; pop.style.minWidth = Math.max(r.width, 300) + 'px'; if (below < 260 && r.top > below) { pop.style.top = ''; pop.style.bottom = (window.innerHeight - r.top + 4) + 'px'; pop.style.maxHeight = Math.min(360, r.top - 16) + 'px'; } else { pop.style.bottom = ''; pop.style.top = (r.bottom + 4) + 'px'; pop.style.maxHeight = Math.min(360, below - 16) + 'px'; } }
+    function paint() {
+      var words = normS(inp.value === o.value ? '' : inp.value).split(' ').filter(Boolean);
+      hits = (o.extra || []).filter(function (x) { return !words.length; }).concat(o.items.filter(function (x) { var t = normS(x.label + ' ' + (x.sub || '') + ' ' + (x.group || '')); return words.every(function (w) { return t.indexOf(w) !== -1; }); }).slice(0, 80));
+      if (!pop) { pop = h('div', { cls: 'iv-sp-pop', role: 'listbox' }); document.body.appendChild(pop); window.addEventListener('scroll', place, true); window.addEventListener('resize', place); }
+      pop.innerHTML = ''; at = hits.length && words.length ? 0 : -1;
+      var lastG = null;
+      hits.forEach(function (x, i) {
+        if (x.group && x.group !== lastG) { lastG = x.group; pop.appendChild(h('div', { cls: 'iv-sp-g', text: x.group })); }
+        var b = h('button', { type: 'button', cls: 'iv-sp-o' + (x.special ? ' sp' : '') + (i === at ? ' on' : ''), role: 'option', 'data-i': String(i) }, [h('span', { text: x.label }), x.sub ? h('small', { text: x.sub }) : null]);
+        b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        b.addEventListener('click', function () { pick(x); });
+        pop.appendChild(b);
+      });
+      if (!hits.length) pop.appendChild(h('div', { cls: 'iv-sp-none', text: 'Nothing on the menu matches “' + inp.value + '”.' }));
+      place();
+    }
+    function mark() { if (!pop) return; [].forEach.call(pop.querySelectorAll('.iv-sp-o'), function (b) { var on = +b.getAttribute('data-i') === at; b.classList.toggle('on', on); if (on) b.scrollIntoView({ block: 'nearest' }); }); }
+    function pick(x) { close(); inp.blur(); o.onPick(x); }
+    inp.addEventListener('focus', function () { inp.select(); paint(); });
+    inp.addEventListener('input', paint);
+    inp.addEventListener('blur', function () { setTimeout(function () { close(); if (document.activeElement !== inp) inp.value = o.value || ''; }, 150); });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!pop) paint(); at = Math.min(hits.length - 1, at + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); at = Math.max(0, at - 1); mark(); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (hits[at]) pick(hits[at]); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); inp.value = o.value || ''; close(); inp.blur(); }
+    });
+    return inp;
+  }
+  // the guest menu as search choices: name, what it is, and where it sits
+  function menuChoices(list, sub, kinds) {
+    var rank = function (m) {
       var t = (m.tab + ' ' + (m.tabLabel || '')).toLowerCase();
       var order = sub === 'wine' ? [/wine/, /bar|cocktail/, /spirit/] : sub === 'liquor' ? [/spirit/, /bar|cocktail/, /wine/] : sub === 'beer' ? [/beer/, /soft/] : [/soft|beer/, /coffee|tea/, /bar|cocktail/];
       for (var i = 0; i < order.length; i++) if (order[i].test(t)) return i; return 9;
     };
-    var opts = list.map(function (m, i) { return { m: m, i: i, r: rank(m) }; }).filter(function (x) { return !/m-food|kitchen/.test(x.m.tab + ' ' + (x.m.tabLabel || '').toLowerCase()); });
-    opts.sort(function (a, b) { return a.r - b.r || a.i - b.i; });
-    var sel = h('select', { cls: 'iv-menusel', 'aria-label': 'Menu item for ' + showName(it), title: 'Match to an item on the menu guests see' });
-    var curIdx = linked.length ? list.indexOf(linked[0]) : -1;
-    sel.appendChild(h('option', { value: '', text: linked.length ? '' : 'Not on the menu — match…' }));
-    if (linked.length > 1) sel.appendChild(h('option', { value: '__keep', text: linked.length + ' menu items' }));
-    var groups = [], gm = {};
-    opts.forEach(function (x) { var g = (x.m.tabLabel || x.m.tab) + ' · ' + (x.m.group || ''); if (!gm[g]) { gm[g] = h('optgroup', { label: g }); groups.push(gm[g]); } gm[g].appendChild(h('option', { value: String(x.i), text: x.m.name + (x.m.desc && !/wine/i.test(x.m.tab) ? ' — ' + String(x.m.desc).slice(0, 40) : '') })); });
-    groups.forEach(function (g) { sel.appendChild(g); });
-    if (linked.length) sel.appendChild(h('option', { value: '__none', text: refs.length ? 'Unlink (match by name again)' : 'Not on the menu' }));
-    sel.value = linked.length > 1 ? '__keep' : curIdx >= 0 ? String(curIdx) : '';
-    if (!linked.length) sel.classList.add('none');
-    sel.addEventListener('change', function () {
-      var v = sel.value; if (v === '__keep' || v === '') return;
-      var old = it.menu_refs;
-      if (v === '__none') it.menu_refs = [];
-      else { var m = list[+v]; it.menu_refs = [{ tab: m.tab, name: m.name, desc: m.desc || '' }]; }
-      status('Saving…', 'dirty');
-      saveItems([it]).then(function () { status(v === '__none' ? 'Unlinked ' + showName(it) + ' from the menu.' : 'Matched ' + showName(it) + ' to “' + list[+v].name + '” on the menu.', 'ok'); }, function (e) { it.menu_refs = old; render(); saveErr(e); });
-      var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
-    });
-    return sel;
+    return list.map(function (m, i) { return { m: m, i: i, r: rank(m) }; }).filter(function (x) { return !/m-food|kitchen/.test((x.m.tab + ' ' + (x.m.tabLabel || '')).toLowerCase()) && (!kinds || kinds(x.m)); })
+      .sort(function (a, b) { return a.r - b.r || a.i - b.i; })
+      .map(function (x) {
+        var m = x.m, pr = [m.glass ? '$' + m.glass + ' gl' : '', m.bottle ? '$' + m.bottle + ' btl' : (!m.glass && m.price ? '$' + m.price : '')].filter(Boolean).join(' · ');
+        return { key: String(x.i), m: m, label: m.name, sub: [pr, m.desc && !/wine/i.test(m.tab) ? String(m.desc).slice(0, 60) : ''].filter(Boolean).join(' · '), group: (m.tabLabel || m.tab) + ' · ' + (m.group || '') };
+      });
+  }
+  function menuSelect(it) {
+    var C = window.EdenCosting, list = I.menuAll || C.menuList(menu());
+    var linked = C.linksFor(it, list), refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];
+    var extra = linked.length ? [{ key: '__none', special: true, label: refs.length ? 'Unlink (match by name again)' : 'Not on the menu' }] : [];
+    var inp = searchPick({ cls: 'iv-menusel' + (linked.length ? '' : ' none'), value: linked.length > 1 ? linked.length + ' menu items' : linked.length ? linked[0].name : '', placeholder: 'Not on the menu — search to match…', label: 'Menu item for ' + showName(it),
+      items: menuChoices(list, subOf(it)), extra: extra,
+      onPick: function (x) {
+        var old = it.menu_refs;
+        it.menu_refs = x.key === '__none' ? [] : [{ tab: x.m.tab, name: x.m.name, desc: x.m.desc || '' }];
+        status('Saving…', 'dirty');
+        saveItems([it]).then(function () { status(x.key === '__none' ? 'Unlinked ' + showName(it) + ' from the menu.' : 'Matched ' + showName(it) + ' to “' + x.m.name + '” on the menu.', 'ok'); }, function (e) { it.menu_refs = old; render(); saveErr(e); });
+        var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
+      } });
+    inp.title = linked.map(function (m) { return (m.tabLabel || m.tab) + ' · ' + m.name; }).join('\n') || 'Search the menu guests see';
+    return inp;
   }
   // "Counted in", picked on the row from the units that fit what's being counted
   var BOTTLE_ML = [750, 1000, 375, 1500, 1750, 500, 200, 50];
@@ -1245,16 +1279,15 @@
       else box.appendChild(h('ul', null, sv.map(function (x) {
         return h('li', null, [h('span', { text: x.label + (x.part ? '' : ' · ' + x.menu.name) }), h('span', { text: C.money(x.price) + ' · costs ' + (x.cost != null ? money(x.cost) : '—') + ' · ' + C.pctText(x.pct) })]);
       })));
-      var pick = h('select', { 'aria-label': 'Link a menu item' }, [h('option', { value: '', text: '+ Link a menu item (glass, bottle, pour, or a cocktail it’s the base spirit in)…' })]);
-      var groups = {};
-      list.forEach(function (m, i) { var k = C.kindOf(m); if (k === 'none') return; var g = (m.tabLabel || m.tab) + ' · ' + m.group; (groups[g] = groups[g] || []).push([i, m]); });
-      Object.keys(groups).forEach(function (g) { var og = h('optgroup', { label: g }); groups[g].forEach(function (x) { og.appendChild(h('option', { value: String(x[0]), text: x[1].name + (x[1].desc && x[1].tab !== 'm-wine' ? ' — ' + x[1].desc.slice(0, 40) : '') + (x[1].raw ? ' · ' + x[1].raw : '') })); }); pick.appendChild(og); });
-      pick.addEventListener('change', function () {
-        var m = list[+pick.value]; if (!m) return;
-        var refs = (Array.isArray(it.menu_refs) && it.menu_refs.length ? it.menu_refs : C.linksFor(it, list).map(function (x) { return { tab: x.tab, name: x.name, desc: x.desc }; })).slice();
-        if (!refs.some(function (r) { return r.tab === m.tab && r.name === m.name && (r.desc || '') === (m.desc || ''); })) refs.push({ tab: m.tab, name: m.name, desc: m.desc || '' });
-        it.menu_refs = refs; paint(); box.dataset.dirty = '1';
-      });
+      var pick = searchPick({ value: '', placeholder: '+ Link a menu item: search glass, bottle, pour, or a cocktail it’s the base spirit in…', label: 'Link a menu item',
+        items: menuChoices(list, subOf(it), function (m) { return C.kindOf(m) !== 'none'; }),
+        onPick: function (x) {
+          var m = x.m;
+          var refs = (Array.isArray(it.menu_refs) && it.menu_refs.length ? it.menu_refs : C.linksFor(it, list).map(function (y) { return { tab: y.tab, name: y.name, desc: y.desc }; })).slice();
+          if (!refs.some(function (r) { return r.tab === m.tab && r.name === m.name && (r.desc || '') === (m.desc || ''); })) refs.push({ tab: m.tab, name: m.name, desc: m.desc || '' });
+          it.menu_refs = refs; paint(); box.dataset.dirty = '1';
+        } });
+      pick.classList.add('iv-linksearch');
       box.appendChild(pick);
       if (!auto) box.appendChild(h('button', { type: 'button', cls: 'sc-link', text: 'Clear links (match by name again)', on: { click: function () { it.menu_refs = []; paint(); box.dataset.dirty = '1'; } } }));
     }
