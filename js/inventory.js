@@ -298,7 +298,7 @@
     var off = it.category === 'bev' && (subOf(it) === 'wine' || subOf(it) === 'liquor') && window.EdenCosting && !window.EdenCosting.linksFor(it, I.menuAll || []).length;
     var tr = h('tr', { cls: 'iv-row' + (off ? ' iv-offmenu' : ''), title: off ? 'Not on the menu or linked to a menu item — click ✎ to link it' : null, 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-drag' }, grip),
-      h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it)])]),
+      h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it), it.category === 'bev' && I.costCols && window.EdenCosting ? menuSelect(it) : null])]),
       h('td', { cls: 'iv-inv' }, h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
         names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' })))),
       h('td', { cls: 'iv-vend', text: it.vendor || '' }),
@@ -318,7 +318,7 @@
       val,
       h('td', { cls: 'iv-tool' }, [h('button', { type: 'button', cls: 'iv-edit', 'aria-label': 'Edit ' + it.name, title: 'Edit item', text: '✎', on: { click: function () { editItem(it); } } }),
         h('button', { type: 'button', cls: 'iv-edit iv-rm', 'aria-label': 'Remove ' + it.name, title: 'Remove from the inventory', text: '✕', on: { click: function () { removeItem(it); } } })]),
-      I.cat === 'bev' ? h('td', { cls: 'iv-pmenu', text: onMenuText(it, I.menuAll || []) }) : null,
+      I.cat === 'bev' ? h('td', { cls: 'iv-pmenu' }, [h('span', { cls: 'iv-pmtext', text: onMenuText(it, I.menuAll || []) })]) : null,
       I.cat === 'bev' && window.EdenCosting ? (function () { var b = window.EdenCosting.cells(it, I.menuAll || []); return h('td', { cls: 'iv-pcog' + (b && b.worst >= 0.35 ? ' hi' : ''), title: b ? b.sv.map(function (x) { return x.label + ': ' + window.EdenCosting.money(x.price) + ' on the menu, costs ' + (x.cost != null ? money(x.cost) : '? (no cost yet)') + ' = ' + window.EdenCosting.pctText(x.pct); }).join('\n') : '', text: b ? b.pct : '' }); })() : null
     ]);
     refresh();
@@ -371,6 +371,38 @@
     grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', cancel);
   }
   // food: the Item cell is your own name for it (saved as the ingredient name recipes use; the item's name if that column isn't set up)
+  // match a beverage to what guests see on the menu (wine list, spirits, bar, beer & soft drinks, coffee & tea), right from its row
+  function menuSelect(it) {
+    var C = window.EdenCosting, list = I.menuAll || C.menuList(menu());
+    var linked = C.linksFor(it, list), refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];
+    var sub = subOf(it), rank = function (m) {
+      var t = (m.tab + ' ' + (m.tabLabel || '')).toLowerCase();
+      var order = sub === 'wine' ? [/wine/, /bar|cocktail/, /spirit/] : sub === 'liquor' ? [/spirit/, /bar|cocktail/, /wine/] : sub === 'beer' ? [/beer/, /soft/] : [/soft|beer/, /coffee|tea/, /bar|cocktail/];
+      for (var i = 0; i < order.length; i++) if (order[i].test(t)) return i; return 9;
+    };
+    var opts = list.map(function (m, i) { return { m: m, i: i, r: rank(m) }; }).filter(function (x) { return !/m-food|kitchen/.test(x.m.tab + ' ' + (x.m.tabLabel || '').toLowerCase()); });
+    opts.sort(function (a, b) { return a.r - b.r || a.i - b.i; });
+    var sel = h('select', { cls: 'iv-menusel', 'aria-label': 'Menu item for ' + showName(it), title: 'Match to an item on the menu guests see' });
+    var curIdx = linked.length ? list.indexOf(linked[0]) : -1;
+    sel.appendChild(h('option', { value: '', text: linked.length ? '' : 'Not on the menu — match…' }));
+    if (linked.length > 1) sel.appendChild(h('option', { value: '__keep', text: linked.length + ' menu items' }));
+    var groups = [], gm = {};
+    opts.forEach(function (x) { var g = (x.m.tabLabel || x.m.tab) + ' · ' + (x.m.group || ''); if (!gm[g]) { gm[g] = h('optgroup', { label: g }); groups.push(gm[g]); } gm[g].appendChild(h('option', { value: String(x.i), text: x.m.name + (x.m.desc && !/wine/i.test(x.m.tab) ? ' — ' + String(x.m.desc).slice(0, 40) : '') })); });
+    groups.forEach(function (g) { sel.appendChild(g); });
+    if (linked.length) sel.appendChild(h('option', { value: '__none', text: refs.length ? 'Unlink (match by name again)' : 'Not on the menu' }));
+    sel.value = linked.length > 1 ? '__keep' : curIdx >= 0 ? String(curIdx) : '';
+    if (!linked.length) sel.classList.add('none');
+    sel.addEventListener('change', function () {
+      var v = sel.value; if (v === '__keep' || v === '') return;
+      var old = it.menu_refs;
+      if (v === '__none') it.menu_refs = [];
+      else { var m = list[+v]; it.menu_refs = [{ tab: m.tab, name: m.name, desc: m.desc || '' }]; }
+      status('Saving…', 'dirty');
+      saveItems([it]).then(function () { status(v === '__none' ? 'Unlinked ' + showName(it) + ' from the menu.' : 'Matched ' + showName(it) + ' to “' + list[+v].name + '” on the menu.', 'ok'); }, function (e) { it.menu_refs = old; render(); saveErr(e); });
+      var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
+    });
+    return sel;
+  }
   // move an item to another section from its row
   function catSections(cid) { return uniq((SECTIONS[cid] || []).concat(I.items.filter(function (x) { return x.category === cid; }).map(function (x) { return x.section; }))); }
   function secSelect(it) {

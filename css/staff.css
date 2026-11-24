@@ -3473,3 +3473,12 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-offkey{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--stone)}
 .iv-offkey::before{content:"";width:14px;height:14px;border-radius:3px;background:#ece8e1;border:1px solid var(--line)}
 @media print{.iv-offmenu td{background:#e6e6e6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* match a beverage to the menu from its row */
+.iv-pmenu .iv-pmtext{display:block;font-size:.76rem;color:var(--stone);margin-top:2px}
+.iv-table select.iv-menusel{width:190px;max-width:190px;font-size:.8rem;padding:4px 6px;border:1px solid var(--line)!important;border-radius:6px;background:#fff;color:var(--ink)}
+.iv-table select.iv-menusel.none{color:#b0703f;font-style:italic;background:#fffaf3}
+@media print{.iv-menusel{display:none!important}.iv-pmenu .iv-pmtext{font-size:inherit;color:inherit;margin:0}}
+.iv-offmenu td{background:#ece8e1!important}
+.iv-namesub{flex-wrap:wrap}
+.iv-namesub .iv-menusel{width:auto!important;max-width:210px!important;font-size:.74rem!important;padding:2px 6px!important}
+.iv-pmenu .iv-pmtext{font-size:.84rem;color:#4a4e53;margin:0}
