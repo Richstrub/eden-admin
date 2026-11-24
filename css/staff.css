@@ -3504,3 +3504,16 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-table input.iv-pcinp.bad{border-color:#a3392b!important}
 .iv-pcalc{font-family:var(--serif);font-size:1.1rem;margin:6px 0 0;min-height:1.4em}
 @media print{.iv-pricebtn,.iv-vendinp,.iv-rcved{display:none!important}}
+/* item window: everything about an item */
+.iv-row{cursor:pointer}
+.iv-row:hover td{background:rgba(176,112,63,.035)}
+.iv-info{border:1px solid rgba(0,0,0,.08);border-radius:12px;background:#fffdf8;padding:12px 14px;margin-bottom:14px}
+.iv-facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0;font-size:.88rem}
+.iv-facts dt{color:var(--stone);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;padding-top:2px}
+.iv-facts dd{margin:0}
+.iv-info-a{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.iv-acts{margin:16px 0 4px}
+.iv-acts>b{display:block;margin-bottom:6px}
+.iv-act{border-top:1px solid var(--line);padding:8px 0}
+.iv-act summary{cursor:pointer;font-size:.9rem}
+.iv-act .iv-mini{margin-top:6px}
