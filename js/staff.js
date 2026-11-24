@@ -284,7 +284,7 @@
   function setCollapsed(on) {
     var app = $('app'); app.classList.toggle('sb-collapsed', on);
     try { localStorage.setItem('eden-sb-collapsed', on ? '1' : ''); } catch (x) {}
-    var b = $('sbPin'); b.innerHTML = on ? '&raquo;' : '&laquo;'; b.setAttribute('aria-label', on ? 'Keep the menu open' : 'Hide the menu'); b.title = on ? 'Keep the menu open' : 'Hide the menu (swipe right from the left edge, or tap ☰, to bring it back)';
+    var b = $('sbPin'); b.innerHTML = on ? 'Show menu &raquo;' : '&laquo; Hide menu'; b.setAttribute('aria-label', on ? 'Show the menu' : 'Hide the menu'); b.title = on ? 'Keep the menu showing' : 'Hide the menu (swipe right from the left edge, or tap ☰, to bring it back)';
     if (!on) { app.classList.remove('sb-open'); $('sbScrim').hidden = true; }
   }
   try { if (localStorage.getItem('eden-sb-collapsed')) setCollapsed(true); } catch (x) {}

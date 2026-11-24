@@ -3544,3 +3544,14 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-savebar span{color:var(--stone);font-size:.86rem;margin-right:auto}
 .iv-savebtn{font-size:1rem;padding:12px 26px}
 @media print{.iv-startbar,.iv-savebar{display:none!important}}
+/* the hide-menu button, easy to see on the light side menu */
+.sb .sb-pin{width:auto;height:32px;padding:0 10px;gap:4px;color:#5d5952;background:#fff;border:1px solid rgba(0,0,0,.14);border-radius:16px;font-size:.78rem;letter-spacing:.02em;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.sb .sb-pin:hover{color:var(--ember);border-color:var(--ember)}
+.sb .sb-pin{white-space:nowrap;flex:none;margin-left:8px;padding:0 9px}.sb-head .ed-brand{min-width:0}
+/* hide / show menu lives in the top bar on wide screens */
+.sb-bar .sb-pin{display:none}
+@media (min-width:1024px){.sb-bar .sb-pin{display:inline-flex;align-items:center;white-space:nowrap;flex:none;height:32px;padding:0 12px;margin:0 2px 0 -8px;color:#5d5952;background:#fff;border:1px solid rgba(0,0,0,.14);border-radius:16px;font:inherit;font-size:.78rem;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .sb-bar .sb-pin:hover{color:var(--ember);border-color:var(--ember)}
+  .sb-collapsed .sb-bar .sb-pin{margin-left:0}}
+@media print{.sb-pin{display:none!important}}
+@media (min-width:1024px){.sb-bar .sb-pin{width:auto}}
