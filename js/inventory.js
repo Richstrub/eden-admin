@@ -228,14 +228,13 @@
     var date = h('input', { type: 'date', value: I.date, 'aria-label': 'Count date' });
     date.addEventListener('change', function () { if (date.value) { flush(); I.date = date.value; render(); } });
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
-      h('div', null, [h('p', { cls: 'sc-eyebrow' }, h('a', { href: '#inventory', cls: 'iv-back', text: '← Inventory' })), h('h1', { cls: 'sc-week', text: cat.label })]),
+      h('div', null, [h('p', { cls: 'sc-eyebrow' }, h('a', { href: '#inventory', cls: 'iv-back', text: '← Inventory' })), h('div', { cls: 'iv-h1row' }, [h('h1', { cls: 'sc-week', text: cat.label }), h('button', { type: 'button', cls: 'ed-btn', text: '+ Add item', on: { click: function () { editItem(null); } } })])]),
       h('div', { cls: 'iv-tools' }, [
         h('label', { cls: 'sc-f iv-date' }, [h('span', { text: 'Count date' }), date]),
         window.EdenInvoiceScan ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Scan invoice', title: 'Put an invoice’s prices into the inventory', on: { click: scanInvoice } }) : null,
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Order list', on: { click: orderList } }),
         h('button', { type: 'button', cls: 'ed-btn small', text: 'Print count sheet', title: 'A blank sheet to count on', on: { click: countSheet } }),
-        h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } }),
-        h('button', { type: 'button', cls: 'ed-btn', text: 'Add item', on: { click: function () { editItem(null); } } })
+        h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } })
       ])
     ]));
     if (I.cat === 'bev') {

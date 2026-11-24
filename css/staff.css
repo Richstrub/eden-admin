@@ -3566,3 +3566,6 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-findx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:30px;height:30px;border:0;border-radius:50%;background:rgba(0,0,0,.07);color:#5d5952;font-size:.8rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .iv-findx:hover{background:rgba(176,112,63,.15);color:var(--ember)}
 .iv-findx[hidden]{display:none}
+.iv-h1row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.iv-sec .iv-secadd{float:none;margin-left:12px;vertical-align:baseline}
+@media print{.iv-h1row .ed-btn{display:none!important}}
