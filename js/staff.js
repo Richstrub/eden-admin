@@ -280,6 +280,15 @@
   function openDrawer() { $('app').classList.add('sb-open'); $('sbScrim').hidden = false; $('sbOpen').setAttribute('aria-expanded', 'true'); var f = $('sideNav').querySelector('[aria-current="true"]') || $('sbClose'); setTimeout(function () { f.focus(); }, 50); }
   function closeDrawer() { if (!$('app').classList.contains('sb-open')) return; $('app').classList.remove('sb-open'); $('sbScrim').hidden = true; $('sbOpen').setAttribute('aria-expanded', 'false'); }
   $('sbOpen').addEventListener('click', openDrawer);
+  // on a wide screen the menu can be tucked away: then it works like the phone drawer (☰, or swipe right from the left)
+  function setCollapsed(on) {
+    var app = $('app'); app.classList.toggle('sb-collapsed', on);
+    try { localStorage.setItem('eden-sb-collapsed', on ? '1' : ''); } catch (x) {}
+    var b = $('sbPin'); b.innerHTML = on ? '&raquo;' : '&laquo;'; b.setAttribute('aria-label', on ? 'Keep the menu open' : 'Hide the menu'); b.title = on ? 'Keep the menu open' : 'Hide the menu (swipe right from the left edge, or tap ☰, to bring it back)';
+    if (!on) { app.classList.remove('sb-open'); $('sbScrim').hidden = true; }
+  }
+  try { if (localStorage.getItem('eden-sb-collapsed')) setCollapsed(true); } catch (x) {}
+  $('sbPin').addEventListener('click', function () { var on = !$('app').classList.contains('sb-collapsed'); if (on) { setCollapsed(true); closeDrawer(); } else setCollapsed(false); });
   $('sbClose').addEventListener('click', function () { closeDrawer(); $('sbOpen').focus(); });
   $('sbScrim').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('app').classList.contains('sb-open')) { closeDrawer(); $('sbOpen').focus(); } });
@@ -287,7 +296,7 @@
   (function swipe() {
     var app = $('app'), sb = app.querySelector('.sb'), scrim = $('sbScrim');
     var g = null;   // the gesture in progress
-    function drawerMode() { return window.matchMedia('(max-width:1023px)').matches; }
+    function drawerMode() { return window.matchMedia('(max-width:1023px)').matches || app.classList.contains('sb-collapsed'); }
     function blocked(t) {   // a touch that belongs to something else: typing, sliders, pop-ups, or a box that scrolls sideways
       if (document.querySelector('dialog[open], .sc-modal, .mp-back, .acct-back')) return true;
       for (var el = t; el && el !== document.body; el = el.parentElement) {

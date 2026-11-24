@@ -232,8 +232,8 @@
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
       h('th', { cls: 'iv-drag', 'aria-label': 'Drag to reorder' }),
-      h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
-      h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'r', text: 'Cost' }),
+      h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' }), I.cat === 'bev' ? h('th', { cls: 'iv-pmenu', text: 'On the menu' }) : null,
       I.cat === 'bev' && window.EdenCosting ? h('th', { cls: 'iv-pcog', text: 'Cost %', title: 'Cost of goods: cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null
@@ -300,6 +300,8 @@
     var tr = h('tr', { cls: 'iv-row' + (off ? ' iv-offmenu' : ''), title: off ? 'Not on the menu or linked to a menu item — click ✎ to link it' : null, 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-drag' }, grip),
       h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it), it.category === 'bev' && I.costCols && window.EdenCosting ? menuSelect(it) : null])]),
+      h('td', { cls: 'r iv-ohc' }, inp),
+      order,
       h('td', { cls: 'iv-inv' }, [h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
         names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' }))), priceBtn(it)]),
       h('td', { cls: 'iv-vend' }, [vendorInput(it), h('span', { cls: 'iv-unittext', text: it.vendor || '' })]),
@@ -307,8 +309,6 @@
       h('td', { cls: 'iv-unit' }, [unitSelect(it), h('span', { cls: 'iv-unittext', text: unitText(it) })]),
       h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); })),
       h('td', { cls: 'r iv-last', text: qty(last) }),
-      h('td', { cls: 'r iv-ohc' }, inp),
-      order,
       (function () {
         var fr = it.category !== 'paper' && it.cost != null ? forRecipes(it) : null;
         return h('td', { cls: 'r iv-cost', title: fr && fr.parts.length ? 'For recipes & cocktails: ' + fr.parts.join(' · ') : '' }, [it.cost != null ? money(it.cost) : '',
