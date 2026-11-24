@@ -273,13 +273,15 @@
 
     // search
     var find = h('input', { type: 'search', cls: 'iv-find', placeholder: 'Find an item or vendor…', value: I.filter, 'aria-label': 'Find an item' });
-    find.addEventListener('input', function () { I.filter = find.value; applyFilter(); });
+    var findX = h('button', { type: 'button', cls: 'iv-findx', 'aria-label': 'Clear the search', title: 'Clear', text: '✕', hidden: !I.filter, on: { click: function () { find.value = ''; I.filter = ''; findX.hidden = true; applyFilter(); find.focus(); } } });
+    find.addEventListener('input', function () { I.filter = find.value; findX.hidden = !find.value; applyFilter(); });
+    find.addEventListener('keydown', function (e) { if (e.key === 'Escape' && find.value) { e.preventDefault(); findX.click(); } });
     var vlist = uniq(items.map(function (x) { return x.vendor; })).sort(function (a, b) { return a.localeCompare(b); });
     if (I.vendor && vlist.indexOf(I.vendor) === -1 && I.vendor !== '__none') I.vendor = '';
     var vsel = h('select', { cls: 'iv-vsel', 'aria-label': 'Vendor' }, [h('option', { value: '', text: 'All vendors' })].concat(vlist.map(function (v) { return h('option', { value: v, text: v }); }), [h('option', { value: '__none', text: 'No vendor set' })]));
     vsel.value = I.vendor || '';
     vsel.addEventListener('change', function () { I.vendor = vsel.value; applyFilter(); });
-    wrap.appendChild(h('div', { cls: 'iv-bar' }, [find, vsel, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
+    wrap.appendChild(h('div', { cls: 'iv-bar' }, [h('div', { cls: 'iv-findwrap' }, [find, findX]), vsel, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
 
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];

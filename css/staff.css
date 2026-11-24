@@ -3559,3 +3559,10 @@ td.iv-inv{font-size:.82rem;color:#6b6f74;max-width:220px;white-space:nowrap;over
 .iv-table td.iv-ohc{min-width:96px;width:96px}
 .iv-table input.iv-oh{width:84px!important;min-width:84px;font-variant-numeric:tabular-nums;padding:7px 8px}
 @media print{#viewInventory .iv-table td.iv-ohc{min-width:0;width:auto}#viewInventory .iv-table input.iv-oh{width:42px!important;min-width:0}}
+/* inventory search: an ✕ to clear it */
+.iv-findwrap{position:relative;flex:0 1 320px;min-width:0;display:flex}
+.iv-findwrap .iv-find{flex:1 1 auto;width:100%;padding-right:40px}
+.iv-findwrap .iv-find::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.iv-findx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:30px;height:30px;border:0;border-radius:50%;background:rgba(0,0,0,.07);color:#5d5952;font-size:.8rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.iv-findx:hover{background:rgba(176,112,63,.15);color:var(--ember)}
+.iv-findx[hidden]{display:none}
