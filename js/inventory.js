@@ -266,6 +266,7 @@
 
   /* ---------- rendering ---------- */
   function render() {
+    var oldSc = I.el && I.el.querySelector('.iv-scroll'); I.scPos = oldSc ? [oldSc.scrollTop, oldSc.scrollLeft] : I.scPos;
     var el = I.el; if (!el) return;
     var keep = document.activeElement && el.contains(document.activeElement) && document.activeElement.getAttribute('data-oh');
     el.innerHTML = '';
@@ -377,7 +378,10 @@
     });
     var foot = h('tfoot', null, h('tr', null, [h('td', { colspan: String(ncol - 2 - (I.cat === 'bev' ? 2 : 0) - (I.showCost ? 2 : 0)), text: 'Total value on hand' }), I.showCost ? h('td', { cls: 'iv-menu' }) : null, I.showCost ? h('td', { cls: 'iv-pct' }) : null, h('td', { cls: 'r', id: 'ivTotal', text: money(value) }), h('td', { cls: 'iv-tool' }), I.cat === 'bev' ? h('td', { cls: 'iv-pmenu' }) : null, I.cat === 'bev' && window.EdenCosting ? h('td', { cls: 'iv-pcog' }) : null]));
     table.appendChild(foot);
-    wrap.appendChild(h('div', { cls: 'sc-scroll iv-scroll' }, table));
+    var scBox = h('div', { cls: 'sc-scroll iv-scroll' }, table);
+    wrap.appendChild(scBox);
+    if (I.scPos && I.scCat === I.cat) setTimeout(function () { scBox.scrollTop = I.scPos[0]; scBox.scrollLeft = I.scPos[1]; }, 0);
+    I.scCat = I.cat;
     wrap.appendChild(h('div', { cls: 'iv-savebar' }, [
       h('span', { text: 'Counts save as you type. Save inventory makes sure everything is in, and shows what’s left.' }),
       h('button', { type: 'button', cls: 'ed-btn iv-savebtn', text: 'Save inventory', on: { click: saveInventory } })
@@ -485,7 +489,7 @@
       var r = (table.closest('.iv-scroll') || table).getBoundingClientRect();
       line.style.top = (best.y - 1) + 'px'; line.style.left = Math.max(r.left, 0) + 'px'; line.style.width = Math.min(r.width, window.innerWidth) + 'px'; line.style.display = 'block';
     }
-    function scroller() { var y = lastY, d = y < 70 ? -14 : y > window.innerHeight - 70 ? 14 : 0; if (d) { window.scrollBy(0, d); var m = document.querySelector('.sb-main'); if (m) m.scrollTop += d; place(y); } }
+    function scroller() { var box = table.closest('.iv-scroll'), br = box ? box.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }, top = Math.max(br.top, 0) + 50, bot = Math.min(br.bottom, window.innerHeight) - 50, y = lastY, d = y < top ? -14 : y > bot ? 14 : 0; if (d) { if (box) box.scrollTop += d; window.scrollBy(0, d); place(y); } }
     function move(ev) { lastY = ev.clientY; if (!moved && Math.abs(ev.clientY - sy) < 4) return; if (!moved) { moved = true; tr.classList.add('iv-dragging'); timer = setInterval(scroller, 30); } place(ev.clientY); }
     function up() {
       grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', cancel);

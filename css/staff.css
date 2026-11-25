@@ -3625,3 +3625,7 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-cpo.iv-floz{display:block;color:#4a4e53;font-variant-numeric:tabular-nums;white-space:nowrap}
 .iv-cpo.iv-floz.guess{color:#8a6a45}
 .iv-cpo.iv-floz.none{color:#b0703f;font-style:italic}
+/* the column labels stay at the top while you scroll the list */
+#viewInventory .iv-scroll{max-height:calc(100vh - 96px);max-height:calc(100dvh - 96px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#viewInventory .iv-table thead th{position:sticky;top:0;z-index:5;background:var(--ivory);box-shadow:inset 0 -1px 0 var(--line)}
+@media print{#viewInventory .iv-scroll{max-height:none;overflow:visible}#viewInventory .iv-table thead th{position:static;box-shadow:none}}
