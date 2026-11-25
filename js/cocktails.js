@@ -192,9 +192,25 @@
       var inv = invSelect(g.inv_id);
       it.addEventListener('change', function () { if (!inv.value) { var gu = guessInv(it.value); if (gu) inv.value = gu.id; } });
       var del = h('button', { type: 'button', cls: 'sc-x', 'aria-label': 'Remove', text: '✕', on: { click: function () { r.remove(); } } });
-      var r = h('div', { cls: 'ck-row' }, [q, u, it, inv, del]);
+      var grip = h('span', { cls: 'ck-grip', title: 'Drag to change the order', 'aria-label': 'Drag to move this ingredient', text: '⠿' });
+      var r = h('div', { cls: 'ck-row' }, [grip, q, u, it, inv, del]);
+      grip.addEventListener('pointerdown', function (e) { dragIng(e, r, grip); });
       r._get = function () { return { qty: num(q.value), unit: u.value, item: it.value.trim(), inv_id: inv.value || null }; };
       rows.appendChild(r);
+    }
+    // drag an ingredient by its handle to change the order (mouse, finger or pencil); the order saves with the build
+    function dragIng(e, r, grip) {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      r.classList.add('ck-dragging');
+      function move(ev) {
+        var y = ev.clientY, sibs = [].slice.call(rows.children).filter(function (x) { return x !== r; }), before = null;
+        for (var i = 0; i < sibs.length; i++) { var bx = sibs[i].getBoundingClientRect(); if (y < bx.top + bx.height / 2) { before = sibs[i]; break; } }
+        if (before) { if (r.nextSibling !== before) rows.insertBefore(r, before); } else if (rows.lastChild !== r) rows.appendChild(r);
+      }
+      // moving the row in the page drops the pointer capture, so follow the pointer on the whole window
+      function up() { r.classList.remove('ck-dragging'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); }
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
     }
     (b.ingredients && b.ingredients.length ? b.ingredients : [{ qty: 1.5, unit: 'oz', item: '' }]).forEach(row);
     var msg = h('p', { cls: 'sc-msg', role: 'status' });
@@ -202,7 +218,7 @@
       h('div', { cls: 'sc-row2' }, [lbl('Cocktail', f.name), lbl('Sold on the menu as', f.menu)]),
       h('div', { cls: 'sc-row3' }, [lbl('Glass', f.glass), lbl('Ice', f.ice), lbl('Garnish', f.garnish)]),
       h('div', { cls: 'ck-head' }, [h('b', { text: 'Build' }), h('span', { text: 'Link each spirit, wine or liqueur to its inventory item, so cocktail sales count toward liquor used. Base spirits are 1.5 oz.' })]),
-      h('div', { cls: 'ck-row ck-labels' }, [h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Comes out of (inventory)' }), h('span')]),
+      h('div', { cls: 'ck-row ck-labels' }, [h('span'), h('span', { text: 'Amount' }), h('span', { text: 'Unit' }), h('span', { text: 'Ingredient' }), h('span', { text: 'Comes out of (inventory)' }), h('span')]),
       rows,
       h('button', { type: 'button', cls: 'ed-btn small', text: '+ Add an ingredient', on: { click: function () { row({ qty: null, unit: 'oz', item: '' }); } } }),
       lbl('Method', f.method),

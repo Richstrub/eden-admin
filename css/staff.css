@@ -3653,3 +3653,10 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-ttip span{flex:1;color:#5d5952}.iv-ttip em{font-style:normal;font-variant-numeric:tabular-nums}
 .iv-ttable{margin-top:6px;font-size:.84rem}.iv-ttable summary{cursor:pointer;color:var(--stone)}
 @media print{.iv-tlegend button[aria-pressed=false]{display:none}.iv-ttip{display:none}}
+/* cocktail builds: drag ingredients into order */
+.ck-row{grid-template-columns:24px 70px 100px 1fr 1fr 32px}
+.ck-grip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:34px;color:#b9b4aa;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:5px}
+.ck-grip:hover{color:var(--ember);background:rgba(176,112,63,.08)}
+.ck-dragging{opacity:.6;background:#fffaf3;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.ck-dragging .ck-grip{cursor:grabbing}
+@media (max-width:700px){.ck-row{grid-template-columns:24px 60px 84px 1fr 32px}.ck-row .ck-inv{grid-column:2/5}}
