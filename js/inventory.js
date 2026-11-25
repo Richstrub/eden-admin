@@ -19,11 +19,17 @@
   var NA_RE = /soft|juice|soda|water|coffee|tea\b|n\/a|non.?alc|mocktail|kombucha|lemonade|tonic|ginger beer/i;
   // non-alcoholic by name too (coffee, tea, soda, juice, tonic, NA beer…), wherever it's filed
   var NA_NAME = /\b(coffee|espresso|decaf|tea|chai|matcha|oolong|soda|cola|coke|pepsi|sprite|ginger ale|ginger beer|tonic|club soda|seltzer|sparkling water|mineral water|water|juice|lemonade|limeade|kombucha|root beer|mocktail|non.?alcoholic|alcohol.?free|n\/a|na beer|zero proof|0\.0%?)\b/i;
-  var BOOZE = /\b(gin|vodka|rum|whiske?y|bourbon|rye|tequila|mezcal|brandy|cognac|liqueur|amaro|vermouth|wine|ale|ipa|lager|stout|pils)\b/i;
+  var BOOZE = /\b(gin|vodka|rum|whiske?y|bourbon|rye|tequila|mezcal|brandy|cognac|liqu?eu?r|liquor|cordial|schnapps|amaretto|aquavit|grappa|absinthe|spirits?|amaro|vermouth|wine|ale|ipa|lager|stout|pils)\b/i;
   function subOf(it) {
     var s = String(it.section || '').toLowerCase(), nm = String(it.name || '') + ' ' + String(it.pack || '');
     if (NA_RE.test(s)) return 'na';
-    if (NA_NAME.test(nm) && (!BOOZE.test(nm) || /non.?alcoholic|alcohol.?free|zero proof|\bna\b|0\.0/i.test(nm)) && !/coffee liqueur|tea.?infused/i.test(nm)) return 'na';
+    // filed in a beer, wine or spirits section: that decides it, whatever words are in the name (St. George Coffee Liqueur is a liqueur)
+    if (!/mixer/.test(s)) {
+      if (/beer|draught|draft|cider|keg/.test(s)) return 'beer';
+      if (/wine|sparkling|ros[eé]|champagne|sake|dessert|port\b/.test(s)) return 'wine';
+      if (/aperitif|bourbon|rye|malt|scotch|whisk|gin|vodka|agave|tequila|mezcal|rum|specialty|digestif|liqueur|liquor|cordial|brandy|cognac|amar[oi]|spirit|vermouth/.test(s)) return 'liquor';
+    }
+    if (NA_NAME.test(nm) && (!BOOZE.test(nm) || /non.?alcoholic|alcohol.?free|zero proof|\bna\b|0\.0/i.test(nm)) && !/coffee liqu?eu?r|tea.?infused/i.test(nm)) return 'na';
     if (/beer|draught|draft|cider|can(ned|s)?\b|keg/.test(s)) return 'beer';
     if (/wine|sparkling|ros[eé]|red|white|dessert|port|champagne|sake/.test(s)) return 'wine';
     return 'liquor';
