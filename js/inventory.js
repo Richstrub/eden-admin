@@ -424,7 +424,7 @@
       h('td', { cls: 'r iv-ohc' }, inp),
       order,
       h('td', { cls: 'iv-inv' }, [h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
-        names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { text: I.invLine[it.id] }) : h('span', { text: 'Match…' }))), priceBtn(it)]),
+        names.length ? [h('span', { text: names[0].desc }), names.length > 1 ? h('small', { text: ' +' + (names.length - 1) }) : null] : (I.invLine && I.invLine[it.id] ? h('span', { cls: 'iv-histname', title: 'Only in the price history — not matched to an invoice line. Click to match it or remove those prices.', text: I.invLine[it.id] }) : h('span', { text: 'Match…' }))), priceBtn(it)]),
       h('td', { cls: 'iv-vend' }, [vendorInput(it), h('span', { cls: 'iv-unittext', text: it.vendor || '' })]),
       h('td', { cls: 'iv-unit iv-rcv' }, I.orderCols ? [rcvEditor(it), h('span', { cls: 'iv-unittext', text: rcvText(it) })] : rcvText(it)),
       h('td', { cls: 'iv-unit' }, [unitSelect(it), h('span', { cls: 'iv-unittext', text: unitText(it) })]),
@@ -2035,7 +2035,7 @@
       if (r.error) return 0;
       var newest = function (a) { return a.slice().sort(function (x, y) { return String(y.price_date).localeCompare(String(x.price_date)) || String(y.created_at).localeCompare(String(x.created_at)); })[0] || null; };
       var all = r.data || [], mine = all.filter(function (p) { return p.item_id === fromId; });
-      var hit = mine.filter(function (p) { return normS(p.invoice_line) === normS(s.desc) && (!p.vendor || normS(p.vendor) === s.vendor_key); });
+      var hit = mine.filter(function (p) { return normS(p.invoice_line) === normS(s.desc) && (!p.vendor || !s.vendor_key || normS(p.vendor) === s.vendor_key); });
       if (!hit.length) return 0;
       var ids = hit.map(function (p) { return p.id; });
       var job = toId ? sb().from('inventory_prices').update({ item_id: toId }).in('id', ids) : sb().from('inventory_prices').delete().in('id', ids);
@@ -2070,6 +2070,34 @@
       return h('li', null, [h('div', null, [h('b', { text: s.desc }), h('span', { text: [s.vendor, s.date ? 'last on ' + shortDay(s.date) : '', s.price != null && s.price !== '' ? money(+s.price) + (s.unit ? ' / ' + s.unit : '') : '', s.n > 1 ? 'on ' + s.n + ' invoices' : ''].filter(Boolean).join(' · ') })]),
         h('div', { cls: 'iv-mtools' }, [mv, h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Unmatch', on: { click: function () { m.close(); setMatch(s, null); } } })])]);
     })));
+    // names that are only in the price history (a typed-in price, an old scan, or the spreadsheet): match them, or take their prices off
+    var have = {}; names.forEach(function (x) { have[normS(x.desc)] = 1; });
+    var hist = {}, hs = (I.priceHist && I.priceHist[it.id]) || [];
+    hs.forEach(function (p) { if (!p.invoice_line || have[normS(p.invoice_line)]) return; var k = normS(p.vendor) + '|' + normS(p.invoice_line); var x = hist[k] = hist[k] || { desc: p.invoice_line, vendor: p.vendor || '', vendor_key: normS(p.vendor), n: 0, last: p }; x.n++; });
+    var hk = Object.keys(hist);
+    if (hk.length) {
+      body.push(h('h3', { cls: 'iv-mh', text: 'Only in the price history' }));
+      body.push(h('p', { cls: 'sc-sub', text: 'These names came with prices (typed in, from an older scan, or from the spreadsheet) but aren’t matched to an invoice line. That’s why the item shows a name and a price. Match one so the scanner uses it, or take its prices off.' }));
+      body.push(h('ul', { cls: 'iv-mlist' }, hk.map(function (k) {
+        var x = hist[k], lp = x.last;
+        return h('li', null, [h('div', null, [h('b', { text: x.desc }), h('span', { text: [x.vendor || 'no vendor', x.n + ' price' + (x.n === 1 ? '' : 's'), 'last ' + shortDay(lp.price_date), money(+lp.invoice_price || +lp.unit_cost) + (lp.invoice_unit ? ' / ' + lp.invoice_unit : ''), lp.invoice_id ? 'from a scan' : 'typed in'].join(' · ') })]),
+          h('div', { cls: 'iv-mtools' }, [
+            x.vendor ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Match', title: 'Remember it: the next invoice from ' + x.vendor + ' with this name goes to this item', on: { click: function () {
+              m.close(); status('Saving…', 'dirty');
+              sb().from('inventory_item_links').upsert([{ vendor_key: x.vendor_key, line_key: 'desc:' + normS(x.desc), item_id: it.id, per_unit: +lp.per_unit > 0 ? +lp.per_unit : 1, updated_at: new Date().toISOString() }], { onConflict: 'vendor_key,line_key' })
+                .then(function (r) { if (r.error) throw r.error; return loadMatch(); }).then(function () { status('Matched “' + x.desc + '” to ' + showName(it) + '.', 'ok'); render(); }, function (e) { status(isPerm(e) ? 'Your role can’t change invoice matches.' : 'Couldn’t save the match.', 'err'); });
+            } } }) : null,
+            h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Remove its prices', on: { click: function () {
+              if (!confirm('Take the ' + x.n + ' price' + (x.n === 1 ? '' : 's') + ' for “' + x.desc + '” off ' + showName(it) + '?')) return;
+              m.close(); status('Removing…', 'dirty');
+              movePrices({ desc: x.desc, vendor_key: x.vendor_key }, it.id, null).then(function (n) { return loadInvLines().then(function () { return n; }); }).then(function (n) {
+                status('Took ' + n + ' price' + (n === 1 ? '' : 's') + ' off ' + showName(it) + '. ' + (hasCost(it) ? 'It now costs ' + money(+it.cost) + (it.unit ? ' / ' + it.unit : '') + '.' : 'It has no cost now.'), 'ok');
+                return rechain(it.id, { date: '0000-01-01' });
+              });
+            } } })
+          ])]);
+      })));
+    }
     var un = unmatchedLines();
     if (un.length) {
       var find = h('input', { type: 'search', placeholder: 'Find an invoice line that isn’t matched yet…', 'aria-label': 'Find an invoice line' });
