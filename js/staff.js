@@ -280,6 +280,26 @@
   function openDrawer() { $('app').classList.add('sb-open'); $('sbScrim').hidden = false; $('sbOpen').setAttribute('aria-expanded', 'true'); var f = $('sideNav').querySelector('[aria-current="true"]') || $('sbClose'); setTimeout(function () { f.focus(); }, 50); }
   function closeDrawer() { if (!$('app').classList.contains('sb-open')) return; $('app').classList.remove('sb-open'); $('sbScrim').hidden = true; $('sbOpen').setAttribute('aria-expanded', 'false'); }
   $('sbOpen').addEventListener('click', openDrawer);
+  // hold the EDEN logo (top left) to refresh the page — handy on the iPad and phone, where there's no refresh button
+  (function () {
+    var HOLD = 650, t = null, fired = false, el = null, sx = 0, sy = 0;
+    function cancel() { clearTimeout(t); t = null; if (el) el.classList.remove('holding'); }
+    function fire() {
+      fired = true; if (el) { el.classList.remove('holding'); el.classList.add('refreshing'); }
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (x) {}
+      status('Refreshing…', 'dirty');
+      var waits = [];
+      try { if (window.EdenInventory && window.EdenInventory.saveNow) waits.push(window.EdenInventory.saveNow()); } catch (x) {}
+      Promise.race([Promise.all(waits), new Promise(function (r) { setTimeout(r, 2500); })]).then(function () { setTimeout(function () { location.reload(); }, 150); });
+    }
+    [].forEach.call(document.querySelectorAll('[data-holdrefresh]'), function (b) {
+      b.addEventListener('pointerdown', function (e) { if (e.button) return; fired = false; el = b; sx = e.clientX; sy = e.clientY; b.classList.add('holding'); t = setTimeout(fire, HOLD); });
+      b.addEventListener('pointermove', function (e) { if (t && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancel(); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { b.addEventListener(ev, function () { if (!fired) cancel(); }); });
+      b.addEventListener('click', function (e) { if (fired) { e.preventDefault(); e.stopPropagation(); } }, true);
+      b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    });
+  })();
   // on a wide screen the menu can be tucked away: then it works like the phone drawer (☰, or swipe right from the left)
   function setCollapsed(on) {
     var app = $('app'); app.classList.toggle('sb-collapsed', on);

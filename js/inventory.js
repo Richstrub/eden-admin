@@ -2228,6 +2228,7 @@
   }
 
   window.EdenInventory = {
+    saveNow: function () { return I.pending || I.saving ? saveNow() : Promise.resolve(); },
     show: function (ctx) {
       I.ctx = ctx; I.el = ctx.el;
       var pc = FROM_SLUG[ctx.sub || ''];
