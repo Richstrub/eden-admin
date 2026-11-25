@@ -3614,3 +3614,7 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-uf li span{color:var(--stone);font-size:.8rem;flex:1}
 .iv-uf li b{color:#b0703f;font-variant-numeric:tabular-nums}
 .iv-uf .sc-link{border:0;background:none;padding:0;color:var(--ink);font:inherit;font-weight:500;cursor:pointer;text-align:left}
+.iv-sp-o.add{color:var(--ember);font-weight:500}
+.iv-table input.iv-sp-in.iv-vendinp{width:120px;font-size:.86rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px}
+.iv-table input.iv-sp-in.iv-vendinp:hover{border-color:var(--line)!important}
+.iv-table input.iv-sp-in.iv-vendinp:focus{border-color:var(--ember)!important;background:#fff}

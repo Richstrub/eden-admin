@@ -510,17 +510,19 @@
     function paint() {
       var words = normS(inp.value === o.value ? '' : inp.value).split(' ').filter(Boolean);
       hits = (o.extra || []).filter(function (x) { return !words.length; }).concat(o.items.filter(function (x) { var t = normS(x.label + ' ' + (x.sub || '') + ' ' + (x.group || '')); return words.every(function (w) { return t.indexOf(w) !== -1; }); }).slice(0, 80));
+      var typed = inp.value.trim();
+      if (o.addNew && words.length && !o.items.some(function (x) { return normS(x.label) === normS(typed); })) hits.unshift({ key: '__add', special: true, add: true, text: typed, label: o.addNew(typed) });
       if (!pop) { pop = h('div', { cls: 'iv-sp-pop', role: 'listbox' }); document.body.appendChild(pop); window.addEventListener('scroll', place, true); window.addEventListener('resize', place); }
       pop.innerHTML = ''; at = hits.length && words.length ? 0 : -1;
       var lastG = null;
       hits.forEach(function (x, i) {
         if (x.group && x.group !== lastG) { lastG = x.group; pop.appendChild(h('div', { cls: 'iv-sp-g', text: x.group })); }
-        var b = h('button', { type: 'button', cls: 'iv-sp-o' + (x.special ? ' sp' : '') + (i === at ? ' on' : ''), role: 'option', 'data-i': String(i) }, [h('span', { text: x.label }), x.sub ? h('small', { text: x.sub }) : null]);
+        var b = h('button', { type: 'button', cls: 'iv-sp-o' + (x.special ? ' sp' : '') + (x.add ? ' add' : '') + (i === at ? ' on' : ''), role: 'option', 'data-i': String(i) }, [h('span', { text: x.label }), x.sub ? h('small', { text: x.sub }) : null]);
         b.addEventListener('mousedown', function (e) { e.preventDefault(); });
         b.addEventListener('click', function () { pick(x); });
         pop.appendChild(b);
       });
-      if (!hits.length) pop.appendChild(h('div', { cls: 'iv-sp-none', text: 'Nothing on the menu matches “' + inp.value + '”.' }));
+      if (!hits.length) pop.appendChild(h('div', { cls: 'iv-sp-none', text: (o.none || 'Nothing on the menu matches') + ' “' + inp.value + '”.' }));
       place();
     }
     function mark() { if (!pop) return; [].forEach.call(pop.querySelectorAll('.iv-sp-o'), function (b) { var on = +b.getAttribute('data-i') === at; b.classList.toggle('on', on); if (on) b.scrollIntoView({ block: 'nearest' }); }); }
@@ -800,13 +802,21 @@
   }
   // vendor, typed on the row
   function vendorInput(it) {
-    var inp = h('input', { type: 'text', cls: 'iv-vendinp', value: it.vendor || '', list: 'ivVendRow', placeholder: 'Vendor', 'aria-label': 'Vendor for ' + showName(it), autocomplete: 'off' });
-    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } else if (e.key === 'Escape') { inp.value = it.vendor || ''; inp.blur(); } });
-    inp.addEventListener('change', function () {
-      var v = inp.value.trim(), old = it.vendor || ''; if (v === old) return;
+    function setV(v) {
+      v = String(v || '').trim(); var old = it.vendor || ''; if (v === old) return;
       it.vendor = v; status('Saving…', 'dirty');
-      saveItems([it]).then(function () { status(v ? 'Vendor saved.' : 'Vendor cleared.', 'ok'); var tr = inp.closest('tr'); if (tr) tr.setAttribute('data-vendor', v); }, function (e) { it.vendor = old; inp.value = old; saveErr(e); });
-    });
+      saveItems([it]).then(function () { status(v ? 'Vendor: ' + v + '.' : 'Vendor cleared.', 'ok'); }, function (e) { it.vendor = old; saveErr(e); });
+      var sc = document.scrollingElement, y = sc ? sc.scrollTop : 0; render(); if (sc) sc.scrollTop = y;
+    }
+    var inp = searchPick({ cls: 'iv-vendinp', value: it.vendor || '', placeholder: 'Vendor', label: 'Vendor for ' + showName(it), none: 'No vendor called',
+      items: vendorList().map(function (v) { return { key: v, label: v }; }),
+      extra: [{ key: '__new', special: true, add: true, label: '+ New vendor…' }].concat(it.vendor ? [{ key: '__none', special: true, label: 'No vendor' }] : []),
+      addNew: function (t) { return '+ Add “' + t + '” as a new vendor'; },
+      onPick: function (x) {
+        if (x.key === '__new') { var n = window.prompt('Name of the new vendor:'); if (n && n.trim()) setV(n); return; }
+        if (x.key === '__none') { setV(''); return; }
+        setV(x.add ? x.text : x.key);
+      } });
     return inp;
   }
   // received in: how it comes on the invoice, and how many counted units are in one
