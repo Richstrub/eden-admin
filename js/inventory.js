@@ -2016,8 +2016,38 @@
       if (changed) { v.lines = lines; ops.push(sb().from('inventory_invoices').update({ lines: lines }).eq('id', v.id).then(function () {}, function () {})); }
     });
     status('Saving…', 'dirty');
-    return Promise.all(ops).then(function () { return loadMatch(); }).then(function () { status(itemId ? 'Matched. The next invoice with “' + s.desc + '” goes to that item.' : 'Unmatched “' + s.desc + '”.', 'ok'); render(); },
+    var oldId = s.item && s.item !== itemId ? s.item : null;
+    return Promise.all(ops).then(function () { return oldId ? movePrices(s, oldId, itemId || null) : null; }).then(function (moved) {
+      return Promise.all([loadMatch(), loadInvLines()]).then(function () { return moved; });
+    }).then(function (moved) {
+      var it = oldId && I.items.filter(function (x) { return x.id === oldId; })[0];
+      status(itemId ? 'Matched. The next invoice with “' + s.desc + '” goes to that item.' + (moved ? ' Its ' + moved + ' price' + (moved === 1 ? '' : 's') + ' went with it.' : '')
+        : 'Unmatched “' + s.desc + '”' + (moved ? ' and took off its ' + moved + ' price' + (moved === 1 ? '' : 's') : '') + (it ? '. ' + showName(it) + (hasCost(it) ? ' now costs ' + money(+it.cost) + (it.unit ? ' / ' + it.unit : '') : ' has no cost now') : '') + '.', 'ok');
+      if (oldId) return rechain(oldId, { date: '0000-01-01' }).then(function () { if (itemId) return rechain(itemId, { date: '0000-01-01' }); });
+      render();
+    },
       function (e) { status(isPerm(e) ? 'Your role can’t change invoice matches.' : 'Couldn’t save the match. Try again.', 'err'); });
+  }
+  // the prices that came in on an invoice name follow it: unmatched → taken off the item; moved → go to the new item.
+  // The item's cost then comes from its newest remaining price (none left → no cost).
+  function movePrices(s, fromId, toId) {
+    return sb().from('inventory_prices').select('id,item_id,price_date,created_at,unit_cost,invoice_line,vendor').in('item_id', toId ? [fromId, toId] : [fromId]).limit(1000).then(function (r) {
+      if (r.error) return 0;
+      var newest = function (a) { return a.slice().sort(function (x, y) { return String(y.price_date).localeCompare(String(x.price_date)) || String(y.created_at).localeCompare(String(x.created_at)); })[0] || null; };
+      var all = r.data || [], mine = all.filter(function (p) { return p.item_id === fromId; });
+      var hit = mine.filter(function (p) { return normS(p.invoice_line) === normS(s.desc) && (!p.vendor || normS(p.vendor) === s.vendor_key); });
+      if (!hit.length) return 0;
+      var ids = hit.map(function (p) { return p.id; });
+      var job = toId ? sb().from('inventory_prices').update({ item_id: toId }).in('id', ids) : sb().from('inventory_prices').delete().in('id', ids);
+      return job.then(function (x) {
+        if (x.error) return 0;
+        var save = [], from = I.items.filter(function (x2) { return x2.id === fromId; })[0], to = toId && I.items.filter(function (x2) { return x2.id === toId; })[0];
+        var nb = newest(mine), na = newest(mine.filter(function (p) { return ids.indexOf(p.id) === -1; }));
+        if (from && nb && ids.indexOf(nb.id) !== -1) { from.cost = na ? +na.unit_cost : null; save.push(from); }   // its cost came from the line that left
+        if (to) { var tn = newest(all.filter(function (p) { return p.item_id === toId; }).concat(hit)); if (tn && ids.indexOf(tn.id) !== -1) { to.cost = +tn.unit_cost; save.push(to); } }
+        return (save.length ? saveItems(save).catch(function () {}) : Promise.resolve()).then(function () { return hit.length; });
+      });
+    }, function () { return 0; });
   }
   function itemOptions(cid, cur) {
     var sel = h('select', { cls: 'iv-msel', 'aria-label': 'Match to an item' }, [h('option', { value: '', text: cur ? 'Move to another item…' : 'Match to an item…' })]);
