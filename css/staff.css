@@ -3618,3 +3618,7 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-table input.iv-sp-in.iv-vendinp{width:120px;font-size:.86rem;padding:4px 6px;border:1px solid transparent!important;background:transparent;border-radius:6px}
 .iv-table input.iv-sp-in.iv-vendinp:hover{border-color:var(--line)!important}
 .iv-table input.iv-sp-in.iv-vendinp:focus{border-color:var(--ember)!important;background:#fff}
+.iv-dupv{border-color:rgba(176,112,63,.35);background:#fffaf3}
+.iv-cvlist{display:grid;gap:4px;max-height:320px;overflow:auto;margin-top:6px}
+.iv-cv{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(0,0,0,.05);cursor:pointer}
+.iv-cv input{width:auto}.iv-cv span{flex:1}.iv-cv small{color:var(--stone)}

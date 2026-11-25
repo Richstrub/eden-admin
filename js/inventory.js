@@ -313,6 +313,7 @@
     ]));
     var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
     var ufc = useFirstCard(I.cat); if (ufc) wrap.appendChild(ufc);
+    var dvc = dupVendorCard(); if (dvc) wrap.appendChild(dvc);
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
     items.forEach(function (it) {
@@ -810,11 +811,12 @@
     }
     var inp = searchPick({ cls: 'iv-vendinp', value: it.vendor || '', placeholder: 'Vendor', label: 'Vendor for ' + showName(it), none: 'No vendor called',
       items: vendorList().map(function (v) { return { key: v, label: v }; }),
-      extra: [{ key: '__new', special: true, add: true, label: '+ New vendor…' }].concat(it.vendor ? [{ key: '__none', special: true, label: 'No vendor' }] : []),
+      extra: [{ key: '__new', special: true, add: true, label: '+ New vendor…' }, { key: '__combine', special: true, add: true, label: 'Combine two vendors…' }].concat(it.vendor ? [{ key: '__none', special: true, label: 'No vendor' }] : []),
       addNew: function (t) { return '+ Add “' + t + '” as a new vendor'; },
       onPick: function (x) {
         if (x.key === '__new') { var n = window.prompt('Name of the new vendor:'); if (n && n.trim()) setV(n); return; }
         if (x.key === '__none') { setV(''); return; }
+        if (x.key === '__combine') { var g = dupVendors().filter(function (gr) { return gr.indexOf(it.vendor) !== -1; })[0]; combineDialog(g || (it.vendor ? [it.vendor] : null)); return; }
         setV(x.add ? x.text : x.key);
       } });
     return inp;
@@ -2207,6 +2209,55 @@
     return h('div', { cls: 'is-bar iv-ufcard' }, [h('div', { cls: 'is-bar-h iv-fold', on: { click: function () { I.ufOpen = ul.hidden; ul.hidden = !ul.hidden; tog.setAttribute('aria-expanded', ul.hidden ? 'false' : 'true'); } } }, [
       h('div', null, [h('b', { text: 'Use first · ' + list.length + ' item' + (list.length === 1 ? '' : 's') + ' over the maximum' }), h('span', { text: 'From the latest count. Use these before opening more, and hold off ordering them.' })]), tog]), ul]);
   }
+  // the same vendor under two names ("Empire Merchants" / "Empire Merchants LLC"): put them together everywhere
+  function looseVendor(v) { return normS(v).replace(/\b(llc|l l c|inc|incorporated|co|corp|corporation|company|ltd|the)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function dupVendors() {
+    var g = {};
+    vendorList().forEach(function (v) { var k = looseVendor(v); if (k) (g[k] = g[k] || []).push(v); });
+    return Object.keys(g).filter(function (k) { return g[k].length > 1; }).map(function (k) { return g[k].sort(function (a, b) { return a.length - b.length || a.localeCompare(b); }); });
+  }
+  function combineVendors(keep, others) {
+    status('Combining vendors…', 'dirty');
+    var items = I.items.filter(function (it) { return others.indexOf(it.vendor) !== -1; });
+    items.forEach(function (it) { it.vendor = keep; });
+    var jobs = [items.length ? saveItems(items) : Promise.resolve(),
+      sb().from('inventory_invoices').update({ vendor: keep }).in('vendor', others).then(function () {}, function () {}),
+      sb().from('inventory_prices').update({ vendor: keep }).in('vendor', others).then(function () {}, function () {})];
+    var kk = normS(keep), ok = others.map(normS).filter(function (k) { return k !== kk; });
+    var move = (I.links || []).filter(function (l) { return ok.indexOf(l.vendor_key) !== -1; });
+    if (move.length) jobs.push(sb().from('inventory_item_links').upsert(move.map(function (l) { return { vendor_key: kk, line_key: l.line_key, item_id: l.item_id, per_unit: l.per_unit, updated_at: new Date().toISOString() }; }), { onConflict: 'vendor_key,line_key' })
+      .then(function (r) { if (!r.error) return sb().from('inventory_item_links').delete().in('vendor_key', ok); }).then(function () {}, function () {}));
+    (I.invoices || []).forEach(function (v) { if (others.indexOf(v.vendor) !== -1) v.vendor = keep; });
+    return Promise.all(jobs).then(function () { return Promise.all([loadMatch(), loadInvLines()]); }).then(function () {
+      status('Combined ' + others.map(function (o) { return '“' + o + '”'; }).join(', ') + ' into “' + keep + '”: ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ', and its invoices, prices and invoice names.', 'ok'); render();
+    }, function (e) { saveErr(e); render(); });
+  }
+  function combineDialog(group) {
+    var all = vendorList(), keepSel = h('select', { 'aria-label': 'Keep this name' }, all.map(function (v) { return h('option', { value: v, text: v }); }));
+    keepSel.value = group ? group[0] : all[0] || '';
+    var boxes = h('div', { cls: 'iv-cvlist' });
+    function paint() {
+      boxes.innerHTML = '';
+      all.filter(function (v) { return v !== keepSel.value; }).forEach(function (v) {
+        var n = I.items.filter(function (it) { return it.vendor === v; }).length, inv = (I.invoices || []).filter(function (x) { return x.vendor === v; }).length;
+        var cb = h('input', { type: 'checkbox', value: v }); if (group && group.indexOf(v) !== -1) cb.checked = true;
+        boxes.appendChild(h('label', { cls: 'iv-cv' }, [cb, h('span', { text: v }), h('small', { text: n + ' item' + (n === 1 ? '' : 's') + (inv ? ' · ' + inv + ' invoice' + (inv === 1 ? '' : 's') : '') })]));
+      });
+    }
+    keepSel.addEventListener('change', paint); paint();
+    var m = modal('Combine vendors', [h('p', { cls: 'sc-sub', text: 'Pick the name to keep, then tick the names that are the same vendor. Every item, invoice, price and invoice name under those names moves to the one you keep.' }), lbl('Keep this name', keepSel), h('b', { text: 'Combine into it' }), boxes],
+      [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+        h('button', { type: 'button', cls: 'ed-btn', text: 'Combine', on: { click: function () {
+          var others = [].map.call(boxes.querySelectorAll('input:checked'), function (c) { return c.value; });
+          if (!others.length) return;
+          m.close(); combineVendors(keepSel.value, others);
+        } } })]);
+  }
+  function dupVendorCard() {
+    var d = dupVendors(); if (!d.length) return null;
+    return h('div', { cls: 'is-bar iv-dupv' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: d.length === 1 ? 'These look like the same vendor' : d.length + ' vendors are listed under more than one name' }), h('span', { text: d.map(function (g) { return g.join(' / '); }).join(' · ') })]),
+      h('div', { cls: 'iv-mtools' }, d.slice(0, 3).map(function (g) { return h('button', { type: 'button', cls: 'ed-btn small', text: d.length === 1 ? 'Combine' : 'Combine ' + g[0], on: { click: function () { combineDialog(g); } } }); }))])]);
+  }
   function renderOverview(wrap) {
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Inventory' })]),
@@ -2222,6 +2273,7 @@
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Scanned invoices' }));
     if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));
     wrap.appendChild(recentInvoices());
+    var dv = dupVendorCard(); if (dv) wrap.appendChild(dv);
     var audit = auditCard(); if (audit) wrap.appendChild(audit);
     var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
     // what's on hand now
