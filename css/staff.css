@@ -3622,3 +3622,6 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-cvlist{display:grid;gap:4px;max-height:320px;overflow:auto;margin-top:6px}
 .iv-cv{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(0,0,0,.05);cursor:pointer}
 .iv-cv input{width:auto}.iv-cv span{flex:1}.iv-cv small{color:var(--stone)}
+.iv-cpo.iv-floz{display:block;color:#4a4e53;font-variant-numeric:tabular-nums;white-space:nowrap}
+.iv-cpo.iv-floz.guess{color:#8a6a45}
+.iv-cpo.iv-floz.none{color:#b0703f;font-style:italic}

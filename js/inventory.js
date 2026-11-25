@@ -438,6 +438,13 @@
       I.maxCol ? h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); }, 'max_qty')) : null,
       h('td', { cls: 'r iv-last', text: qty(last) }),
       (function () {
+        // liquor (and wine): always the cost per fluid ounce, from the bottle's cost and size (750 ml if the size isn't written down)
+        if (it.category === 'bev' && (subOf(it) === 'liquor' || subOf(it) === 'wine') && window.EdenCosting && /^(bottle|btl|bottles|case|cs|cases|each|ea)?$/i.test(String(it.unit || '').trim())) {
+          var C = window.EdenCosting, one = C.oneCost(it), ml = C.bottleMl(it), sized = !!packMl(it), oz = ml / 29.5735;
+          var per = one != null && oz ? one / oz : null;
+          return h('td', { cls: 'r iv-cost', title: per != null ? money(one) + ' a bottle ÷ ' + (Math.round(oz * 10) / 10) + ' fl oz (' + mlLabel(ml) + (sized ? '' : ', assumed — set the size in Counted in') + ') = ' + money(per) + ' per fl oz' : 'No cost yet' + (/^(case|cs)/i.test(it.unit || '') && one == null ? ' per bottle: put how many bottles are in a case' : '') },
+            [it.cost != null && it.cost !== '' ? money(it.cost) : '', h('small', { cls: 'iv-cpo iv-floz' + (per == null ? ' none' : sized ? '' : ' guess'), text: per != null ? '$' + per.toFixed(2) + '/fl oz' + (sized ? '' : '*') : 'no cost / fl oz' })]);
+        }
         var fr = it.category !== 'paper' && it.cost != null ? forRecipes(it) : null;
         return h('td', { cls: 'r iv-cost', title: fr && fr.parts.length ? 'For recipes & cocktails: ' + fr.parts.join(' · ') : '' }, [it.cost != null ? money(it.cost) : '',
           fr && fr.short && !/^(lb|oz|g|kg|1\/4 lb|1\/2 lb)$/.test(it.unit || '') ? h('small', { cls: 'iv-cpo', text: fr.short }) : null]);
