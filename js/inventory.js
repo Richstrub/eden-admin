@@ -23,12 +23,11 @@
   function subOf(it) {
     var s = String(it.section || '').toLowerCase(), nm = String(it.name || '') + ' ' + String(it.pack || '');
     if (NA_RE.test(s)) return 'na';
-    // filed in a beer, wine or spirits section: that decides it, whatever words are in the name (St. George Coffee Liqueur is a liqueur)
-    if (!/mixer/.test(s)) {
-      if (/beer|draught|draft|cider|keg/.test(s)) return 'beer';
-      if (/wine|sparkling|ros[eé]|champagne|sake|dessert|port\b/.test(s)) return 'wine';
-      if (/aperitif|bourbon|rye|malt|scotch|whisk|gin|vodka|agave|tequila|mezcal|rum|specialty|digestif|liqueur|liquor|cordial|brandy|cognac|amar[oi]|spirit|vermouth/.test(s)) return 'liquor';
-    }
+    // filed in a beer, wine or spirits section: that decides it, whatever words are in the name
+    // (St. George Coffee Liqueur is a liqueur; olive juice in Liqueurs & mixers sits with the liquor)
+    if (/beer|draught|draft|cider|keg/.test(s)) return 'beer';
+    if (/wine|sparkling|ros[eé]|champagne|sake|dessert|port\b/.test(s)) return 'wine';
+    if (/aperitif|bourbon|rye|malt|scotch|whisk|gin|vodka|agave|tequila|mezcal|rum|specialty|digestif|liqueur|liquor|mixer|bitters|syrup|garnish|cordial|brandy|cognac|amar[oi]|spirit|vermouth/.test(s)) return 'liquor';
     if (NA_NAME.test(nm) && (!BOOZE.test(nm) || /non.?alcoholic|alcohol.?free|zero proof|\bna\b|0\.0/i.test(nm)) && !/coffee liqu?eu?r|tea.?infused/i.test(nm)) return 'na';
     if (/beer|draught|draft|cider|can(ned|s)?\b|keg/.test(s)) return 'beer';
     if (/wine|sparkling|ros[eé]|red|white|dessert|port|champagne|sake/.test(s)) return 'wine';
@@ -286,7 +285,9 @@
     var vsel = h('select', { cls: 'iv-vsel', 'aria-label': 'Vendor' }, [h('option', { value: '', text: 'All vendors' })].concat(vlist.map(function (v) { return h('option', { value: v, text: v }); }), [h('option', { value: '__none', text: 'No vendor set' })]));
     vsel.value = I.vendor || '';
     vsel.addEventListener('change', function () { I.vendor = vsel.value; applyFilter(); });
+    var elsewhere = h('p', { cls: 'iv-elsewhere', hidden: true });
     wrap.appendChild(h('div', { cls: 'iv-bar' }, [h('div', { cls: 'iv-findwrap' }, [find, findX]), vsel, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
+    wrap.appendChild(elsewhere);
 
     // the count sheet
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
@@ -856,6 +857,18 @@
       });
       g.style.display = any ? '' : 'none';
     });
+    var note = I.el.querySelector('.iv-elsewhere');
+    if (note) {
+      note.innerHTML = ''; note.hidden = true;
+      if (f && I.cat === 'bev' && I.sub && I.sub !== 'all') {
+        var other = I.items.filter(function (it) { return it.category === 'bev' && subOf(it) !== I.sub && keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + invNames(it).map(function (x) { return x.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack).indexOf(f) !== -1; });
+        if (other.length) {
+          note.hidden = false;
+          note.appendChild(h('span', { text: 'Also found under ' + uniq(other.map(function (it) { return SUBN_UI[subOf(it)]; })).join(', ') + ': ' + other.slice(0, 4).map(showName).join(', ') + (other.length > 4 ? ' +' + (other.length - 4) : '') }));
+          note.appendChild(h('button', { type: 'button', cls: 'sc-link', text: 'Show all beverages', on: { click: function () { I.sub = 'all'; render(); } } }));
+        }
+      }
+    }
   }
   function flush() { if (I.pending) { clearTimeout(I.saveT); saveCount(); } }
 
