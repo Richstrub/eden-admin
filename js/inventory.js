@@ -131,9 +131,10 @@
       sb().from('inventory_settings').select('*').eq('id', 1).maybeSingle().then(function (r) { return r.error ? null : r.data; }, function () { return null; }),
       sb().from('recipes').select('id,name,ingredients').order('name').then(function (r) { return r.error ? [] : r.data || []; }, function () { return []; }),
       sb().from('inventory_items').select('ingredient').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
-      sb().from('inventory_counts').select('finished_at').limit(1).then(function (r) { return !r.error; }, function () { return false; })
+      sb().from('inventory_counts').select('finished_at').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
+      sb().from('inventory_items').select('max_qty').limit(1).then(function (r) { return !r.error; }, function () { return false; })
     ]).then(function (res) {
-      I.ingCol = res[6]; I.finCol = res[7];
+      I.ingCol = res[6]; I.finCol = res[7]; I.maxCol = res[8];
       I.recipes = res[5].map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; });
       I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.costCols = res[3]; I.loaded = true; I.missing = false; I.loading = false;
       if (res[4] && window.EdenCosting) window.EdenCosting.setSettings(res[4]);
@@ -154,8 +155,9 @@
       if (I.orderCols) { row.order_unit = it.order_unit || ''; row.per_case = it.per_case == null || it.per_case === '' ? null : +it.per_case; }   // supabase/invoice-vendors.sql
       if (I.costCols) row.menu_refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];   // supabase/inventory-costing.sql
       if (I.ingCol) row.ingredient = it.ingredient || '';   // supabase/ingredient-name.sql
+      if (I.maxCol) row.max_qty = it.max_qty == null || it.max_qty === '' ? null : +it.max_qty;   // supabase/inventory-max.sql
       return row;
-    }), { onConflict: 'id' }).then(function (r) { if (r.error) throw r.error; });
+    }), { onConflict: 'id' }).then(function (r) { if (r.error) throw r.error; try { window.dispatchEvent(new CustomEvent('eden-inventory-changed')); } catch (x) {} });
   }
   function saveErr(e) { status(isPerm(e) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection; your changes are kept here and will retry.', 'err'); }
 
@@ -310,6 +312,7 @@
       h('span', { cls: curRow && I.finCol && !curRow.finished_at && ncount ? 'iv-open' : '', text: curRow && I.finCol && curRow.finished_at ? 'Saved inventory of ' + dayLabel(I.date) + ' · ' + ncount + ' counted · changes still save to it' : (I.finCol && ncount ? 'Inventory in progress · started ' + dayLabel(I.date) + ' · ' + ncount + ' counted so far · not saved until you press Save inventory' : 'Counting ' + cat.label.toLowerCase() + ' for ' + dayLabel(I.date) + (ncount ? ' · ' + ncount + ' counted so far' : ' · nothing counted yet')) })
     ]));
     var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
+    var ufc = useFirstCard(I.cat); if (ufc) wrap.appendChild(ufc);
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
     items.forEach(function (it) {
@@ -344,12 +347,12 @@
     I.menuList = window.EdenCosting ? window.EdenCosting.menuList(menu()) : [];
     // beverages: "On the menu" and "Cost %" sit at the far right instead of mid-table
     I.showCost = I.cat !== 'bev' && !!window.EdenCosting && items.some(function (it) { return window.EdenCosting.linksFor(it, I.menuList).length; });
-    var ncol = (I.showCost ? 13 : 11) + 2 + (I.cat === 'bev' ? 2 : 0);
+    var ncol = (I.showCost ? 13 : 11) + 2 + (I.cat === 'bev' ? 2 : 0) + (I.maxCol ? 1 : 0);
     wrap.appendChild(datalist('ivVendRow', vendorList()));
     var table = h('table', { cls: 'iv-table' + (I.showCost ? ' iv-wide' : '') });
     table.appendChild(h('thead', null, h('tr', null, [
       h('th', { cls: 'iv-drag', 'aria-label': 'Drag to reorder' }),
-      h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), h('th', { cls: 'r', text: 'Last' }),
+      h('th', { cls: 'iv-name', text: 'Item', title: 'Our name for it — click to type.' + (I.cat === 'food' ? ' Recipes use this name.' : '') }), h('th', { cls: 'r iv-ohh', text: 'On hand' }), h('th', { cls: 'r', text: 'Order' }), h('th', { cls: 'iv-inv', text: 'On the invoice', title: 'What vendors call it on their invoices — click to match names' }), h('th', { cls: 'iv-vend', text: 'Vendor' }), h('th', { cls: 'iv-rcv', text: 'Received in' }), h('th', { text: 'Counted in' }), h('th', { cls: 'r', text: 'Par' }), I.maxCol ? h('th', { cls: 'r', text: 'Max', title: 'The most to have on hand; over it = use first' }) : null, h('th', { cls: 'r', text: 'Last' }),
       h('th', { cls: 'r', text: 'Cost' }),
       I.showCost ? h('th', { cls: 'iv-menu', text: 'Menu price' }) : null, I.showCost ? h('th', { cls: 'iv-pct', text: 'Cost %', title: 'Cost per serving ÷ menu price. Wine by the glass: ' + window.EdenCosting.settings.glass_oz + ' oz pour; spirits: ' + window.EdenCosting.settings.pour_oz + ' oz pour' }) : null,
       h('th', { cls: 'r', text: 'Value' }), h('th', { cls: 'iv-tool' }), I.cat === 'bev' ? h('th', { cls: 'iv-pmenu', text: 'On the menu' }) : null,
@@ -393,8 +396,10 @@
     function refresh() {
       var v = onHand(it);
       var need = it.par != null && v != null ? Math.max(0, it.par - v) : null;
-      order.textContent = need ? qty(need) : (v != null && it.par != null ? '–' : '');
-      order.classList.toggle('need', !!need);
+      var over = it.max_qty != null && it.max_qty !== '' && v != null && v > +it.max_qty;
+      order.textContent = need ? qty(need) : over ? 'Use first' : (v != null && it.par != null ? '–' : '');
+      order.classList.toggle('need', !!need); order.classList.toggle('over', !!over);
+      inp.classList.toggle('over', !!over); inp.title = over ? qty(v - +it.max_qty) + ' over the maximum of ' + qty(+it.max_qty) + ' — use it first' : '';
       val.textContent = v != null && it.cost != null ? money(v * it.cost) : '';
     }
     inp.addEventListener('input', function () {
@@ -429,6 +434,7 @@
       h('td', { cls: 'iv-unit iv-rcv' }, I.orderCols ? [rcvEditor(it), h('span', { cls: 'iv-unittext', text: rcvText(it) })] : rcvText(it)),
       h('td', { cls: 'iv-unit' }, [unitSelect(it), h('span', { cls: 'iv-unittext', text: unitText(it) })]),
       h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); })),
+      I.maxCol ? h('td', { cls: 'r iv-parc' }, parInput(it, function () { refresh(); totals(); }, 'max_qty')) : null,
       h('td', { cls: 'r iv-last', text: qty(last) }),
       (function () {
         var fr = it.category !== 'paper' && it.cost != null ? forRecipes(it) : null;
@@ -848,25 +854,27 @@
     return sel;
   }
   // the par, typed right on the sheet; saves on Enter or when you leave the box
-  function parInput(it, after) {
-    var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'iv-par', value: qty(it.par), 'aria-label': 'Par: ' + showName(it), autocomplete: 'off', title: 'Par: how much to keep on hand' });
+  function parInput(it, after, field) {
+    field = field || 'par';
+    var isMax = field === 'max_qty', nav = isMax ? '.iv-max' : '.iv-par:not(.iv-max)';
+    var inp = h('input', { type: 'text', inputmode: 'decimal', cls: 'iv-par' + (isMax ? ' iv-max' : ''), value: qty(it[field]), 'aria-label': (isMax ? 'Maximum: ' : 'Par: ') + showName(it), autocomplete: 'off', title: isMax ? 'Maximum: the most to have on hand. Over it, it goes on the Use first list.' : 'Par: how much to keep on hand' });
     inp.addEventListener('focus', function () { inp.select(); });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        var all = [].slice.call(I.el.querySelectorAll('.iv-par')).filter(function (x) { return x.closest('tr').style.display !== 'none'; });
+        var all = [].slice.call(I.el.querySelectorAll(nav)).filter(function (x) { return x.closest('tr').style.display !== 'none'; });
         var i = all.indexOf(inp) + (e.key === 'ArrowUp' ? -1 : 1);
         if (all[i]) { all[i].focus(); } else inp.blur();
-      } else if (e.key === 'Escape') { inp.value = qty(it.par); inp.blur(); }
+      } else if (e.key === 'Escape') { inp.value = qty(it[field]); inp.blur(); }
     });
     inp.addEventListener('change', function () {
       var t = inp.value.trim(), v = t === '' ? null : num(t);
       if (t !== '' && (v == null || v < 0)) { inp.classList.add('bad'); return; }
       inp.classList.remove('bad');
-      if (v === it.par || (v != null && it.par != null && +it.par === v)) return;
-      var old = it.par; it.par = v; after();
-      status('Saving par…', 'dirty');
-      saveItems([it]).then(function () { status('Par saved', 'ok'); }, function (e) { it.par = old; inp.value = qty(old); after(); saveErr(e); });
+      if (v === it[field] || (v != null && it[field] != null && +it[field] === v)) return;
+      var old = it[field]; it[field] = v; after();
+      status(isMax ? 'Saving maximum…' : 'Saving par…', 'dirty');
+      saveItems([it]).then(function () { status((isMax ? 'Maximum saved' : 'Par saved') + ' — the order list' + (isMax ? ' and Use first list are' : ' is') + ' up to date.', 'ok'); }, function (e) { it[field] = old; inp.value = qty(old); after(); saveErr(e); });
     });
     return inp;
   }
@@ -1465,6 +1473,7 @@
       pack: h('input', { type: 'text', value: it.pack || '', placeholder: 'e.g. 6/#10 cans, 750ml' }),
       vendor: h('input', { type: 'text', value: it.vendor || '', list: 'ivVendors', placeholder: 'Optional' }),
       par: h('input', { type: 'text', inputmode: 'decimal', value: qty(it.par), placeholder: 'How many to keep on hand' }),
+      max: h('input', { type: 'text', inputmode: 'decimal', value: qty(it.max_qty), placeholder: 'The most to have on hand' }),
       cost: h('input', { type: 'text', inputmode: 'decimal', value: it.cost != null ? String(it.cost) : '', placeholder: 'Cost per unit, e.g. 24.50' }),
       ord: unitPicker(it.order_unit || '', function () { convLbl(); }, 'Same as counted in', 'Received in (unit)'),
       pc: h('input', { type: 'text', inputmode: 'decimal', value: it.per_case != null ? qty(+it.per_case) : '', placeholder: 'e.g. 6 or 12' })
@@ -1502,7 +1511,8 @@
       h('div', { cls: 'sc-row2' }, [lbl('Received in (on the invoice)', f.ord.el), lbl('Counted in (for inventory)', f.unit.el)]),
       I.orderCols ? convRow : h('p', { cls: 'sc-sub', text: 'To save Received in, run supabase/invoice-vendors.sql in Supabase once.' }),
       h('div', { cls: 'sc-row2' }, [lbl('Pack size / notes', f.pack), lbl('Vendor', f.vendor)]),
-      h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), lbl('Cost per unit ($)', f.cost)]),
+      h('div', { cls: 'sc-row2' }, [lbl('Par', f.par), I.maxCol ? lbl('Maximum', f.max) : lbl('Cost per unit ($)', f.cost)]),
+      I.maxCol ? h('div', { cls: 'sc-row2' }, [lbl('Cost per unit ($)', f.cost), h('span')]) : null,
       forRec,
       datalist('ivSections', uniq((SECTIONS[I.cat] || []).concat(catItemsAll.map(function (x) { return x.section; })))),
       datalist('ivUnits', UNITS), datalist('ivVendors', uniq(I.items.map(function (x) { return x.vendor; }))),
@@ -1610,6 +1620,7 @@
       if (dup && !confirm('“' + dup.name + '” is already on this list. Add another with the same name?')) return;
       var next = Object.assign({}, it, { name: name, section: f.section.value.trim(), unit: f.unit.value.trim(), pack: f.pack.value.trim(), vendor: f.vendor.value.trim(), par: par, cost: cost });
       if (I.orderCols) { next.order_unit = f.ord.value.trim(); next.per_case = num(f.pc.value); }
+      if (I.maxCol) { var mx = f.max.value.trim() ? num(f.max.value) : null; if (f.max.value.trim() && mx == null) { msg.textContent = 'Maximum should be a number.'; f.max.focus(); return; } next.max_qty = mx; }
       if (I.costCols) next.menu_refs = draft.menu_refs;
       if (I.ingCol && isFoodIt) next.ingredient = f.ingr.value.trim();
       if (!isNew && catSel.value !== it.category) next.category = catSel.value;
@@ -1935,6 +1946,8 @@
     var notes = [];
     if (notCounted) notes.push(notCounted + ' item' + (notCounted === 1 ? ' hasn’t' : 's haven’t') + ' been counted on this date');
     if (noPar) notes.push(noPar + ' item' + (noPar === 1 ? ' has' : 's have') + ' no par set');
+    var over = items.filter(function (it) { var v = onHand(it); return it.max_qty != null && it.max_qty !== '' && v != null && v > +it.max_qty; });
+    if (over.length) body.push(h('div', { cls: 'iv-ovendor' }, [h('h3', { text: 'Don’t order · over the maximum' }), h('ul', { cls: 'iv-olist' }, over.map(function (it) { return h('li', null, [h('b', { text: qty(onHand(it)) + ' on hand' }), ' ' + showName(it), h('small', { text: ' · max ' + qty(+it.max_qty) + ' — use first' })]); }))]));
     if (notes.length) body.push(h('p', { cls: 'sc-small', text: notes.join(' · ') + '.' }));
     var text = lines.join('\n');
     var m = modal('Order list · ' + catOf(I.cat).label, body, [
@@ -2157,6 +2170,33 @@
       .then(function () { I.weeksLoading = false; if (I.page === 'overview') render(); });
   }
 
+  // over the maximum at the latest count: use these first (the count in progress counts — it's what's on the shelf now)
+  function useFirst(cid) {
+    var out = [];
+    CATS.forEach(function (c) {
+      if (cid && c.id !== cid) return;
+      var row = I.counts.filter(function (r) { return r.category === c.id && r.counts && Object.keys(r.counts).length; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0];
+      if (!row) return;
+      I.items.forEach(function (it) {
+        if (it.category !== c.id || it.active === false || it.max_qty == null || it.max_qty === '') return;
+        var v = row.counts[it.id]; if (v == null || +v <= +it.max_qty) return;
+        out.push({ it: it, v: +v, max: +it.max_qty, over: +v - +it.max_qty, date: row.count_date });
+      });
+    });
+    return out.sort(function (a, b) { return b.over / (b.max || 1) - a.over / (a.max || 1); });
+  }
+  function useFirstCard(cid) {
+    if (!I.maxCol) return null;
+    var list = useFirst(cid); if (!list.length) return null;
+    var open = I.ufOpen !== false;
+    var ul = h('ul', { cls: 'iv-uf', hidden: !open }, list.map(function (x) {
+      return h('li', null, [h('button', { type: 'button', cls: 'sc-link', text: showName(x.it), on: { click: function () { editItem(x.it); } } }),
+        h('span', { text: (cid ? '' : catOf(x.it.category).label + ' · ') + qty(x.v) + ' on hand, max ' + qty(x.max) + ' ' + (x.it.unit || '') }), h('b', { text: '+' + qty(x.over) })]);
+    }));
+    var tog = h('button', { type: 'button', cls: 'iv-chev', 'aria-expanded': open ? 'true' : 'false', 'aria-label': 'Show or hide the list' });
+    return h('div', { cls: 'is-bar iv-ufcard' }, [h('div', { cls: 'is-bar-h iv-fold', on: { click: function () { I.ufOpen = ul.hidden; ul.hidden = !ul.hidden; tog.setAttribute('aria-expanded', ul.hidden ? 'false' : 'true'); } } }, [
+      h('div', null, [h('b', { text: 'Use first · ' + list.length + ' item' + (list.length === 1 ? '' : 's') + ' over the maximum' }), h('span', { text: 'From the latest count. Use these before opening more, and hold off ordering them.' })]), tog]), ul]);
+  }
   function renderOverview(wrap) {
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Inventory' })]),
@@ -2176,6 +2216,7 @@
     var alerts = alertsCard(); if (alerts) wrap.appendChild(alerts);
     // what's on hand now
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Current inventory' }));
+    var uf = useFirstCard(null); if (uf) wrap.appendChild(uf);
     wrap.appendChild(invOverview());
     // reports
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Reports' }));

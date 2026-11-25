@@ -3605,3 +3605,12 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 @media print{.sb-barbrand{display:none!important}}
 .iv-startbar span.iv-open{color:#8a5a2b;background:#fff3e3;border:1px solid rgba(176,112,63,.3);padding:5px 10px;border-radius:8px}
 .iv-histname{color:#9a9da1!important;font-style:italic}.iv-histname::after{content:" (price history)";font-size:.72rem}
+/* maximum / use first */
+.iv-table input.iv-oh.over{background:#fff4e5;border-color:#d99a4e}
+.iv-order.over{color:#b0703f;font-size:.78rem;font-weight:600;white-space:nowrap}
+.iv-ufcard{border-color:rgba(176,112,63,.35);background:#fffaf3}
+.iv-uf{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 18px}
+.iv-uf li{display:flex;align-items:baseline;gap:8px;font-size:.88rem;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.05)}
+.iv-uf li span{color:var(--stone);font-size:.8rem;flex:1}
+.iv-uf li b{color:#b0703f;font-variant-numeric:tabular-nums}
+.iv-uf .sc-link{border:0;background:none;padding:0;color:var(--ink);font:inherit;font-weight:500;cursor:pointer;text-align:left}

@@ -48,6 +48,7 @@
     P.emps = mgr ? q(sb.from('employees').select('id,name,position,active')) : null;
     P.rplan = mgr ? q(sb.from('review_plan').select('emp,next_due,skip')) : null;
     P.items = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,par,active')) : null;
+    P.maxItems = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,name,ingredient,unit,max_qty,active').not('max_qty', 'is', null)) : null;
     P.counts = ctx.canPrep ? q(sb.from('inventory_counts').select('category,count_date,counts')) : null;
     P.prices = ctx.canPrep ? q(sb.from('inventory_prices').select('item_id,unit_cost,old_cost').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', iso(addDays(now, -90))).limit(500)) : null;   // supabase/inventory-costing.sql
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
@@ -108,6 +109,13 @@
         if (+v < +it.par) low++;
       });
       if (low) { items.push({ area: 'Inventory', title: plural(low, 'item') + ' below par', sub: 'From the latest counts — see what to order', href: '#inventory', cta: 'Order list' }); counts.inventory = low; }
+    }
+    // over the maximum at the latest count: use first
+    if (d.maxItems && d.maxItems.length && d.counts) {
+      var lc = {};
+      d.counts.forEach(function (c) { if (c.counts && Object.keys(c.counts).length && (!lc[c.category] || c.count_date > lc[c.category].count_date)) lc[c.category] = c; });
+      var uf = d.maxItems.filter(function (it) { var c = lc[it.category], v = c && c.counts[it.id]; return it.active !== false && it.max_qty != null && it.max_qty !== '' && v != null && v !== '' && +v > +it.max_qty; });
+      if (uf.length) items.push({ area: 'Inventory', title: plural(uf.length, 'item') + ' to use first', sub: uf.slice(0, 4).map(function (it) { return (it.category === 'food' && it.ingredient) || it.name; }).join(', ') + (uf.length > 4 ? ' and ' + (uf.length - 4) + ' more' : '') + ' — over the maximum', href: '#inventory', cta: 'See list' });
     }
     // prices that changed on an invoice and nobody has looked at yet
     if (ctx.canPrep && d.prices && d.prices.length) {

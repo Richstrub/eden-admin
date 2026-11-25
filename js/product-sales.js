@@ -456,6 +456,8 @@
   }
 
   window.EdenProducts = {
+    // a par or count changed in the inventory: load fresh next time this page shows
+    _inv: window.addEventListener('eden-inventory-changed', function () { if (X.rows && !X.loading) X.rows = null; }),
     show: function (el, ctx) {
       X.el = el; X.ctx = ctx;
       if (!X.rows && !X.loading) load(); else paint();
