@@ -2269,6 +2269,106 @@
     return h('div', { cls: 'is-bar iv-dupv' }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: d.length === 1 ? 'These look like the same vendor' : d.length + ' vendors are listed under more than one name' }), h('span', { text: d.map(function (g) { return g.join(' / '); }).join(' · ') })]),
       h('div', { cls: 'iv-mtools' }, d.slice(0, 3).map(function (g) { return h('button', { type: 'button', cls: 'ed-btn small', text: d.length === 1 ? 'Combine' : 'Combine ' + g[0], on: { click: function () { combineDialog(g); } } }); }))])]);
   }
+  /* ---------- inventory over time: value on hand at each saved count (today's costs), by kind ---------- */
+  var IV_SERIES = [
+    { k: 'all', label: 'All', color: '#2b2a27', w: 3 },
+    { k: 'food', label: 'Food', color: '#b0703f' },
+    { k: 'beer', label: 'Beer', color: '#c9971c' },
+    { k: 'wine', label: 'Wine', color: '#7d2a3c' },
+    { k: 'liquor', label: 'Liquor', color: '#2f6690' },
+    { k: 'na', label: 'Non-alcoholic', color: '#3f8a5a' }
+  ];
+  function trendData() {
+    var byId = byIdMap(), rows = I.counts.filter(function (c) { return isDone(c) && c.counts && Object.keys(c.counts).length; })
+      .sort(function (a, b) { return a.count_date < b.count_date ? -1 : 1; });
+    var per = { food: [], bev: [], paper: [] };
+    rows.forEach(function (r) {
+      var v = { food: 0, beer: 0, wine: 0, liquor: 0, na: 0, paper: 0, tot: 0 };
+      Object.keys(r.counts).forEach(function (id) { var it = byId[id], n = r.counts[id]; if (!it || n == null || !hasCost(it)) return; var x = n * +it.cost, k = r.category === 'bev' ? subOf(it) : r.category; if (v[k] != null) v[k] += x; v.tot += x; });
+      if (per[r.category]) per[r.category].push({ d: r.count_date, v: v });
+    });
+    var dates = uniq(rows.map(function (r) { return r.count_date; })).sort();
+    var last = function (list, d) { var o = null; list.forEach(function (p) { if (p.d <= d) o = p; }); return o; };
+    var pts = {}; IV_SERIES.forEach(function (s) { pts[s.k] = []; });
+    per.food.forEach(function (p) { pts.food.push({ d: p.d, y: p.v.tot }); });
+    per.bev.forEach(function (p) { ['beer', 'wine', 'liquor', 'na'].forEach(function (k) { pts[k].push({ d: p.d, y: p.v[k] }); }); });
+    dates.forEach(function (d) {   // everything on hand that day: each inventory's latest count on or before it
+      var f = last(per.food, d), b = last(per.bev, d), pp = last(per.paper, d);
+      if (!f && !b && !pp) return;
+      pts.all.push({ d: d, y: (f ? f.v.tot : 0) + (b ? b.v.tot : 0) + (pp ? pp.v.tot : 0) });
+    });
+    return { pts: pts, dates: dates };
+  }
+  function trendChart() {
+    var data = trendData(), box = h('div', { cls: 'iv-trend' });
+    var head = h('div', { cls: 'iv-card-h' }, [h('div', null, [h('b', { text: 'Inventory over time' }), h('span', { text: 'Value on hand at each saved count, at today’s costs. All includes dry goods.' })])]);
+    box.appendChild(head);
+    if (data.dates.length < 1) { box.appendChild(h('p', { cls: 'iv-muted', text: 'The graph starts once an inventory is saved.' })); return box; }
+    I.trendOff = I.trendOff || {};
+    var legend = h('div', { cls: 'iv-tlegend', role: 'group', 'aria-label': 'Show or hide a line' }, IV_SERIES.map(function (s) {
+      var b = h('button', { type: 'button', 'aria-pressed': I.trendOff[s.k] ? 'false' : 'true' }, [h('i', { style: 'background:' + s.color + (s.k === 'all' ? ';height:4px' : '') }), s.label]);
+      b.addEventListener('click', function () { I.trendOff[s.k] = !I.trendOff[s.k]; b.setAttribute('aria-pressed', I.trendOff[s.k] ? 'false' : 'true'); draw(); });
+      return b;
+    }));
+    var plot = h('div', { cls: 'iv-tplot' }), tip = h('div', { cls: 'iv-ttip', hidden: true });
+    box.appendChild(legend); box.appendChild(plot); plot.appendChild(tip);
+    var NS = 'http://www.w3.org/2000/svg';
+    function el(t, a) { var e = document.createElementNS(NS, t); Object.keys(a || {}).forEach(function (k) { e.setAttribute(k, a[k]); }); return e; }
+    function ms(d) { return parseDay(d).getTime(); }
+    function draw() {
+      [].slice.call(plot.querySelectorAll('svg')).forEach(function (x) { x.remove(); });
+      var W = Math.max(320, plot.clientWidth || 900), H = 260, L = 64, R = 16, T = 12, B = 30;
+      var on = IV_SERIES.filter(function (s) { return !I.trendOff[s.k] && data.pts[s.k].length; });
+      var all = []; on.forEach(function (s) { data.pts[s.k].forEach(function (p) { all.push(p); }); });
+      var x0 = ms(data.dates[0]), x1 = ms(data.dates[data.dates.length - 1]); if (x1 === x0) { x0 -= 15 * 864e5; x1 += 15 * 864e5; }
+      var ymax = Math.max(1, Math.max.apply(null, all.map(function (p) { return p.y; }).concat([0])));
+      var step = Math.pow(10, Math.floor(Math.log10(ymax))), nice = [1, 2, 2.5, 5, 10].map(function (k) { return k * step; }).filter(function (v) { return ymax / v <= 5; })[0] || step * 10;
+      ymax = Math.ceil(ymax / nice) * nice;
+      var X = function (d) { return L + (ms(d) - x0) / (x1 - x0) * (W - L - R); }, Y = function (v) { return T + (1 - v / ymax) * (H - T - B); };
+      var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img', 'aria-label': 'Inventory value over time' });
+      for (var g = 0; g <= ymax + 1e-9; g += nice) {
+        svg.appendChild(el('line', { x1: L, x2: W - R, y1: Y(g), y2: Y(g), stroke: g ? 'rgba(0,0,0,.07)' : 'rgba(0,0,0,.25)', 'stroke-width': 1 }));
+        var t = el('text', { x: L - 8, y: Y(g) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#7a7d81' }); t.textContent = '$' + (g >= 1000 ? (g / 1000).toFixed(g % 1000 ? 1 : 0) + 'k' : g); svg.appendChild(t);
+      }
+      // month ticks
+      var md = new Date(x0); md = new Date(md.getFullYear(), md.getMonth() + 1, 1); var months = [];
+      while (md.getTime() <= x1) { months.push(new Date(md)); md = new Date(md.getFullYear(), md.getMonth() + 1, 1); }
+      var every = Math.max(1, Math.ceil(months.length / Math.floor((W - L - R) / 70)));
+      months.forEach(function (m, i) { if (i % every) return; var xx = L + (m.getTime() - x0) / (x1 - x0) * (W - L - R), t2 = el('text', { x: xx, y: H - 10, 'text-anchor': 'middle', 'font-size': 11, fill: '#7a7d81' }); t2.textContent = m.toLocaleDateString(undefined, { month: 'short' }) + (m.getMonth() === 0 || i === 0 ? ' ’' + String(m.getFullYear()).slice(2) : ''); svg.appendChild(t2); });
+      if (!months.length) data.dates.forEach(function (d) { var t3 = el('text', { x: X(d), y: H - 10, 'text-anchor': 'middle', 'font-size': 11, fill: '#7a7d81' }); t3.textContent = parseDay(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); svg.appendChild(t3); });
+      on.slice().reverse().forEach(function (s) {
+        var ps = data.pts[s.k];
+        if (ps.length > 1) svg.appendChild(el('path', { d: ps.map(function (p, i) { return (i ? 'L' : 'M') + X(p.d).toFixed(1) + ' ' + Y(p.y).toFixed(1); }).join(''), fill: 'none', stroke: s.color, 'stroke-width': s.w || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+        ps.forEach(function (p) { svg.appendChild(el('circle', { cx: X(p.d), cy: Y(p.y), r: s.k === 'all' ? 4.5 : 3.5, fill: s.color, stroke: '#fff', 'stroke-width': 2 })); });
+      });
+      var cross = el('line', { y1: T, y2: H - B, stroke: 'rgba(0,0,0,.3)', 'stroke-dasharray': '3 3', visibility: 'hidden' }); svg.appendChild(cross);
+      var hit = el('rect', { x: L, y: T, width: W - L - R, height: H - T - B, fill: 'transparent' }); svg.appendChild(hit);
+      function show(cx) {
+        var best = null, bd = 1e9; data.dates.forEach(function (d) { var dd = Math.abs(X(d) - cx); if (dd < bd) { bd = dd; best = d; } });
+        if (!best) return;
+        cross.setAttribute('x1', X(best)); cross.setAttribute('x2', X(best)); cross.setAttribute('visibility', 'visible');
+        tip.innerHTML = ''; tip.hidden = false;
+        tip.appendChild(h('b', { text: dayLabel(best) }));
+        on.forEach(function (s) { var p = data.pts[s.k].filter(function (q) { return q.d === best; })[0]; if (p) tip.appendChild(h('div', null, [h('i', { style: 'background:' + s.color }), h('span', { text: s.label }), h('em', { text: money(p.y) })])); });
+        var px = X(best) / W * plot.clientWidth; tip.style.left = Math.min(Math.max(px + 12, 0), plot.clientWidth - tip.offsetWidth - 4) + 'px';
+        if (px + 12 + tip.offsetWidth > plot.clientWidth) tip.style.left = Math.max(0, px - tip.offsetWidth - 12) + 'px';
+      }
+      function hide() { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; }
+      hit.addEventListener('pointermove', function (e) { var r = svg.getBoundingClientRect(); show((e.clientX - r.left) / r.width * W); });
+      hit.addEventListener('pointerdown', function (e) { var r = svg.getBoundingClientRect(); show((e.clientX - r.left) / r.width * W); });
+      hit.addEventListener('pointerleave', hide);
+      plot.insertBefore(svg, tip);
+    }
+    // draw once it's on the page (it needs the width), and again when the window changes size
+    requestAnimationFrame(draw);
+    if (window.ResizeObserver) { var rw = 0; new ResizeObserver(function () { var w = plot.clientWidth; if (Math.abs(w - rw) > 8) { rw = w; draw(); } }).observe(plot); }
+    // the numbers, for reading or a screen reader
+    var tbl = h('details', { cls: 'iv-ttable' }, [h('summary', { text: 'See the numbers' }), h('table', { cls: 'iv-mini' }, [
+      h('thead', null, h('tr', null, [h('th', { text: 'Count' })].concat(IV_SERIES.map(function (s) { return h('th', { cls: 'r', text: s.label }); })))),
+      h('tbody', null, data.dates.slice().reverse().map(function (d) { return h('tr', null, [h('td', { text: dayLabel(d) })].concat(IV_SERIES.map(function (s) { var p = data.pts[s.k].filter(function (q) { return q.d === d; })[0]; return h('td', { cls: 'r', text: p ? money(p.y) : '' }); }))); }))])]);
+    box.appendChild(tbl);
+    return box;
+  }
   function renderOverview(wrap) {
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Inventory' })]),
@@ -2280,6 +2380,7 @@
         h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Print this page', on: { click: function () { window.print(); } } })
       ])
     ]));
+    wrap.appendChild(h('div', { cls: 'iv-card' }, trendChart()));
     // scanned invoices
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Scanned invoices' }));
     if (window.EdenInvoiceScan && window.EdenInvoiceScan.bar) wrap.appendChild(window.EdenInvoiceScan.bar(scanApi()));

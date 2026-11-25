@@ -3638,3 +3638,18 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 #viewInventory .iv-table tr.iv-row:hover td.iv-drag,#viewInventory .iv-table tr.iv-row:hover td.iv-name{background:#fdfbf8}
 #viewInventory .iv-secin{position:sticky;left:12px;display:inline-flex;align-items:baseline;gap:10px}#viewInventory .iv-secin span{margin:0}
 @media print{#viewInventory .iv-table td.iv-drag,#viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{position:static;box-shadow:none}#viewInventory .iv-secin{position:static}}
+/* inventory over time */
+.iv-tlegend{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+.iv-tlegend button{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(0,0,0,.1);background:#fff;border-radius:16px;padding:5px 12px;font:inherit;font-size:.82rem;color:var(--ink);cursor:pointer}
+.iv-tlegend button i{width:16px;height:3px;border-radius:2px;display:inline-block}
+.iv-tlegend button[aria-pressed=false]{opacity:.45;background:transparent}
+.iv-tlegend button[aria-pressed=false] i{background:#bbb!important}
+.iv-tplot{position:relative;width:100%;touch-action:pan-y}
+.iv-tplot svg{display:block;width:100%;height:auto;font-family:inherit}
+.iv-ttip{position:absolute;top:8px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px 12px;font-size:.82rem;pointer-events:none;min-width:170px;z-index:2}
+.iv-ttip b{display:block;margin-bottom:4px;font-weight:500}
+.iv-ttip div{display:flex;align-items:center;gap:8px;padding:1px 0}
+.iv-ttip i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.iv-ttip span{flex:1;color:#5d5952}.iv-ttip em{font-style:normal;font-variant-numeric:tabular-nums}
+.iv-ttable{margin-top:6px;font-size:.84rem}.iv-ttable summary{cursor:pointer;color:var(--stone)}
+@media print{.iv-tlegend button[aria-pressed=false]{display:none}.iv-ttip{display:none}}
