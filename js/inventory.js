@@ -369,8 +369,8 @@
         tb = h('tbody', { cls: 'iv-group' + (newSub ? ' iv-newsheet' : ''), 'data-sec': it.section || '' });
         var secItems = items.filter(function (x) { return x.section === it.section; });
         (function (sec) {
-          tb.appendChild(h('tr', { cls: 'iv-sec' }, h('td', { colspan: String(ncol) }, [h('b', { text: sec || 'Other' }), h('span', { text: secItems.length + ' item' + (secItems.length === 1 ? '' : 's') }),
-            h('button', { type: 'button', cls: 'iv-secadd', title: 'Add an item to ' + (sec || 'Other'), text: '+ Add item', on: { click: function () { editItem(null, { section: sec || '' }); } } })])));
+          tb.appendChild(h('tr', { cls: 'iv-sec' }, h('td', { colspan: String(ncol) }, h('div', { cls: 'iv-secin' }, [h('b', { text: sec || 'Other' }), h('span', { text: secItems.length + ' item' + (secItems.length === 1 ? '' : 's') }),
+            h('button', { type: 'button', cls: 'iv-secadd', title: 'Add an item to ' + (sec || 'Other'), text: '+ Add item', on: { click: function () { editItem(null, { section: sec || '' }); } } })]))));
         })(it.section);
         table.appendChild(tb);
       }

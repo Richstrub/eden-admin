@@ -3629,3 +3629,12 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 #viewInventory .iv-scroll{max-height:calc(100vh - 96px);max-height:calc(100dvh - 96px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #viewInventory .iv-table thead th{position:sticky;top:0;z-index:5;background:var(--ivory);box-shadow:inset 0 -1px 0 var(--line)}
 @media print{#viewInventory .iv-scroll{max-height:none;overflow:visible}#viewInventory .iv-table thead th{position:static;box-shadow:none}}
+/* inventory sheet: use the whole window width; the item column stays put while you scroll sideways */
+#viewInventory .iv-in{max-width:none}
+#viewInventory .iv-table td.iv-drag,#viewInventory .iv-table th.iv-drag{position:sticky;left:0;z-index:3;background:#fff;width:30px;min-width:30px;max-width:30px}
+#viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{position:sticky;left:30px;z-index:3;background:#fff;box-shadow:inset -1px 0 0 var(--line),6px 0 8px -6px rgba(0,0,0,.12)}
+#viewInventory .iv-table thead th.iv-drag,#viewInventory .iv-table thead th.iv-name{z-index:7;background:var(--ivory)}
+#viewInventory .iv-table tr.iv-offmenu td.iv-drag,#viewInventory .iv-table tr.iv-offmenu td.iv-name{background:#ece8e1}
+#viewInventory .iv-table tr.iv-row:hover td.iv-drag,#viewInventory .iv-table tr.iv-row:hover td.iv-name{background:#fdfbf8}
+#viewInventory .iv-secin{position:sticky;left:12px;display:inline-flex;align-items:baseline;gap:10px}#viewInventory .iv-secin span{margin:0}
+@media print{#viewInventory .iv-table td.iv-drag,#viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{position:static;box-shadow:none}#viewInventory .iv-secin{position:static}}
