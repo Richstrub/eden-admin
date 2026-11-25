@@ -3603,3 +3603,4 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 @media (min-width:1024px){.sb-collapsed .sb-barbrand{display:inline-block}}
 @media (max-width:520px){.sb-barbrand{font-size:.9rem;letter-spacing:.24em}}
 @media print{.sb-barbrand{display:none!important}}
+.iv-startbar span.iv-open{color:#8a5a2b;background:#fff3e3;border:1px solid rgba(176,112,63,.3);padding:5px 10px;border-radius:8px}

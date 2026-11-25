@@ -92,8 +92,30 @@
     });
   }
   function countRow() { return I.counts.filter(function (c) { return c.category === I.cat && c.count_date === I.date; })[0] || null; }
+  // a count stays "in progress" (finished_at empty) until Save inventory — it can run over several days
+  function isDone(c) { return !I.finCol || !!c.finished_at; }
+  function openRows(cid) {
+    if (!I.finCol) return [];
+    return I.counts.filter(function (c) { return c.category === cid && !c.finished_at && c.counts && Object.keys(c.counts).length; }).sort(function (a, b) { return a.count_date < b.count_date ? -1 : 1; });
+  }
+  // counts in progress on more than one day (yesterday and today) become one inventory, under the first day
+  function mergeOpen(cid) {
+    var rows = openRows(cid); if (rows.length < 2) return Promise.resolve(false);
+    var keep = rows[0], counts = {}, by = [];
+    rows.forEach(function (r) { Object.keys(r.counts || {}).forEach(function (k) { if (r.counts[k] != null) counts[k] = r.counts[k]; }); String(r.counted_by || '').split(/,\s*/).forEach(function (n) { if (n && by.indexOf(n) === -1) by.push(n); }); });
+    var drop = rows.slice(1).map(function (r) { return r.id; });
+    return sb().from('inventory_counts').upsert({ id: keep.id, category: keep.category, count_date: keep.count_date, counts: counts, counted_by: by.join(', ') }, { onConflict: 'id' }).then(function (x) {
+      if (x.error) throw x.error;
+      return sb().from('inventory_counts').delete().in('id', drop);
+    }).then(function () {
+      keep.counts = counts; keep.counted_by = by.join(', ');
+      I.counts = I.counts.filter(function (c) { return drop.indexOf(c.id) === -1; });
+      status('Put the ' + rows.map(function (r) { return dayLabel(r.count_date); }).join(' and ') + ' ' + catOf(cid).label.toLowerCase() + ' counts together into one inventory (' + Object.keys(counts).length + ' items). It stays open until you press Save inventory.', 'ok');
+      return true;
+    }, function () { return false; });
+  }
   function prevRow() {
-    return I.counts.filter(function (c) { return c.category === I.cat && c.count_date < I.date && c.counts && Object.keys(c.counts).length; })
+    return I.counts.filter(function (c) { return c.category === I.cat && c.count_date < I.date && isDone(c) && c.counts && Object.keys(c.counts).length; })
       .sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0] || null;
   }
   function onHand(it) { var r = countRow(); return r && r.counts && r.counts[it.id] != null ? r.counts[it.id] : null; }
@@ -108,9 +130,10 @@
       sb().from('inventory_items').select('menu_refs').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
       sb().from('inventory_settings').select('*').eq('id', 1).maybeSingle().then(function (r) { return r.error ? null : r.data; }, function () { return null; }),
       sb().from('recipes').select('id,name,ingredients').order('name').then(function (r) { return r.error ? [] : r.data || []; }, function () { return []; }),
-      sb().from('inventory_items').select('ingredient').limit(1).then(function (r) { return !r.error; }, function () { return false; })
+      sb().from('inventory_items').select('ingredient').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
+      sb().from('inventory_counts').select('finished_at').limit(1).then(function (r) { return !r.error; }, function () { return false; })
     ]).then(function (res) {
-      I.ingCol = res[6];
+      I.ingCol = res[6]; I.finCol = res[7];
       I.recipes = res[5].map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; });
       I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.costCols = res[3]; I.loaded = true; I.missing = false; I.loading = false;
       if (res[4] && window.EdenCosting) window.EdenCosting.setSettings(res[4]);
@@ -167,8 +190,11 @@
   function startCount() {
     flush();
     var cat = catOf(I.cat), d = h('input', { type: 'date', value: iso(new Date()) }), info = h('p', { cls: 'sc-sub' });
+    var open = openRows(I.cat)[0];
+    if (open) d.value = open.count_date;
     function paint() {
       var r = I.counts.filter(function (c) { return c.category === I.cat && c.count_date === d.value; })[0], n = r ? Object.keys(r.counts || {}).length : 0;
+      if (open && r === open) { info.textContent = 'You have a ' + cat.label.toLowerCase() + ' inventory in progress, started ' + dayLabel(open.count_date) + ', with ' + n + ' item' + (n === 1 ? '' : 's') + ' counted. Starting keeps going on it. Pick another date for a separate count.'; clr.hidden = false; return; }
       info.textContent = n ? 'There’s already a ' + cat.label.toLowerCase() + ' count for that day with ' + n + ' item' + (n === 1 ? '' : 's') + ' in it. Starting opens it so you can keep going.' : 'Every On hand box starts empty. The last count shows beside each item.';
       clr.hidden = !n;
     }
@@ -185,15 +211,40 @@
   }
   function focusFirst() { var f = I.el.querySelector('.iv-oh'); if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } }
   function saveInventory() {
-    var cat = catOf(I.cat), items = catItems();
+    var cat = catOf(I.cat), r0 = countRow();
+    if (!I.finCol || !r0 || !Object.keys(r0.counts || {}).length) return finishSave(cat, null);
+    // pick the date the inventory goes in the reports under: the day it was finished, or the day it was started
+    var today = iso(new Date()), d = h('input', { type: 'date', value: r0.finished_at ? r0.count_date : (today > r0.count_date ? today : r0.count_date) });
+    var m = modal('Save inventory · ' + cat.label, [
+      h('p', { cls: 'sc-sub', text: (r0.finished_at ? 'Saved before, on ' + dayLabel(r0.count_date) + '. ' : 'Started ' + dayLabel(r0.count_date) + '. ') + Object.keys(r0.counts).length + ' items counted. Which date should this inventory go under in the reports?' }),
+      lbl('Inventory date', d)
+    ], [h('span', { cls: 'sc-sp' }), h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Save inventory', on: { click: function () { if (!d.value) return; m.close(); finishSave(cat, d.value); } } })]);
+  }
+  function finishSave(cat, day) {
+    var items = catItems();
     status('Saving the inventory…', 'dirty');
     saveNow().then(function (x) {
+      if (!x || x.error || !I.finCol || !day) return x;
+      // mark it finished (moving it to the chosen date if that's different)
+      var r = x.row, now = new Date().toISOString();
+      if (day === r.count_date) return sb().from('inventory_counts').update({ finished_at: now }).eq('id', r.id).then(function (y) { if (y.error) return { error: y.error }; r.finished_at = now; return x; });
+      var there = I.counts.filter(function (c) { return c.category === r.category && c.count_date === day && c !== r; })[0];
+      var counts = Object.assign({}, there ? there.counts : {}, r.counts), nid = r.category + ':' + day;
+      var row = { id: there ? there.id : nid, category: r.category, count_date: day, counts: counts, counted_by: r.counted_by || '', finished_at: now };
+      return sb().from('inventory_counts').upsert(row, { onConflict: 'id' }).then(function (y) {
+        if (y.error) return { error: y.error };
+        return sb().from('inventory_counts').delete().eq('id', r.id).then(function () {
+          I.counts = I.counts.filter(function (c) { return c !== r && c !== there; }); I.counts.push(row); I.date = day; return { row: row };
+        });
+      });
+    }).then(function (x) {
       if (!x) { status('Nothing counted yet for ' + dayLabel(I.date) + '.', 'err'); return; }
       if (x.error) { saveErr(x.error); return; }
       var r = x.row, counted = items.filter(function (it) { return r.counts[it.id] != null; }), left = items.filter(function (it) { return r.counts[it.id] == null; });
       var val = counted.reduce(function (a, it) { return a + (hasCost(it) ? r.counts[it.id] * +it.cost : 0); }, 0);
       var below = counted.filter(function (it) { return it.par != null && r.counts[it.id] < +it.par; }).length;
-      status('Inventory saved.', 'ok');
+      status('Inventory saved.', 'ok'); render();
       var m = modal('Inventory saved · ' + cat.label, [
         h('p', { cls: 'iv-pcalc', text: money(val) + ' on hand' }),
         h('p', { cls: 'sc-sub', text: dayLabel(I.date) + ' · ' + counted.length + ' of ' + items.length + ' counted' + (below ? ' · ' + below + ' below par' : '') + (r.counted_by ? ' · counted by ' + r.counted_by : '') }),
@@ -256,7 +307,7 @@
     var curRow = countRow(), ncount = curRow ? Object.keys(curRow.counts || {}).length : 0;
     wrap.appendChild(h('div', { cls: 'iv-startbar' }, [
       h('button', { type: 'button', cls: 'ed-btn', text: 'Start a new inventory', on: { click: startCount } }),
-      h('span', { text: 'Counting ' + cat.label.toLowerCase() + ' for ' + dayLabel(I.date) + (ncount ? ' · ' + ncount + ' counted so far' : ' · nothing counted yet') })
+      h('span', { cls: curRow && I.finCol && !curRow.finished_at && ncount ? 'iv-open' : '', text: curRow && I.finCol && curRow.finished_at ? 'Saved inventory of ' + dayLabel(I.date) + ' · ' + ncount + ' counted · changes still save to it' : (I.finCol && ncount ? 'Inventory in progress · started ' + dayLabel(I.date) + ' · ' + ncount + ' counted so far · not saved until you press Save inventory' : 'Counting ' + cat.label.toLowerCase() + ' for ' + dayLabel(I.date) + (ncount ? ' · ' + ncount + ' counted so far' : ' · nothing counted yet')) })
     ]));
     var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
     // summary
@@ -1654,7 +1705,7 @@
     saveBtn.addEventListener('click', function () {
       if (body.querySelector('input.bad')) { msg.textContent = 'Fix the counts in red (numbers only).'; return; }
       saveBtn.disabled = true; msg.textContent = 'Saving…';
-      var rows = cats.map(function (cid) { var r = rowOf(cid); return { id: (r && r.id) || cid + ':' + day, category: cid, count_date: day, counts: draft[cid], counted_by: I.ctx.name || (r && r.counted_by) || '' }; });
+      var rows = cats.map(function (cid) { var r = rowOf(cid); var row = { id: (r && r.id) || cid + ':' + day, category: cid, count_date: day, counts: draft[cid], counted_by: I.ctx.name || (r && r.counted_by) || '' }; if (I.finCol) row.finished_at = new Date().toISOString(); return row; });
       sb().from('inventory_counts').upsert(rows, { onConflict: 'id' }).then(function (res) {
         if (res.error) { saveBtn.disabled = false; msg.textContent = isPerm(res.error) ? 'Your role can’t change the inventory.' : 'Couldn’t save. Check your connection and try again.'; return; }
         rows.forEach(function (row) { var i = I.counts.findIndex(function (c) { return c.id === row.id || (c.category === row.category && c.count_date === row.count_date); }); if (i < 0) I.counts.push(row); else I.counts[i] = row; });
@@ -1903,7 +1954,7 @@
   function hasCost(it) { return it.cost != null && it.cost !== ''; }
   function byIdMap() { var m = {}; I.items.forEach(function (it) { m[it.id] = it; }); return m; }
   function latestCount(cid, onOrBefore) {
-    return I.counts.filter(function (c) { return c.category === cid && c.counts && Object.keys(c.counts).length && (!onOrBefore || c.count_date <= onOrBefore); })
+    return I.counts.filter(function (c) { return c.category === cid && isDone(c) && c.counts && Object.keys(c.counts).length && (!onOrBefore || c.count_date <= onOrBefore); })
       .sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0] || null;
   }
   function countValue(row, byId) {
@@ -2235,7 +2286,11 @@
       if (pc && pc !== I.cat) { flush(); I.filter = ''; }
       I.page = pc ? 'cat' : 'overview'; if (pc) I.cat = pc;
       if (ctx.arg && /^drive/.test(ctx.arg) && window.EdenInvoiceScan) { var arg = ctx.arg; setTimeout(function () { window.EdenInvoiceScan.handleArg(scanApi(), arg); }, 0); }
-      if (!I.loaded && !I.loading) { render(); load().then(render); } else render();
+      var openIt = function () {
+        if (I.page !== 'cat') return Promise.resolve();
+        return mergeOpen(I.cat).then(function () { var o = openRows(I.cat)[0]; if (o && (pc !== I.lastOpenCat || !countRow() || !Object.keys(countRow().counts || {}).length)) I.date = o.count_date; I.lastOpenCat = pc; });
+      };
+      if (!I.loaded && !I.loading) { render(); load().then(openIt).then(render); } else openIt().then(render);
     },
     refresh: function () { if (I.el && !I.el.hidden) render(); },
     // from Financials → Product sales: open the monthly count (loading the inventory first if this page hasn't been opened)
