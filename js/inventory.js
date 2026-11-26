@@ -88,9 +88,12 @@
     return I.items.filter(function (it) { return it.category === I.cat && (I.cat !== 'bev' || !I.sub || I.sub === 'all' || subOf(it) === I.sub); }).sort(function (a, b) {
       var ia = order.indexOf(a.section), ib = order.indexOf(b.section);
       if (ia === -1) ia = 999; if (ib === -1) ib = 999;
-      return ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
+      return ia - ib || String(a.section).localeCompare(b.section) || (sortMode() === 'az' ? 0 : (a.sort || 0) - (b.sort || 0)) || showName(a).localeCompare(showName(b), undefined, { sensitivity: 'base', numeric: true });
     });
   }
+  // A–Z inside each section (the default), or the order you dragged things into
+  function sortMode() { if (!I.sortMode) { try { I.sortMode = localStorage.getItem('eden-inv-sort') || 'az'; } catch (x) { I.sortMode = 'az'; } } return I.sortMode; }
+  function setSortMode(m) { I.sortMode = m; try { localStorage.setItem('eden-inv-sort', m); } catch (x) {} render(); }
   function countRow() { return I.counts.filter(function (c) { return c.category === I.cat && c.count_date === I.date; })[0] || null; }
   // a count stays "in progress" (finished_at empty) until Save inventory — it can run over several days
   function isDone(c) { return !I.finCol || !!c.finished_at; }
@@ -342,7 +345,10 @@
     vsel.value = I.vendor || '';
     vsel.addEventListener('change', function () { I.vendor = vsel.value; applyFilter(); });
     var elsewhere = h('p', { cls: 'iv-elsewhere', hidden: true });
-    wrap.appendChild(h('div', { cls: 'iv-bar' }, [h('div', { cls: 'iv-findwrap' }, [find, findX]), vsel, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
+    var sortSeg = h('div', { cls: 'iv-seg iv-sortseg', role: 'group', 'aria-label': 'Order of the list' }, [['az', 'A–Z'], ['custom', 'Your order']].map(function (o) {
+      return h('button', { type: 'button', 'aria-selected': sortMode() === o[0] ? 'true' : 'false', title: o[0] === 'az' ? 'Alphabetical in each section' : 'The order you dragged items into', text: o[1], on: { click: function () { if (sortMode() !== o[0]) setSortMode(o[0]); } } });
+    }));
+    wrap.appendChild(h('div', { cls: 'iv-bar' }, [h('div', { cls: 'iv-findwrap' }, [find, findX]), vsel, sortSeg, I.cat === 'bev' && (!I.sub || I.sub === 'all' || I.sub === 'wine' || I.sub === 'liquor') ? h('span', { cls: 'iv-offkey', text: 'Shaded: wine & spirits not on the menu' }) : null, h('span', { cls: 'iv-hint', text: 'Type the amount on hand; Enter jumps to the next item. Counts save automatically. Click a name to rename it; click what’s under On the invoice to match invoice names.' })]));
     wrap.appendChild(elsewhere);
 
     // the count sheet
@@ -500,7 +506,8 @@
       var at = slot.before ? ids.indexOf(slot.before.getAttribute('data-id')) : ids.length; if (at < 0) at = ids.length;
       ids.splice(at, 0, it.id);
       var byId = byIdMap(), changed = [], from = it.section || '';
-      ids.forEach(function (id, i) { var x = byId[id]; if (!x) return; if (x.sort !== i * 10 || (x.id === it.id && (x.section || '') !== sec)) { x.sort = i * 10; if (x.id === it.id) x.section = sec; changed.push(x); } });
+      if (sortMode() === 'az') { if ((it.section || '') !== sec) { it.section = sec; changed.push(it); } else { status('The list is A–Z, so items keep their place. Switch to “Your order” to arrange them by hand.', 'dirty'); return; } }
+      else ids.forEach(function (id, i) { var x = byId[id]; if (!x) return; if (x.sort !== i * 10 || (x.id === it.id && (x.section || '') !== sec)) { x.sort = i * 10; if (x.id === it.id) x.section = sec; changed.push(x); } });
       if (!changed.length) return;
       var sc = document.scrollingElement, y0 = sc ? sc.scrollTop : 0;
       status('Saving the new order…', 'dirty');
@@ -1883,7 +1890,7 @@
       var items = I.items.filter(function (it) { return it.category === cid && it.active !== false; }).sort(function (a, b) {
         var sa = cid === 'bev' ? ['beer', 'wine', 'liquor', 'na'].indexOf(subOf(a)) : 0, sb = cid === 'bev' ? ['beer', 'wine', 'liquor', 'na'].indexOf(subOf(b)) : 0;
         var ia = order.indexOf(a.section), ib = order.indexOf(b.section); if (ia < 0) ia = 999; if (ib < 0) ib = 999;
-        return sa - sb || ia - ib || String(a.section).localeCompare(b.section) || (a.sort || 0) - (b.sort || 0) || String(a.name).localeCompare(b.name);
+        return sa - sb || ia - ib || String(a.section).localeCompare(b.section) || (sortMode() === 'az' ? 0 : (a.sort || 0) - (b.sort || 0)) || showName(a).localeCompare(showName(b), undefined, { sensitivity: 'base', numeric: true });
       });
       var cols = '<th class="it">Item</th><th class="u">Unit</th>' + (o.vendor ? '<th class="v">Vendor</th>' : '') + (o.par ? '<th class="p">Par</th>' : '') + (o.last ? '<th class="l">Last' + (last ? '<small>' + esc(last.count_date.slice(5).replace('-', '/')) + '</small>' : '') + '</th>' : '') + '<th class="c">Count</th><th class="nt">Notes</th>' + (cid === 'bev' ? '<th class="mn">On the menu</th><th class="pc">Cost %</th>' : '');
       var ncol = 4 + (cid === 'bev' ? 2 : 0) + (o.vendor ? 1 : 0) + (o.par ? 1 : 0) + (o.last ? 1 : 0);

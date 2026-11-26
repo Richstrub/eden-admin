@@ -3666,3 +3666,4 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-table textarea.iv-nameinp:focus{border-color:var(--ember)!important;background:#fff;outline:0}
 #viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{min-width:230px;max-width:300px;width:260px;vertical-align:top}
 @media print{#viewInventory .iv-table textarea.iv-nameinp{width:auto;border:0;padding:0;margin:0;min-width:0;height:auto!important;font-size:7pt;font-weight:400;overflow:visible}#viewInventory .iv-table td.iv-name{min-width:0;max-width:none;width:auto}}
+.iv-sortseg{flex:none}@media print{.iv-sortseg{display:none!important}}
