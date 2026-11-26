@@ -135,9 +135,10 @@
       sb().from('recipes').select('id,name,ingredients').order('name').then(function (r) { return r.error ? [] : r.data || []; }, function () { return []; }),
       sb().from('inventory_items').select('ingredient').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
       sb().from('inventory_counts').select('finished_at').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
-      sb().from('inventory_items').select('max_qty').limit(1).then(function (r) { return !r.error; }, function () { return false; })
+      sb().from('inventory_items').select('max_qty').limit(1).then(function (r) { return !r.error; }, function () { return false; }),
+      sb().from('inventory_items').select('replaces').limit(1).then(function (r) { return !r.error; }, function () { return false; })
     ]).then(function (res) {
-      I.ingCol = res[6]; I.finCol = res[7]; I.maxCol = res[8];
+      I.ingCol = res[6]; I.finCol = res[7]; I.maxCol = res[8]; I.vintCol = res[9];
       I.recipes = res[5].map(function (x) { x.ingredients = Array.isArray(x.ingredients) ? x.ingredients : []; return x; });
       I.items = res[0]; I.counts = res[1]; I.orderCols = res[2]; I.costCols = res[3]; I.loaded = true; I.missing = false; I.loading = false;
       if (res[4] && window.EdenCosting) window.EdenCosting.setSettings(res[4]);
@@ -159,6 +160,7 @@
       if (I.costCols) row.menu_refs = Array.isArray(it.menu_refs) ? it.menu_refs : [];   // supabase/inventory-costing.sql
       if (I.ingCol) row.ingredient = it.ingredient || '';   // supabase/ingredient-name.sql
       if (I.maxCol) row.max_qty = it.max_qty == null || it.max_qty === '' ? null : +it.max_qty;   // supabase/inventory-max.sql
+      if (I.vintCol) row.replaces = it.replaces || null;   // supabase/wine-vintage.sql
       return row;
     }), { onConflict: 'id' }).then(function (r) { if (r.error) throw r.error; try { window.dispatchEvent(new CustomEvent('eden-inventory-changed')); } catch (x) {} });
   }
@@ -318,6 +320,7 @@
     var unm = unmatchedCard(); if (unm) wrap.appendChild(unm);
     var ufc = useFirstCard(I.cat); if (ufc) wrap.appendChild(ufc);
     var dvc = dupVendorCard(); if (dvc) wrap.appendChild(dvc);
+    if (I.cat === 'bev') { var vc = vintageCard(); if (vc) wrap.insertBefore(vc, wrap.querySelector('.iv-cpricing') || null); }
     // summary
     var cur = countRow(), prev = prevRow(), value = 0, counted = 0, prevValue = 0, below = 0;
     items.forEach(function (it) {
@@ -406,9 +409,10 @@
     var order = h('td', { cls: 'r iv-order' }), val = h('td', { cls: 'r iv-val' });
     function refresh() {
       var v = onHand(it);
-      var need = it.par != null && v != null ? Math.max(0, it.par - v) : null;
+      var retiring = !!nextOf(it);   // a new vintage takes over: don't reorder the old one
+      var need = !retiring && it.par != null && v != null ? Math.max(0, it.par - v) : null;
       var over = it.max_qty != null && it.max_qty !== '' && v != null && v > +it.max_qty;
-      order.textContent = need ? qty(need) : over ? 'Use first' : (v != null && it.par != null ? '–' : '');
+      order.textContent = need ? qty(need) : retiring && v != null ? 'new vintage' : over ? 'Use first' : (v != null && it.par != null ? '–' : '');
       order.classList.toggle('need', !!need); order.classList.toggle('over', !!over);
       inp.classList.toggle('over', !!over); inp.title = over ? qty(v - +it.max_qty) + ' over the maximum of ' + qty(+it.max_qty) + ' — use it first' : '';
       val.textContent = v != null && it.cost != null ? money(v * it.cost) : '';
@@ -436,7 +440,7 @@
     var off = it.category === 'bev' && (subOf(it) === 'wine' || subOf(it) === 'liquor') && window.EdenCosting && !window.EdenCosting.linksFor(it, I.menuAll || []).length;
     var tr = h('tr', { cls: 'iv-row' + (off ? ' iv-offmenu' : ''), title: off ? 'Not on the menu or linked to a menu item — click ✎ to link it' : null, 'data-id': it.id, 'data-name': keyOf(it.name + ' ' + (it.ingredient || '') + ' ' + names.map(function (s) { return s.desc; }).join(' ') + ' ' + it.vendor + ' ' + it.pack), 'data-vendor': it.vendor || '' }, [
       h('td', { cls: 'iv-drag' }, grip),
-      h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it), it.category === 'bev' && I.costCols && window.EdenCosting ? menuSelect(it) : null])]),
+      h('td', { cls: 'iv-name' }, [nameInput(it), h('div', { cls: 'iv-namesub' }, [it.pack ? h('small', { text: it.pack }) : null, secSelect(it), it.category === 'bev' && I.costCols && window.EdenCosting ? menuSelect(it) : null, vintageBadge(it)])]),
       h('td', { cls: 'r iv-ohc' }, inp),
       order,
       h('td', { cls: 'iv-inv' }, [h('button', { type: 'button', cls: 'iv-invbtn' + (names.length ? '' : ' none'), title: names.length ? names.map(function (s) { return s.vendor + ': ' + s.desc; }).join('\n') + '\n\nClick to match invoice names' : 'Match invoice names to this item', on: { click: function () { matchDialog(it); } } },
@@ -1960,6 +1964,7 @@
       var oh = onHand(it);
       if (it.par == null) { noPar++; return; }
       if (oh == null) { notCounted++; return; }
+      if (nextOf(it)) return;   // the new vintage gets ordered instead
       var need = it.par - oh; if (need <= 0) return;
       var v = it.vendor || 'No vendor';
       (byVendor[v] = byVendor[v] || []).push({ it: it, need: need });
@@ -2382,6 +2387,72 @@
     box.appendChild(tbl);
     return box;
   }
+  /* ---------- new vintages: the next bottle waits on the sheet; when the old one runs out, switch the wine list ---------- */
+  function onHandNow(it) {   // the latest count that has this item (a count in progress counts)
+    var r = I.counts.filter(function (c) { return c.category === it.category && c.counts && c.counts[it.id] != null; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0];
+    return r ? { n: +r.counts[it.id], d: r.count_date } : null;
+  }
+  function vintagePairs() {
+    if (!I.vintCol) return [];
+    var byId = byIdMap();
+    return I.items.filter(function (it) { return it.replaces && byId[it.replaces]; }).map(function (nw) {
+      var old = byId[nw.replaces], oh = onHandNow(old);
+      return { nw: nw, old: old, oh: oh, out: !!oh && oh.n <= 0 };
+    });
+  }
+  function nextOf(it) { return I.vintCol ? I.items.filter(function (x) { return x.replaces === it.id; })[0] || null : null; }
+  function vintageBadge(it) {
+    if (!I.vintCol || it.category !== 'bev' || subOf(it) !== 'wine') return null;
+    var byId = byIdMap(), old = it.replaces && byId[it.replaces], nx = nextOf(it);
+    if (old) return h('button', { type: 'button', cls: 'iv-vint new', title: 'Change or clear', text: 'New vintage · replaces ' + showName(old), on: { click: function () { vintageDialog(it); } } });
+    if (nx) { var oh = onHandNow(it), out = oh && oh.n <= 0; return h('button', { type: 'button', cls: 'iv-vint' + (out ? ' out' : ''), title: 'Change or clear', text: (out ? 'Out — switch the menu to ' : 'Next vintage: ') + showName(nx), on: { click: function () { vintageDialog(nx); } } }); }
+    return h('button', { type: 'button', cls: 'iv-vint add', text: '+ New vintage of…', title: 'This bottle is a new vintage that takes over when an older one runs out', on: { click: function () { vintageDialog(it); } } });
+  }
+  function vintageDialog(nw) {
+    var byId = byIdMap(), cur = nw.replaces && byId[nw.replaces];
+    var wines = I.items.filter(function (x) { return x.category === 'bev' && subOf(x) === 'wine' && x.id !== nw.id && x.active !== false; });
+    var picked = cur || null, pickedText = h('p', { cls: 'iv-pcalc', text: cur ? 'Replaces ' + showName(cur) : 'Not set' });
+    var sp = searchPick({ value: '', placeholder: 'Search the wine inventory for the older vintage…', label: 'Older vintage', none: 'No wine called',
+      items: wines.sort(function (a, b) { return showName(a).localeCompare(showName(b)); }).map(function (x) { var oh = onHandNow(x); return { key: x.id, label: showName(x), sub: [x.section, x.vendor, oh ? qty(oh.n) + ' on hand' : ''].filter(Boolean).join(' · '), it: x }; }),
+      onPick: function (x) { picked = x.it; pickedText.textContent = 'Replaces ' + showName(picked); } });
+    var m = modal('New vintage · ' + showName(nw), [
+      h('p', { cls: 'sc-sub', text: 'Pick the older vintage this bottle takes over from. Keep selling the old one; when its count reaches 0, the Beverages sheet and the Today page tell you to switch the wine list to this one.' }),
+      sp, pickedText
+    ], [cur ? h('button', { type: 'button', cls: 'ed-btn small ghost', text: 'Not a new vintage', on: { click: function () { m.close(); setReplaces(nw, null); } } }) : h('span'), h('span', { cls: 'sc-sp' }),
+      h('button', { type: 'button', cls: 'ed-btn small', text: 'Cancel', on: { click: function () { m.close(); } } }),
+      h('button', { type: 'button', cls: 'ed-btn', text: 'Save', on: { click: function () { if (!picked) { sp.focus(); return; } m.close(); setReplaces(nw, picked.id); } } })]);
+    setTimeout(function () { sp.focus(); }, 30);
+  }
+  function setReplaces(nw, oldId) {
+    var was = nw.replaces; nw.replaces = oldId || null;
+    status('Saving…', 'dirty');
+    saveItems([nw]).then(function () { var o = oldId && byIdMap()[oldId]; status(o ? showName(nw) + ' is set to take over from ' + showName(o) + '.' : 'Cleared.', 'ok'); render(); }, function (e) { nw.replaces = was; saveErr(e); });
+  }
+  // the old vintage is gone and the wine list has been switched: the new bottle takes over its menu link; the old one can go
+  function vintageDone(p, removeOld) {
+    var nw = p.nw, old = p.old, jobs = [];
+    nw.replaces = null;
+    if ((!nw.menu_refs || !nw.menu_refs.length) && old.menu_refs && old.menu_refs.length && I.costCols) nw.menu_refs = [];   // matches the renamed menu line by name
+    jobs.push(saveItems([nw]));
+    if (removeOld) jobs.push(sb().from('inventory_items').delete().eq('id', old.id).then(function (r) { if (r.error) throw r.error; I.items = I.items.filter(function (x) { return x.id !== old.id; }); }));
+    status('Saving…', 'dirty');
+    Promise.all(jobs).then(function () { status(showName(nw) + ' is the wine on the list now' + (removeOld ? ', and ' + showName(old) + ' is off the inventory.' : '.'), 'ok'); render(); }, saveErr);
+  }
+  function vintageCard() {
+    var pairs = vintagePairs(); if (!pairs.length) return null;
+    var out = pairs.filter(function (p) { return p.out; }), wait = pairs.filter(function (p) { return !p.out; });
+    var kids = [];
+    out.forEach(function (p) {
+      var rm = h('input', { type: 'checkbox' }); rm.checked = true;
+      kids.push(h('div', { cls: 'iv-vrow out' }, [
+        h('div', null, [h('b', { text: showName(p.old) + ' is out' }), h('span', { text: 'Counted 0 on ' + dayLabel(p.oh.d) + '. Update the wine list to the new vintage: ' + showName(p.nw) + '.' })]),
+        h('div', { cls: 'iv-mtools' }, [h('a', { href: '#menu', cls: 'ed-btn small', text: 'Open the wine list' }),
+          h('label', { cls: 'iv-vrm' }, [rm, ' remove the old bottle']),
+          h('button', { type: 'button', cls: 'ed-btn small pr-accent', text: 'Done — menu updated', on: { click: function () { vintageDone(p, rm.checked); } } })])]));
+    });
+    wait.forEach(function (p) { kids.push(h('div', { cls: 'iv-vrow' }, [h('div', null, [h('b', { text: showName(p.nw) }), h('span', { text: 'waiting for ' + showName(p.old) + ' to run out' + (p.oh ? ' · ' + qty(p.oh.n) + ' left at the ' + dayLabel(p.oh.d) + ' count' : ' · not counted yet') })])])); });
+    return h('div', { cls: 'is-bar iv-vintcard' + (out.length ? ' alert' : '') }, [h('div', { cls: 'is-bar-h' }, [h('div', null, [h('b', { text: out.length ? out.length + ' wine' + (out.length === 1 ? '' : 's') + ' to switch on the menu' : 'New vintages waiting' }), h('span', { text: out.length ? 'The old vintage ran out. Change the wine list, then press Done.' : 'They take over when the old vintage’s count reaches 0.' })])]), h('div', { cls: 'iv-vrows' }, kids)]);
+  }
   function renderOverview(wrap) {
     wrap.appendChild(h('div', { cls: 'iv-titlebar' }, [
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Kitchen & bar' }), h('h1', { cls: 'sc-week', text: 'Inventory' })]),
@@ -2404,6 +2475,7 @@
     // what's on hand now
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Current inventory' }));
     var uf = useFirstCard(null); if (uf) wrap.appendChild(uf);
+    var vco = vintagePairs().some(function (p) { return p.out; }) ? vintageCard() : null; if (vco) wrap.appendChild(vco);
     wrap.appendChild(invOverview());
     // reports
     wrap.appendChild(h('h2', { cls: 'iv-h2', text: 'Reports' }));

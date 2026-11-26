@@ -3667,3 +3667,16 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 #viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{min-width:230px;max-width:300px;width:260px;vertical-align:top}
 @media print{#viewInventory .iv-table textarea.iv-nameinp{width:auto;border:0;padding:0;margin:0;min-width:0;height:auto!important;font-size:7pt;font-weight:400;overflow:visible}#viewInventory .iv-table td.iv-name{min-width:0;max-width:none;width:auto}}
 .iv-sortseg{flex:none}@media print{.iv-sortseg{display:none!important}}
+/* new vintages */
+.iv-vint{flex-basis:100%;text-align:left;background:none;border:0;padding:2px 0 0;font:inherit;font-size:.74rem;cursor:pointer;color:#7d2a3c}
+.iv-vint.add{color:#b0a89a}.iv-vint.add:hover{color:#7d2a3c}
+.iv-vint.new{color:#2f6690}
+.iv-vint.out{color:#a3392b;font-weight:600}
+.iv-vintcard{border-color:rgba(125,42,60,.25)}
+.iv-vintcard.alert{border-color:#c98b8b;background:#fdf3f2}
+.iv-vrows{display:grid;gap:2px;margin-top:6px}
+.iv-vrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;border-top:1px solid rgba(0,0,0,.06)}
+.iv-vrow b{display:block;font-weight:500}.iv-vrow span{display:block;color:var(--stone);font-size:.84rem}
+.iv-vrow.out b{color:#a3392b}
+.iv-vrm{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--stone)}.iv-vrm input{width:auto}
+@media print{.iv-vint.add{display:none!important}}

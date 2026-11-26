@@ -48,6 +48,7 @@
     P.emps = mgr ? q(sb.from('employees').select('id,name,position,active')) : null;
     P.rplan = mgr ? q(sb.from('review_plan').select('emp,next_due,skip')) : null;
     P.items = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,par,active')) : null;
+    P.vint = ctx.canPrep ? q(sb.from('inventory_items').select('id,name,category,replaces').eq('category', 'bev')) : null;
     P.maxItems = ctx.canPrep ? q(sb.from('inventory_items').select('id,category,name,ingredient,unit,max_qty,active').not('max_qty', 'is', null)) : null;
     P.counts = ctx.canPrep ? q(sb.from('inventory_counts').select('category,count_date,counts')) : null;
     P.prices = ctx.canPrep ? q(sb.from('inventory_prices').select('item_id,unit_cost,old_cost').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', iso(addDays(now, -90))).limit(500)) : null;   // supabase/inventory-costing.sql
@@ -109,6 +110,16 @@
         if (+v < +it.par) low++;
       });
       if (low) { items.push({ area: 'Inventory', title: plural(low, 'item') + ' below par', sub: 'From the latest counts — see what to order', href: '#inventory', cta: 'Order list' }); counts.inventory = low; }
+    }
+    // a wine's old vintage ran out: switch the wine list to the new one
+    if (d.vint && d.counts) {
+      var byId = {}; d.vint.forEach(function (it) { byId[it.id] = it; });
+      var outs = d.vint.filter(function (nw) {
+        var old = nw.replaces && byId[nw.replaces]; if (!old) return false;
+        var r = d.counts.filter(function (c) { return c.category === 'bev' && c.counts && c.counts[old.id] != null; }).sort(function (a, b) { return a.count_date < b.count_date ? 1 : -1; })[0];
+        return r && +r.counts[old.id] <= 0;
+      });
+      if (outs.length) items.push({ area: 'Wine list', title: outs.length === 1 ? byId[outs[0].replaces].name + ' is out' : plural(outs.length, 'wine') + ' ran out', sub: 'Switch the menu to the new vintage: ' + outs.slice(0, 3).map(function (nw) { return nw.name; }).join(', ') + (outs.length > 3 ? ' and more' : ''), href: '#inventory/beverages', cta: 'Update the menu' });
     }
     // over the maximum at the latest count: use first
     if (d.maxItems && d.maxItems.length && d.counts) {
