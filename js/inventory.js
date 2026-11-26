@@ -904,8 +904,14 @@
   function nameInput(it) {
     var field = nameField(it);
     var used = recipesFor(it.id).map(function (x) { return x.name; }).join(', ');
-    var inp = h('input', { type: 'text', cls: 'iv-nameinp', value: showName(it), placeholder: it.name, 'aria-label': 'Item name: ' + it.name, autocomplete: 'off', spellcheck: 'false',
+    // a box that grows to show the whole name, on as many lines as it takes
+    var inp = h('textarea', { cls: 'iv-nameinp', rows: '1', placeholder: it.name, 'aria-label': 'Item name: ' + it.name, autocomplete: 'off', spellcheck: 'false',
       title: used ? 'Used in: ' + used : 'Type your name for this item' });
+    inp.value = showName(it);
+    var fit = function () { inp.style.height = 'auto'; inp.style.height = inp.scrollHeight + 'px'; };
+    inp.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+    if (window.ResizeObserver) new ResizeObserver(function () { if (inp.isConnected) fit(); }).observe(inp);
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } else if (e.key === 'Escape') { inp.value = showName(it); inp.blur(); } });
     inp.addEventListener('change', function () {
       var v = inp.value.trim().replace(/\s+/g, ' ');
@@ -913,7 +919,7 @@
       var old = it[field];
       if ((old || '') === v) return;
       it[field] = v;
-      if (!v) inp.value = showName(it);
+      if (!v) inp.value = showName(it); fit();
       status('Saving…', 'dirty');
       saveItems([it]).then(function () { status('Saved', 'ok'); }, function (e) { it[field] = old; inp.value = showName(it); saveErr(e); });
     });

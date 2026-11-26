@@ -3660,3 +3660,9 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .ck-dragging{opacity:.6;background:#fffaf3;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .ck-dragging .ck-grip{cursor:grabbing}
 @media (max-width:700px){.ck-row{grid-template-columns:24px 60px 84px 1fr 32px}.ck-row .ck-inv{grid-column:2/5}}
+/* the item's whole name, wrapped onto more lines if it's long */
+.iv-table textarea.iv-nameinp{display:block;width:calc(100% + 12px);min-width:180px;resize:none;overflow:hidden;border:1px solid transparent!important;background:transparent;box-shadow:none;font:inherit;font-weight:500;line-height:1.3;color:var(--ink);padding:4px 6px;margin:-4px -6px 0;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:0}
+.iv-table textarea.iv-nameinp:hover{border-color:var(--line)!important}
+.iv-table textarea.iv-nameinp:focus{border-color:var(--ember)!important;background:#fff;outline:0}
+#viewInventory .iv-table td.iv-name,#viewInventory .iv-table th.iv-name{min-width:230px;max-width:300px;width:260px;vertical-align:top}
+@media print{#viewInventory .iv-table textarea.iv-nameinp{width:auto;border:0;padding:0;margin:0;min-width:0;height:auto!important;font-size:7pt;font-weight:400;overflow:visible}#viewInventory .iv-table td.iv-name{min-width:0;max-width:none;width:auto}}
