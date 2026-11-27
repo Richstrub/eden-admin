@@ -12,8 +12,8 @@
 (function () {
   'use strict';
   var C = { ctx: null, el: null, list: [], sales: {}, inv: [], loaded: false, missing: false, invOk: false, open: null };
-  var OZ = { oz: 1, 'fl oz': 1, ml: 1 / 29.5735, cl: 0.33814, dash: 1 / 32, dashes: 1 / 32, barspoon: 0.125, bsp: 0.125, tsp: 1 / 6, tbsp: 0.5, rinse: 0.25, drop: 1 / 600, drops: 1 / 600, splash: 0.25, float: 0.5, top: 3 };
-  var UNITS = ['oz', 'top', 'ml', 'dash', 'barspoon', 'tsp', 'tbsp', 'rinse', 'splash', 'float', 'drop', 'each', 'leaf', 'slice', 'wedge', 'sprig'];
+  var OZ = { oz: 1, 'fl oz': 1, ml: 1 / 29.5735, cl: 0.33814, dash: 1 / 32, dashes: 1 / 32, barspoon: 0.125, bsp: 0.125, tsp: 1 / 6, tbsp: 0.5, rinse: 0.25, drop: 1 / 600, drops: 1 / 600, splash: 0.25, float: 0.5, top: 3, spritz: 0.03 };
+  var UNITS = ['oz', 'top', 'spritz', 'ml', 'dash', 'barspoon', 'tsp', 'tbsp', 'rinse', 'splash', 'float', 'drop', 'each', 'leaf', 'slice', 'wedge', 'sprig'];
 
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -118,10 +118,24 @@
     ['Long Island Iced Tea', 'Collins', 'Fresh cubes', 'Lemon wedge', S_ + ' · Shake the spirits and lemon with ice for a few seconds. Strain into a Collins glass over fresh ice and top with Coke.', [[0.5, 'oz', 'Vodka'], [0.5, 'oz', 'Gin'], [0.5, 'oz', 'Rum'], [0.5, 'oz', 'Tequila'], [0.5, 'oz', 'Orange liqueur'], [0.5, 'oz', 'Lemon juice'], [1, 'top', 'Coke']]],
     ['Daiquiri', 'Coupe (chilled)', 'None, served up', 'Lime wheel', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled coupe.', [[2, 'oz', 'Rum'], [1, 'oz', 'Lime juice'], [1, 'oz', 'Simple syrup']]]
   ];
+
+  /* ---------- Eden's own cocktails (from the bar's spec cards), with proposed glassware ---------- */
+  var HOUSE = [
+    ['Rear Admiral', 'Coupe (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled coupe.', [[1.5, 'oz', 'Taconic rum'], [0.5, 'oz', 'Lockhouse Isco Bitter'], [0.75, 'oz', 'Pineapple juice'], [0.5, 'oz', 'Lime juice'], [0.25, 'oz', 'Toasted sesame syrup'], [2, 'drop', 'Saline']]],
+    ['Second Act', 'Coupe (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled coupe.', [[2.25, 'oz', 'McKenzie gin'], [1, 'oz', 'Red pepper–white balsamic gastrique'], [0.25, 'oz', 'Antica Torino Vermouth di Torino'], [0.25, 'oz', 'Cocchi Dopo Teatro'], [0.5, 'oz', 'Lemon juice'], [5, 'drop', 'Tarragon tincture']]],
+    ['Bad Apple', 'Nick & Nora (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled Nick & Nora.', [[1.75, 'oz', 'Reposado'], [0.75, 'oz', 'Crab apple juice'], [0.25, 'oz', 'Agave syrup'], [0.25, 'oz', 'Hibiscus concentrate'], [0.25, 'oz', 'China-China'], [2, 'drop', 'Saline'], [0.25, 'oz', 'Lecarre']]],
+    ['He Man', 'Rocks', 'Large cube', '', T_ + ' · Stir with ice 20–30 seconds. Strain over a large cube in a rocks glass. Black pepper tincture: 3–5 drops, to taste.', [[2, 'oz', 'Buckwheat-infused single malt'], [0.5, 'oz', 'Plum eau de vie'], [0.25, 'oz', 'Honey syrup'], [0.25, 'oz', 'Sherry'], [3, 'drop', 'Black pepper tincture']]],
+    ['No Country', 'Rocks', 'Fresh cubes', 'Lime wheel', S_ + ' · Shake hard with ice 10–12 seconds. Strain into a rocks glass over fresh ice.', [[2, 'oz', 'Mezcal'], [0.25, 'oz', 'Primo Aperitivo'], [0.5, 'oz', 'Honey syrup'], [1, 'oz', 'Lemon juice']]],
+    ['Bloom', 'Martini glass (chilled)', 'None', 'Flower petal', T_ + ' · Spritz a chilled martini glass with absinthe. Stir the gin, verjus and elderflower with ice 20–30 seconds, strain into the glass and fill with sparkling rosé.', [[1.75, 'oz', 'Gin'], [0.75, 'oz', 'Verjus'], [0.25, 'oz', 'Elderflower liqueur'], [1, 'spritz', 'Absinthe'], [1, 'top', 'Sparkling rosé']]],
+    ['Blue! You’re My Boy Blue!', 'Coupe (chilled)', 'None, served up', 'Flower', S_ + ' · Shake very hard with ice 15 seconds to foam the espresso. Double strain into a chilled coupe.', [[1.5, 'oz', 'Fort Hamilton'], [0.5, 'oz', 'Crème de cacao'], [0.5, 'oz', 'Sweet vermouth'], [0.75, 'oz', 'Espresso']]],
+    ['The Rye of Power', 'Nick & Nora (chilled)', 'None, served up', 'Cherry', T_ + ' · Stir with ice 20–30 seconds. Strain into a chilled Nick & Nora.', [[1, 'oz', 'Ryeval rye vodka'], [2.25, 'oz', 'Batched aperitif'], [0.5, 'oz', 'Ginger honey syrup']]],
+    ['Bramble On', 'Collins', 'Fresh cubes', 'Lemon wedge', S_ + ' · Zero proof. Shake the strawberry and lemon with ice, strain into a Collins glass over fresh ice and top with verjus soda.', [[1, 'oz', 'Strawberry'], [0.5, 'oz', 'Lemon juice'], [1, 'top', 'Verjus soda']]],
+    ['Golden Remedy', 'Collins', 'Fresh cubes', 'Lemon wedge', S_ + ' · Zero proof. Shake the lemon, honey ginger and mint with ice, then double strain into a Collins glass over fresh ice.', [[1.5, 'oz', 'Lemon juice'], [1, 'oz', 'Honey ginger syrup'], [4, 'leaf', 'Mint']]]
+  ];
   // typical cost per ounce, for putting a build in cost order when an ingredient isn't linked to a priced inventory item
-  var EST = [[/soda|club/, 0.03], [/coke|cola/, 0.08], [/syrup|simple|sugar|honey/, 0.08], [/cran/, 0.1], [/ginger beer/, 0.15], [/grapefruit/, 0.18], [/lemon|lime/, 0.2],
-    [/espresso|coffee bean/, 0.4], [/cava|champagne|bubbles|prosecco|sparkling/, 0.55], [/vermouth/, 0.6], [/coffee liq/, 1], [/aperitif|aperol/, 1.1], [/orange liq|cointreau|triple sec/, 1.3], [/bitter$|campari|contratto bitter/, 1.3],
-    [/bitters|angostura|ango|peychaud/, 2.5], [/absinthe/, 3], [/amaro/, 1.8], [/rum/, 1], [/vodka/, 1.1], [/gin/, 1.3], [/whisk|bourbon/, 1.4], [/tequila|mezcal/, 1.5], [/rye/, 1.5], [/cognac|brandy/, 2.2]];
+  var EST = [[/saline|tincture/, 3], [/gastrique/, 0.3], [/soda|club/, 0.03], [/coke|cola/, 0.08], [/syrup|simple|sugar|honey/, 0.08], [/cran/, 0.1], [/ginger beer/, 0.15], [/grapefruit/, 0.18], [/lemon|lime/, 0.2], [/pineapple/, 0.15], [/apple/, 0.2], [/hibiscus/, 0.2], [/strawberr/, 0.3], [/verjus/, 0.3],
+    [/espresso|coffee bean/, 0.4], [/cava|champagne|bubbles|prosecco|sparkling/, 0.55], [/vermouth/, 0.6], [/coffee liq/, 1], [/cacao/, 1], [/sherry/, 0.6], [/aperitif|aperitivo|aperol/, 1.1], [/elderflower/, 1.6], [/china/, 1.5], [/eau de vie/, 2.5], [/dopo teatro/, 1.8], [/orange liq|cointreau|triple sec/, 1.3], [/bitter$|campari|contratto bitter/, 1.3],
+    [/bitters|angostura|ango|peychaud/, 2.5], [/absinthe/, 3], [/amaro/, 1.8], [/rum/, 1], [/vodka/, 1.1], [/gin/, 1.3], [/malt|scotch/, 2.5], [/whisk|bourbon/, 1.4], [/mezcal/, 2.2], [/tequila|reposado/, 1.5], [/rye/, 1.5], [/cognac|brandy/, 2.2]];
   function lineCost(g) {   // dollars for one line of a build: the inventory price when it's linked, else a typical price
     var MCx = window.EdenMenuCost, c = null;
     if (g.inv_id) {
@@ -131,6 +145,7 @@
     }
     var t = norm(g.item);
     if (/egg/.test(t)) return 0.3 * (g.qty || 1);
+    if (/^(leaf|sprig|slice|wedge|each)$/.test(String(g.unit || '').toLowerCase())) return 0.05 * (g.qty || 1);
     var oz = ozOf(g); if (oz == null) oz = String(g.unit).toLowerCase() === 'top' ? 3 : 1;
     for (var i = 0; i < EST.length; i++) if (EST[i][0].test(t)) return oz * EST[i][1];
     return oz * 1;
@@ -138,6 +153,25 @@
   // least expensive at the top, most expensive at the bottom
   function byCost(list) { return list.map(function (g, i) { return { g: g, c: lineCost(g), i: i }; }).sort(function (a, b) { return a.c - b.c || a.i - b.i; }).map(function (x) { return x.g; }); }
   function methodTag(b) { var m = String(b.method || ''); return /^\s*shak/i.test(m) ? 'Shaken' : /^\s*stir/i.test(m) ? 'Stirred' : /^\s*buil/i.test(m) ? 'Built' : ''; }
+  function sig(list) { return (list || []).map(function (g) { return norm(g.item); }).sort().join('|'); }
+  function findBuild(name) { var n = norm(name); return C.list.filter(function (b) { return norm(b.name) === n || norm(b.menu_name) === n; })[0] || null; }
+  function houseToDo() { return HOUSE.filter(function (x) { var b = findBuild(x[0]); return !b || sig(b.ingredients) !== sig(x[5].map(function (r) { return { item: r[2] }; })); }); }
+  function addHouse() {
+    var todo = houseToDo(); if (!todo.length) { status('The house cocktails are already up to date.', 'ok'); return; }
+    var upd = todo.filter(function (x) { return findBuild(x[0]); }).map(function (x) { return x[0]; });
+    if (upd.length && !confirm('Replace the build' + (upd.length > 1 ? 's' : '') + ' for ' + upd.join(', ') + ' with the bar’s spec card?')) return;
+    var menuNames = {}; menuCocktails().forEach(function (m) { menuNames[norm(m.name)] = m.name; });
+    var rows = todo.map(function (x, i) {
+      var old = findBuild(x[0]);
+      var ings = x[5].map(function (r) { var gu = /oz|top/.test(r[1]) ? guessInv(r[2]) : null; return { qty: r[0], unit: r[1], item: r[2], inv_id: gu ? gu.id : null }; });
+      return Object.assign({}, old || { id: uid(), active: true, sort: 50 + i }, { name: old ? old.name : (menuNames[norm(x[0])] || x[0]), menu_name: (old && old.menu_name) || menuNames[norm(x[0])] || '', glass: x[1], ice: x[2], garnish: x[3], method: x[4], ingredients: byCost(ings) });
+    });
+    status('Saving ' + rows.length + ' house cocktails…', 'dirty');
+    Promise.all(rows.map(saveBuild)).then(function (saved) {
+      saved.forEach(function (row) { var i = C.list.findIndex(function (x) { return x.id === row.id; }); if (i === -1) C.list.push(row); else C.list[i] = row; });
+      status('Saved ' + saved.length + ' house cocktails, ingredients listed from least to most expensive.', 'ok'); paint();
+    }, function () { status('Couldn’t save them. Check your connection.', 'err'); });
+  }
   function missingClassics() { var have = {}; C.list.forEach(function (b) { have[norm(b.name)] = 1; }); return CLASSICS.filter(function (x) { return !have[norm(x[0])]; }); }
   function addClassics() {
     var add = missingClassics().map(function (x, i) {
@@ -189,6 +223,7 @@
       h('div', { cls: 'ck-tools' }, [
         C.list.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Print builds', title: 'House cocktails on one sheet, the classics on two', on: { click: function () { printBuilds(active()); } } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Monthly tally', on: { click: tallyDialog } }) : null,
+        canEdit() && houseToDo().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the house cocktails', title: 'Rear Admiral, Second Act, Bad Apple and the rest of Eden’s own cocktails, from the bar’s spec cards', on: { click: addHouse } }) : null,
         canEdit() && missingClassics().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the classic cocktails', title: 'Old Fashioned, Manhattan, Martini and the rest of the bar’s classic specs', on: { click: addClassics } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add cocktails from the menu', on: { click: fromMenu } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'New build', on: { click: function () { edit({ id: uid(), name: '', ingredients: [{ qty: 1.5, unit: 'oz', item: '' }, { qty: null, unit: 'oz', item: '' }], _new: true }); } } }) : null
@@ -197,10 +232,10 @@
     el.appendChild(bar);
     if (!C.list.length) { el.appendChild(h('div', { cls: 'rc-pick' }, [h('p', { text: canEdit() ? 'Click “Add the classic cocktails” for the bar’s classic specs, or “Add cocktails from the menu” to start a build for every cocktail on the menu.' : 'Nothing here yet.' })])); return; }
     var sorted = C.list.slice().sort(function (a, b) { return (a.active === false) - (b.active === false) || String(a.name).localeCompare(b.name); });
-    var onMenu = sorted.filter(function (b) { return menuFor(b); }), rest = sorted.filter(function (b) { return !menuFor(b); });
-    [['On the menu', onMenu], [onMenu.length ? 'Classics' : '', rest]].forEach(function (grp) {
-      if (!grp[1].length) return;
-      if (grp[0] && onMenu.length) el.appendChild(h('h2', { cls: 'ck-group', text: grp[0] }));
+    var onMenu = sorted.filter(function (b) { return menuFor(b); }), cl = sorted.filter(function (b) { return !menuFor(b) && isClassic(b); }), own = sorted.filter(function (b) { return !menuFor(b) && !isClassic(b); });
+    var grps = [['On the menu', onMenu], ['House cocktails, not on the menu', own], ['Classics', cl]].filter(function (g) { return g[1].length; });
+    grps.forEach(function (grp) {
+      if (grps.length > 1) el.appendChild(h('h2', { cls: 'ck-group', text: grp[0] }));
       var grid = h('div', { cls: 'ck-grid' });
       grp[1].forEach(function (b) { grid.appendChild(card(b)); });
       el.appendChild(grid);
@@ -491,5 +526,5 @@
       h('button', { type: 'button', cls: 'ed-btn', text: 'Done', on: { click: function () { m.close(); } } })], true);
   }
 
-  window.EdenCocktails = { mount: mount, reload: function () { C.loaded = false; }, _test: { C: C, byCost: byCost, lineCost: lineCost, CLASSICS: CLASSICS, buildCost: buildCost, weeksOf: weeksOf, guessInv: guessInv, ozOf: ozOf } };
+  window.EdenCocktails = { mount: mount, reload: function () { C.loaded = false; }, _test: { C: C, HOUSE: HOUSE, houseToDo: houseToDo, byCost: byCost, lineCost: lineCost, CLASSICS: CLASSICS, buildCost: buildCost, weeksOf: weeksOf, guessInv: guessInv, ozOf: ozOf } };
 })();
