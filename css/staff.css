@@ -3680,3 +3680,24 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .iv-vrow.out b{color:#a3392b}
 .iv-vrm{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--stone)}.iv-vrm input{width:auto}
 @media print{.iv-vint.add{display:none!important}}
+/* Calendar: who's working (published shifts) */
+.cl-work{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(15,18,21,.12)}
+.cl-wg{display:flex;flex-direction:column;gap:1px;padding-left:7px;border-left:3px solid var(--c);font-size:.72rem;line-height:1.3}
+.cl-wg>b{font-size:.66rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--c)}
+.cl-wp{color:#4a4e53;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-wp em{font-style:normal;color:#14171a;font-weight:500}
+.cl-wp.mine em{color:var(--ember,#8a5226);font-weight:700}
+.cl-msh{display:flex;flex-wrap:wrap;gap:2px 7px;margin-top:auto;padding-top:3px;font-size:.62rem;color:#5b5f64}
+.cl-msh>span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.cl-msh i{width:6px;height:6px;border-radius:50%;background:var(--c);display:inline-block}
+.cl-tl-sec{grid-column:1/-1;padding:7px 12px 3px;font-size:.66rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 6%,#fff);border-bottom:1px solid rgba(15,18,21,.06);position:sticky;left:0}
+.cl-tl-shift .cl-tl-lane{min-height:36px}
+.cl-tl-shift .cl-tl-who b{font-size:.84rem}
+.cl-tl-sbar{top:7px;bottom:7px;cursor:default;opacity:.92}
+.cl-tl-sbar.approx{background:linear-gradient(to right,var(--c) 0,var(--c) calc(100% - 26px),color-mix(in srgb,var(--c) 45%,#fff) 100%)}
+.cl-tl-shift.mine .cl-tl-who b{color:var(--ember,#8a5226)}
+.cl-shtog[aria-pressed="true"]{background:#14171a;color:#fff;border-color:#14171a}
+@media (max-width:700px){.cl-msh{font-size:.56rem;gap:1px 4px}}
+@media print{.cl-shtog{display:none}}
+.cl-msh .cl-mtot{display:none}
+@media (max-width:700px){.cl-msh>span{display:none}.cl-msh .cl-mtot{display:inline;color:#4f5358}}

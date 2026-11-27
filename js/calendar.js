@@ -6,6 +6,9 @@
  * same room at overlapping times get a double-booking warning. Later, BEOs will add events here
  * automatically (each event has a source and an optional beo_id for that).
  *
+ * Shifts: everyone's published schedule (the same list the staff page shows, from team_schedule(), so each person sees
+ * what Team > Permissions lets them see), grouped Kitchen / Bar / Front of house. "Shifts" in the view bar hides them.
+ *
  * Data: Supabase table events (supabase/calendar.sql). Time off (who's off) comes from calendar_time_off
  * (supabase/calendar-timeoff.sql): approved for everyone, plus pending requests for the Owner and managers. Read-only here.
  */
@@ -23,7 +26,16 @@
   var ROOMS = ['Main dining room', 'Bar', 'Private dining room', 'Patio', 'Whole restaurant', 'Off-site'];
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   var DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  var C = { ctx: null, el: null, view: 'month', day: today(), events: [], off: [], range: null, loading: false, missing: false };
+  var C = { ctx: null, el: null, view: 'month', day: today(), events: [], off: [], shifts: {}, range: null, loading: false, missing: false };
+  var SHOW_SHIFTS = (function () { try { return localStorage.getItem('eden-cal-shifts') !== 'off'; } catch (e) { return true; } })();
+  // shift groups, and the server out times (the same as the schedule: 1st cut ~8pm, 2nd cut ~9pm, close ~10pm)
+  var GROUPS = [{ id: 'k', label: 'Kitchen', color: '#4f7a3a' }, { id: 'b', label: 'Bar', color: '#2f5f8a' }, { id: 'f', label: 'Front of house', color: '#b0703f' }];
+  var OUTS = { cut1: { label: '1st cut', at: '20:00' }, cut2: { label: '2nd cut', at: '21:00' }, close: { label: 'close', at: '22:00' } };
+  function groupOf(s) { var t = String((s.role || '') + ' ' + (s.position || '')).toLowerCase(); return /line|sous|cook|chef|prep|dish|kitchen|pastry|grill/.test(t) ? 'k' : /bar/.test(t) ? 'b' : 'f'; }
+  function grp(id) { return GROUPS.filter(function (g) { return g.id === id; })[0]; }
+  function shiftEndM(s) { var e = s.end || 'close'; var x = mins(OUTS[e] ? OUTS[e].at : e); if (x <= mins(s.start)) x += 1440; return x; }
+  function shiftText(s) { var e = s.end || 'close'; return fmtT(s.start) + '–' + (OUTS[e] ? OUTS[e].label : fmtT(e)); }
+  function shiftsOn(d) { return SHOW_SHIFTS ? (C.shifts[iso(d)] || []) : []; }
 
   /* ---------- helpers ---------- */
   function h(tag, attrs, kids) {
@@ -95,6 +107,23 @@
     }, function () { C.loading = false; }).then(function () {
       if (C.missing) return;
       return C.ctx.sb.rpc('calendar_time_off', { p_from: iso(r[0]), p_to: iso(r[1]) }).then(function (x) { C.off = (!x.error && Array.isArray(x.data)) ? x.data : []; }, function () { C.off = []; });
+    }).then(function () { if (!C.missing) return loadShifts(r); });
+  }
+  // published shifts for every week in view (weeks start on Sunday; a shift's day is 0 = Sunday … 6 = Saturday)
+  function loadShifts(r) {
+    var weeks = []; for (var w = monday(r[0]); w <= r[1]; w = addDays(w, 7)) weeks.push(new Date(w));
+    return Promise.all(weeks.map(function (wk) {
+      return C.ctx.sb.rpc('team_schedule', { p_week: iso(wk) }).then(function (x) { return { wk: wk, d: x.error ? null : x.data }; }, function () { return { wk: wk, d: null }; });
+    })).then(function (res) {
+      var out = {};
+      res.forEach(function (x) {
+        if (!x.d || !x.d.published) return;
+        (x.d.shifts || []).forEach(function (s) {
+          var k = iso(addDays(x.wk, +s.day || 0)); (out[k] = out[k] || []).push(Object.assign({ g: groupOf(s) }, s));
+        });
+      });
+      Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return GROUPS.indexOf(grp(a.g)) - GROUPS.indexOf(grp(b.g)) || mins(a.start) - mins(b.start) || String(a.name).localeCompare(b.name); }); });
+      C.shifts = out;
     });
   }
   function go() { render(); load().then(render); }
@@ -130,6 +159,7 @@
       h('div', null, [h('p', { cls: 'sc-eyebrow', text: 'Events' }), h('h1', { cls: 'sc-week', text: title() })]),
       h('div', { cls: 'cl-tools' }, [
         tog,
+        h('button', { type: 'button', cls: 'ed-btn small cl-shtog', 'aria-pressed': SHOW_SHIFTS ? 'true' : 'false', title: 'Show or hide who’s working', text: SHOW_SHIFTS ? 'Shifts: on' : 'Shifts: off', on: { click: function () { SHOW_SHIFTS = !SHOW_SHIFTS; try { localStorage.setItem('eden-cal-shifts', SHOW_SHIFTS ? 'on' : 'off'); } catch (e) {} render(); } } }),
         h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': 'Previous ' + unit, text: '←', on: { click: function () { step(-1); } } }),
         h('button', { type: 'button', cls: 'ed-btn small', disabled: isCurrent(), text: C.view === 'day' ? 'Today' : C.view === 'week' ? 'This week' : 'This month', on: { click: function () { C.day = today(); go(); } } }),
         h('button', { type: 'button', cls: 'ed-btn small', 'aria-label': 'Next ' + unit, text: '→', on: { click: function () { step(1); } } }),
@@ -142,7 +172,9 @@
     if (C.view === 'day') wrap.appendChild(dayView());
     else if (C.view === 'week') wrap.appendChild(weekView());
     else wrap.appendChild(monthView());
-    wrap.appendChild(h('div', { cls: 'cl-legend' }, TYPES.map(function (t) { return h('span', null, [h('i', { style: 'background:' + t.color }), t.label]); })));
+    wrap.appendChild(h('div', { cls: 'cl-legend' }, TYPES.map(function (t) { return h('span', null, [h('i', { style: 'background:' + t.color }), t.label]); })
+      .concat(SHOW_SHIFTS ? GROUPS.map(function (g) { return h('span', { cls: 'cl-lg-sh' }, [h('i', { style: 'background:' + g.color }), g.label + ' shifts']); }) : [])));
+    if (SHOW_SHIFTS) wrap.appendChild(h('p', { cls: 'cl-hint', text: 'Shifts are from published schedules. 1st cut, 2nd cut and close are drawn ending about 8pm, 9pm and 10pm.' }));
   }
 
   function chip(e) {
@@ -163,14 +195,27 @@
         var col = h('div', { cls: 'cl-wcol' + (iso(d) === t ? ' today' : ''), role: 'button', tabindex: '0', 'aria-label': DAYS_LONG[i] + ' ' + md(d) + ', ' + list.length + ' events. Open the day view' }, [
           h('div', { cls: 'cl-whead' }, [h('span', { text: DAYS_LONG[d.getDay()] }), h('b', { text: md(d) }), h('em', { text: (list.length ? list.length + ' event' + (list.length === 1 ? '' : 's') + ' · ' : '') + 'Day view →' })])
         ]);
-        if (!list.length) col.appendChild(h('p', { cls: 'cl-none', text: 'Nothing scheduled' }));
+        var sh = shiftsOn(d);
+        if (!list.length && !sh.length) col.appendChild(h('p', { cls: 'cl-none', text: 'Nothing scheduled' }));
         list.forEach(function (e) { col.appendChild(chip(e)); });
+        if (sh.length) col.appendChild(workingBlock(sh));
         col.addEventListener('click', function () { openDay(d); });
         col.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openDay(d); } });
         grid.appendChild(col);
       })(addDays(m, i));
     }
     return grid;
+  }
+  // who's working: a small list per group (Kitchen, Bar, Front of house)
+  function workingBlock(sh) {
+    var box = h('div', { cls: 'cl-work' });
+    GROUPS.forEach(function (g) {
+      var list = sh.filter(function (s) { return s.g === g.id; }); if (!list.length) return;
+      box.appendChild(h('div', { cls: 'cl-wg', style: '--c:' + g.color }, [h('b', { text: g.label + ' · ' + list.length })].concat(list.map(function (s) {
+        return h('span', { cls: 'cl-wp' + (s.mine ? ' mine' : '') }, [h('em', { text: s.name }), ' ' + shiftText(s)]);
+      }))));
+    });
+    return box;
   }
   function monthView() {
     var f = firstOfMonth(C.day), l = new Date(f.getFullYear(), f.getMonth() + 1, 0), t = iso(today());
@@ -187,30 +232,34 @@
         });
         if (list.length > 4) cell.appendChild(h('span', { cls: 'cl-more', text: '+' + (list.length - 4) + ' more' }));
         if (list.length) cell.appendChild(h('span', { cls: 'cl-mc', text: list.length + (list.every(function (e) { return e.off; }) ? ' off' : ' event' + (list.length === 1 ? '' : 's')) }));
+        var sh = shiftsOn(date);
+        if (sh.length) cell.appendChild(h('span', { cls: 'cl-msh', title: GROUPS.map(function (g) { var n = sh.filter(function (s) { return s.g === g.id; }); return n.length ? g.label + ': ' + n.map(function (s) { return s.name; }).join(', ') : ''; }).filter(Boolean).join('\n') },
+          GROUPS.map(function (g) { var n = sh.filter(function (s) { return s.g === g.id; }).length; return n ? h('span', { style: '--c:' + g.color }, [h('i'), (g.id === 'f' ? 'FOH ' : g.label + ' ') + n]) : null; }).concat([h('span', { cls: 'cl-mtot', text: sh.length + ' on' })])));
         cal.appendChild(cell);
       })(new Date(d));
     }
     return h('div', null, [cal, h('p', { cls: 'cl-hint', text: 'Tap a day to see its timeline.' })]);
   }
   function dayView() {
-    var box = h('div', { cls: 'cl-day' }), list = onDay(C.day);
+    var box = h('div', { cls: 'cl-day' }), list = onDay(C.day), sh = shiftsOn(C.day);
     var allDay = list.filter(function (e) { return e.all_day; }), timed = list.filter(function (e) { return !e.all_day; });
-    if (!list.length) {
+    if (!list.length && !sh.length) {
       box.appendChild(h('div', { cls: 'cl-emptyday' }, [h('p', { text: 'Nothing on the calendar this day.' }),
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: '+ Add an event on this day', on: { click: function () { editEvent(null, C.day); } } }) : null]));
       return box;
     }
     if (allDay.length) box.appendChild(h('div', { cls: 'cl-allday' }, [h('span', { cls: 'cl-ad-l', text: 'All day' })].concat(allDay.map(chip))));
-    if (!timed.length) return box;
+    if (!timed.length && !sh.length) return box;
     var lo = Infinity, hi = -Infinity;
     timed.forEach(function (e) { lo = Math.min(lo, startM(e)); hi = Math.max(hi, endM(e)); });
+    sh.forEach(function (s) { lo = Math.min(lo, mins(s.start)); hi = Math.max(hi, shiftEndM(s)); });
     lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
     if (hi - lo < 6 * 60) hi = Math.min(lo + 6 * 60, 30 * 60);
     var span = hi - lo, pct = function (m) { return ((m - lo) / span * 100) + '%'; };
     var tl = h('div', { cls: 'cl-tl', style: '--hours:' + (span / 60) });
     var scale = h('div', { cls: 'cl-tl-scale' });
     for (var m = lo; m <= hi; m += 60) scale.appendChild(h('span', { cls: 'cl-tl-tick', style: 'left:' + pct(m), text: clock(m) }));
-    tl.appendChild(h('div', { cls: 'cl-tl-ruler' }, [h('div', { cls: 'cl-tl-who' }, h('span', { text: timed.length + ' event' + (timed.length === 1 ? '' : 's') })), scale]));
+    tl.appendChild(h('div', { cls: 'cl-tl-ruler' }, [h('div', { cls: 'cl-tl-who' }, h('span', { text: [timed.length ? timed.length + ' event' + (timed.length === 1 ? '' : 's') : '', sh.length ? sh.length + ' working' : ''].filter(Boolean).join(' · ') })), scale]));
     timed.forEach(function (e) {
       var a = startM(e), b = endM(e), t = typeOf(e.type), warn = clashes(e).length;
       tl.appendChild(h('div', { cls: 'cl-tl-row' }, [
@@ -219,6 +268,16 @@
           h('button', { type: 'button', cls: 'cl-tl-bar' + (e.end ? '' : ' open') + (warn ? ' clash' : '') + (e.off && e.off.status === 'pending' ? ' pending' : ''), style: '--c:' + t.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: e.title + ' · ' + timeText(e) + (e.room ? ' · ' + e.room : ''), on: { click: function () { showEvent(e); } } },
             [h('span', { text: timeText(e) + (warn ? ' · double-booked' : '') + (e.notes ? ' · ' + e.notes.split('\n')[0] : '') })])
         ])
+      ]));
+    });
+    var lastG = null;
+    sh.forEach(function (s) {
+      var g = grp(s.g), a = mins(s.start), b = shiftEndM(s);
+      if (s.g !== lastG) { lastG = s.g; tl.appendChild(h('div', { cls: 'cl-tl-sec', style: '--c:' + g.color }, [h('span', { text: g.label })])); }
+      tl.appendChild(h('div', { cls: 'cl-tl-row cl-tl-shift' + (s.mine ? ' mine' : '') }, [
+        h('div', { cls: 'cl-tl-who' }, [h('b', { text: s.name }), h('span', { text: s.role || s.position || g.label })]),
+        h('div', { cls: 'cl-tl-lane' }, [h('div', { cls: 'cl-tl-bar cl-tl-sbar' + (OUTS[s.end || 'close'] ? ' approx' : ''), style: '--c:' + g.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: s.name + ' · ' + shiftText(s) + (s.note ? ' · ' + s.note : '') },
+          [h('span', { text: shiftText(s) + (s.note ? ' · ' + s.note : '') })])])
       ]));
     });
     var grid = h('div', { cls: 'cl-tl-grid', 'aria-hidden': 'true' });
