@@ -489,7 +489,7 @@ PAGES.today = function (el) {
   var two = h('div', { cls: 'grid g2', style: 'margin-top:26px' }); el.appendChild(two);
   // who's on tonight
   var sh = tonight(), c1 = h('div', { cls: 'card' }, [h('div', { cls: 'card-h' }, [h('div', null, [h('h2', { text: 'On tonight' }), h('p', { cls: 'sub', text: sh.length ? plural(sh.length, 'person') + ' scheduled' : 'From the published schedule' })]), h('button', { cls: 'btn small', text: 'Schedule', on: { click: function () { go('team', 'schedule'); } } })])]);
-  if (sh.length) c1.appendChild(h('div', { cls: 'list' }, sh.map(function (s) { return h('div', { cls: 'row' }, [h('div', { cls: 'main-t' }, [h('b', { text: empName(s.emp) }), h('span', { text: s.role || '' })]), h('span', { cls: 'num', text: s.start + '–' + (s.end === 'close' ? 'close' : s.end) })]); })));
+  if (sh.length) c1.appendChild(h('div', { cls: 'list' }, sh.map(function (s) { return h('div', { cls: 'row' }, [h('div', { cls: 'main-t' }, [h('b', { text: empName(s.emp) }), h('span', { text: s.role || '' })]), h('span', { cls: 'num', text: t12(s.start) + '–' + t12(s.end || 'close') })]); })));
   else c1.appendChild(h('p', { cls: 'empty', text: 'No one on the published schedule today.' }));
   two.appendChild(c1);
   // coming up + to-dos
@@ -516,7 +516,7 @@ PAGES['service/tonight'] = function (el) {
   if (notes.length) notes.forEach(function (n) { c.appendChild(h('div', { cls: 'row' }, [h('div', { cls: 'main-t' }, [h('b', { text: dlong(n.service_date) + (n.author ? ' · ' + n.author : '') }), h('span', { text: n.body })])])); }); else c.appendChild(h('p', { cls: 'empty', text: 'No pre-shift notes yet.' }));
   g.appendChild(c);
   var sh = tonight(), c2 = h('div', { cls: 'card' }, [h('h2', { text: 'Who’s on' }), h('p', { cls: 'sub', text: 'Tonight, from the published schedule' })]);
-  if (sh.length) sh.forEach(function (s) { c2.appendChild(h('div', { cls: 'row' }, [h('div', { cls: 'main-t' }, [h('b', { text: empName(s.emp) }), h('span', { text: s.role || '' })]), h('span', { cls: 'num', text: s.start + '–' + s.end })])); }); else c2.appendChild(h('p', { cls: 'empty', text: 'No one scheduled today.' }));
+  if (sh.length) sh.forEach(function (s) { c2.appendChild(h('div', { cls: 'row' }, [h('div', { cls: 'main-t' }, [h('b', { text: empName(s.emp) }), h('span', { text: s.role || '' })]), h('span', { cls: 'num', text: t12(s.start) + '–' + t12(s.end || 'close') })])); }); else c2.appendChild(h('p', { cls: 'empty', text: 'No one scheduled today.' }));
   g.appendChild(c2);
 };
 PAGES['service/checklists'] = function (el) {
@@ -1331,7 +1331,7 @@ PAGES['team/schedule'] = function (el) {
   var hrs = sum(w.shifts, shiftHours), cost = sum(w.shifts, function (s) { return shiftHours(s) * rateOf(s.emp); });
   var g = h('div', { cls: 'grid g4' }); el.appendChild(g);
   g.appendChild(kpiCard('Shifts', String(w.shifts.length), null, null, { sub: uniq(w.shifts.map(function (s) { return s.emp; })).length + ' people' }));
-  g.appendChild(kpiCard('Scheduled hours', Math.round(hrs * 10) / 10 + '', null, null, { sub: '“close” counted as ' + t12(CLOSE_AT) }));
+  g.appendChild(kpiCard('Scheduled hours', Math.round(hrs * 10) / 10 + '', null, null, { sub: '1st cut counted as 8p, 2nd cut 9p, close ' + t12(CLOSE_AT) }));
   g.appendChild(kpiCard('Estimated wages', money(cost, 0), null, null, { sub: 'hours × pay rate, before tips' }));
   var bw = bizWeeks().filter(function (x) { return x.net != null; }), avg = bw.length ? sum(bw.slice(-4), function (x) { return x.net; }) / Math.min(4, bw.length) : null;
   g.appendChild(kpiCard('Labor vs. a usual week', avg ? pct(cost * 1.12 / avg) : '—', null, null, { sub: avg ? 'with payroll taxes, against ' + k$(avg) + ' sales' : 'needs payroll history' }));
@@ -1675,7 +1675,7 @@ PAGES['calendar/week'] = function (el) {
     });
     if (calOn('staff') && c.shifts && c.shifts.length) {
       var lane = h('div', { cls: 'lanes' }); col.appendChild(lane);
-      var nL = c.shifts.length; c.shifts.forEach(function (s, j) { var st = mins(s.start) / 60, en = (s.end === 'close' || !s.end ? mins(CLOSE_AT) : mins(s.end)) / 60; lane.appendChild(h('i', { style: 'left:' + (j * 100 / nL) + '%;width:calc(' + (100 / nL) + '% - 2px);top:' + (st - TL0) * PX + 'px;height:' + (en - st) * PX + 'px;background:' + KIND[roleKind(s.role)][1], title: empName(s.emp) + ' · ' + s.role + ' · ' + t12(s.start) + '–' + t12(s.end) })); });
+      var nL = c.shifts.length; c.shifts.forEach(function (s, j) { var st = mins(s.start) / 60, en = endMins(s) / 60; lane.appendChild(h('i', { style: 'left:' + (j * 100 / nL) + '%;width:calc(' + (100 / nL) + '% - 2px);top:' + (st - TL0) * PX + 'px;height:' + (en - st) * PX + 'px;background:' + KIND[roleKind(s.role)][1], title: empName(s.emp) + ' · ' + s.role + ' · ' + t12(s.start) + '–' + t12(s.end) })); });
     }
     if (c.ds === t) { var now = new Date(), nh = now.getHours() + now.getMinutes() / 60; if (nh >= TL0 && nh <= TL1) col.appendChild(h('div', { cls: 'nowline', style: 'top:' + (nh - TL0) * PX + 'px' })); }
     wrap.appendChild(col);
@@ -1773,12 +1773,12 @@ function dayTimeline(c) {
     box.appendChild(h('div', { cls: 'dtr' }, [h('span', { cls: 'lb', text: e.title }), h('div', { cls: 'trk' }, [svc(), h('i', { cls: 'bar ev', style: 'left:' + pos(st) + '%;width:' + (pos(en) - pos(st)) + '%;background:' + ctype(e.type)[1], title: evTime(e) })])]));
   });
   (c.shifts || []).forEach(function (s) {
-    var st = mins(s.start) / 60, en = (s.end === 'close' || !s.end ? mins(CLOSE_AT) : mins(s.end)) / 60;
+    var st = mins(s.start) / 60, en = endMins(s) / 60;
     box.appendChild(h('div', { cls: 'dtr' }, [h('span', { cls: 'lb' }, [h('b', { text: empName(s.emp).split(' ')[0] }), ' ' + s.role]), h('div', { cls: 'trk' }, [svc(), h('i', { cls: 'bar', style: 'left:' + pos(st) + '%;width:' + (pos(en) - pos(st)) + '%;background:' + KIND[roleKind(s.role)][1], title: t12(s.start) + '–' + t12(s.end) }, h('span', { text: t12(s.start) + '–' + t12(s.end) }))])]));
   });
   // people in the building, hour by hour
   if (c.shifts && c.shifts.length) {
-    var cnt = []; for (var hh = TL0; hh < TL1; hh++) cnt.push(c.shifts.filter(function (s) { var st = mins(s.start) / 60, en = (s.end === 'close' || !s.end ? mins(CLOSE_AT) : mins(s.end)) / 60; return st <= hh + 0.5 && en > hh + 0.5; }).length);
+    var cnt = []; for (var hh = TL0; hh < TL1; hh++) cnt.push(c.shifts.filter(function (s) { var st = mins(s.start) / 60, en = endMins(s) / 60; return st <= hh + 0.5 && en > hh + 0.5; }).length);
     var mx = Math.max.apply(null, cnt.concat([1]));
     box.appendChild(h('div', { cls: 'dtr' }, [h('span', { cls: 'lb', text: 'In the building' }), h('div', { cls: 'trk hist' }, cnt.map(function (n, i) { return h('i', { style: 'left:' + pos(TL0 + i) + '%;width:' + (100 / span - .6) + '%;height:' + (n / mx * 100) + '%', title: t12((TL0 + i) + ':00') + ': ' + n + ' people' }, n ? h('span', { text: n }) : null); }))]));
   }
@@ -2579,6 +2579,36 @@ function pricesTab(body, it, repaint) {
     return h('tr', null, [h('td', { text: dshort(p.price_date) }), h('td', null, [h('div', { text: p.vendor || '—' }), p.invoice_line ? h('small', { cls: 'fine', text: p.invoice_line }) : null]), h('td', { cls: 'r num', text: p.invoice_price != null && p.invoice_price !== '' ? money(p.invoice_price) + (p.invoice_unit ? ' / ' + p.invoice_unit : '') : '' }), h('td', { cls: 'r num' }, [money(p.unit_cost), d != null && Math.abs(d) >= 0.005 ? h('small', { cls: d > 0 ? 'up' : 'down', text: ' ' + (d > 0 ? '▲' : '▼') + Math.abs(d * 100).toFixed(0) + '%' }) : null]),
       ed ? h('td', { cls: 'r' }, h('button', { cls: 'btn small', text: 'Edit', on: { click: function () { var fm = priceForm(it, p, false, function () { m.close(); repaint(); }); var m = modal('Price from ' + dlong(p.price_date), fm.el, [h('button', { cls: 'btn danger', text: 'Delete this entry', on: { click: function () { var wasNewest = priceHist(it.id)[0] === p; S.data.prices.splice(S.data.prices.indexOf(p), 1); var nx = priceHist(it.id)[0]; if (wasNewest && nx && Math.abs(+it.cost - +p.unit_cost) < 0.0001) it.cost = +nx.unit_cost; m.close(); changed('Price entry deleted' + (wasNewest && nx ? ' — cost back to ' + money(nx.unit_cost) : '')); repaint(); } } }), h('span', { cls: 'sp' }), h('button', { cls: 'btn', text: 'Cancel', on: { click: function () { m.close(); } } }), h('button', { cls: 'btn accent', text: 'Save this entry', on: { click: fm.save } })]); } } })) : null]);
   }))]));
+}
+/* =====================================================================================
+   SCHEDULE TIMES — every half hour, and the server out times from the old site:
+   1st cut (counted as about 8pm), 2nd cut (about 9pm) and close (about 10pm).
+   Saved the same way the old site saves them: end = 'cut1', 'cut2' or 'close'.
+   ===================================================================================== */
+var ENDS = { cut1: { label: '1st cut', at: '20:00' }, cut2: { label: '2nd cut', at: '21:00' }, close: { label: 'close', at: '22:00' } };
+ROLES.forEach(function (r) { if (r[0] === 'Host') r[1] = '16:30'; });
+function endMins(s) { var e = s && s.end; return !e ? mins(CLOSE_AT) : ENDS[e] ? mins(ENDS[e].at) : mins(e); }
+function shiftHours(s) { return Math.max(0, (endMins(s) - mins(s.start)) / 60); }
+function t12(t) { if (ENDS[t]) return ENDS[t].label; var m = mins(t), hh = Math.floor(m / 60), mm = m % 60; return (hh % 12 || 12) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (hh < 12 ? 'a' : 'p'); }
+function halfHours(from, to, keep) {
+  var out = []; for (var m = from * 60; m <= to * 60; m += 30) { var v = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); out.push([v, t12(v)]); }
+  if (keep && !ENDS[keep] && /^\d\d:\d\d$/.test(keep) && !out.some(function (o) { return o[0] === keep; })) { out.push([keep, t12(keep)]); out.sort(function (a, b) { return a[0] < b[0] ? -1 : 1; }); }
+  return out;
+}
+function shiftForm(sh, emps, done, del) {
+  var endOpts = [['cut1', '1st cut (about 8pm)'], ['cut2', '2nd cut (about 9pm)'], ['close', 'Close (about 10pm)']].concat(halfHours(6, 23.5, sh.end).map(function (o) { return [o[0], o[1]]; }));
+  var f = { emp: sel(emps.map(function (e) { return [e.id, e.name]; }), sh.emp), role: sel(ROLES.map(function (r) { return r[0]; }).concat(sh.role && !ROLES.some(function (r) { return r[0] === sh.role; }) ? [sh.role] : []), sh.role || 'Server'),
+    start: sel(halfHours(6, 23.5, sh.start || '16:30'), sh.start || '16:30'), end: sel(endOpts, sh.end || 'close'), note: inp(sh.note || '', { placeholder: 'Optional — e.g. private party' }) };
+  f.role.addEventListener('change', function () { var r = ROLES.filter(function (x) { return x[0] === f.role.value; })[0]; if (r) f.start.value = r[1]; });
+  var warn = h('p', { cls: 'msg' });
+  var el = h('div', { cls: 'form' }, [h('div', { cls: 'g2f' }, [fld('Who', f.emp), fld('Job', f.role)]), h('div', { cls: 'g2f' }, [fld('Starts', f.start), fld('Ends', f.end)]), fld('Note', f.note),
+    h('p', { cls: 'fine', text: 'Server out times: 1st cut is counted as about 8pm, 2nd cut about 9pm and close about 10pm when hours are totaled.' }), warn]);
+  function save() {
+    if (!f.start.value) { warn.textContent = 'Pick a start time.'; return; }
+    if (endMins({ end: f.end.value }) <= mins(f.start.value)) { warn.textContent = 'The shift ends before it starts.'; return; }
+    sh.emp = f.emp.value; sh.role = f.role.value; sh.start = f.start.value; sh.end = f.end.value; sh.note = f.note.value.trim(); done();
+  }
+  return { el: el, save: save };
 }
 
 function resetEdits() {

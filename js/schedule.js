@@ -425,8 +425,11 @@
   function lbl(text, input) { return h('label', { cls: 'sc-f' }, [h('span', { text: text }), input]); }
   function editShift(emp, day, s) {
     var isNew = !s; s = s || { id: uid(), emp: emp.id, day: day, start: '', end: '', role: emp.position || '', note: '' };
-    var start = h('input', { type: 'time', value: s.start || '', step: '900' });
-    var end = h('input', { type: 'time', value: s.end && !ENDS[s.end] ? s.end : '', step: '900' });
+    var start = h('input', { type: 'time', value: s.start || '', step: '1800' });
+    var end = h('input', { type: 'time', value: s.end && !ENDS[s.end] ? s.end : '', step: '1800' });
+    // shifts are every half hour: a time typed in between goes to the nearest :00 or :30
+    function half(v) { if (!/^\d\d:\d\d/.test(v || '')) return v; var t = Math.round(mins(v) / 30) * 30; t = Math.min(t, 23 * 60 + 30); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
+    [start, end].forEach(function (i) { i.addEventListener('change', function () { i.value = half(i.value); }); });
     var endMode = ENDS[s.end] ? s.end : 'time';
     var modeBtns = {};
     var endTog = h('div', { cls: 'sc-viewtog sc-endtog', role: 'group', 'aria-label': 'Shift ends' }, [['time', 'Set time'], ['cut1', '1st cut ~8p'], ['cut2', '2nd cut ~9p'], ['close', 'Close ~10p']].map(function (o) {
@@ -463,7 +466,7 @@
       if (ENDS[endMode] && mins(start.value) >= mins(ENDS[endMode].at) && !confirm('This shift starts after ' + ENDS[endMode].label + ' is usually called (about ' + fmtT(ENDS[endMode].at) + '). Keep it?')) return;
       var off = offOn(S.timeoff, emp.id, addDays(S.week, day));
       if (isNew && off && off.status === 'approved' && !confirm((emp.name || 'This person') + ' has approved time off on ' + DAYS_LONG[day] + ' (' + offText(off) + '). Schedule them anyway?')) return;
-      s.start = start.value; s.end = endMode === 'time' ? end.value : endMode; s.role = role.value.trim(); s.note = note.value.trim();
+      s.start = half(start.value); s.end = endMode === 'time' ? half(end.value) : endMode; s.role = role.value.trim(); s.note = note.value.trim();
       if (isNew) { S.row.shifts = shifts().concat([s]); }
       m.close(); changed(); render();
     }
