@@ -2798,7 +2798,7 @@ function refreshIfNeeded() {
 }
 function accountMenu() {
   var m = modal(S.myName || 'Account', [h('p', { cls: 'fine', text: (S.user && S.user.email || '') + ' · ' + ({ owner: 'Owner', manager: 'Manager', scheduler: 'Manager (schedule)', kitchen: 'Kitchen', foh: 'Front of house' }[S.liveRole] || S.liveRole) }),
-    h('div', { cls: 'chips', style: 'flex-direction:column;align-items:stretch;gap:8px' }, [h('button', { cls: 'btn', text: 'Change password', on: { click: function () { m.close(); window.EdenAccount.change(sb); } } }), h('a', { cls: 'btn', href: 'classic.html', text: 'Open the old layout' }), h('a', { cls: 'btn', href: 'team/', text: 'Open the staff page' }), h('button', { cls: 'btn danger', text: 'Sign out', on: { click: function () { m.close(); sb.auth.signOut().then(function () { location.replace(location.pathname); }); } } })])]);
+    h('div', { cls: 'chips', style: 'flex-direction:column;align-items:stretch;gap:8px' }, [h('button', { cls: 'btn', text: 'Change password', on: { click: function () { m.close(); window.EdenAccount.change(sb); } } }), h('a', { cls: 'btn', href: './', text: 'Open the usual layout' }), h('a', { cls: 'btn', href: 'team/', text: 'Open the staff page' }), h('button', { cls: 'btn danger', text: 'Sign out', on: { click: function () { m.close(); sb.auth.signOut().then(function () { location.replace(location.pathname); }); } } })])]);
 }
 LEGACY_ROUTES.beos = ['catering', 'beos']; LEGACY_ROUTES.inquiries = ['catering', 'pipeline'];
 function boot() {
