@@ -3703,3 +3703,17 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 @media (max-width:700px){.cl-msh>span{display:none}.cl-msh .cl-mtot{display:inline;color:#4f5358}}
 .cl-wp.draft{opacity:.75}.cl-wp.draft em{text-decoration:underline dashed;text-underline-offset:3px}
 .cl-tl-sbar.draft{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--c) 55%,#fff) 0 6px,color-mix(in srgb,var(--c) 35%,#fff) 6px 12px);color:#14171a;outline:1.5px dashed var(--c);outline-offset:-1.5px}
+/* Owner pages: charts, and reports folded behind a down arrow */
+.fn-charts{margin:14px 0}
+.fn-charts .fn-chart{border-radius:12px}
+.fn-hl{font-size:12px}.fn-hv{font-size:12px}
+.fn-fold{margin:12px 0}
+.fn-capd>summary::before{content:none}
+.fn-capd>summary,.ps-sec>summary,.fn-who>summary{list-style:none;position:relative;padding-right:40px}
+.ps-sec>summary::-webkit-details-marker,.fn-who>summary::-webkit-details-marker{display:none}
+.fn-capd>summary::after,.ps-sec>summary::after,.fn-who>summary::after{content:"";position:absolute;right:6px;top:50%;width:9px;height:9px;margin-top:-7px;border-right:2px solid var(--stone,#857f75);border-bottom:2px solid var(--stone,#857f75);transform:rotate(45deg);transition:transform .2s,margin-top .2s}
+.fn-capd[open]>summary::after,.ps-sec[open]>summary::after,.fn-who[open]>summary::after{transform:rotate(-135deg);margin-top:-2px}
+.fn-capd>summary:hover::after,.ps-sec>summary:hover::after,.fn-who>summary:hover::after{border-color:var(--ember,#b0703f)}
+.fn-who>summary{display:block;padding:10px 40px 10px 0;border-top:1px solid var(--line)}
+.fn-foldb{padding-bottom:4px}
+.fn-foldb .pr-sched{margin-top:0}

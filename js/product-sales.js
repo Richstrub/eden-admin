@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  var X = { el: null, ctx: null, rows: null, links: {}, range: '4w', q: '', sort: 'net', loading: false, missing: false, err: '', open: { items: true, order: true } };
+  var X = { el: null, ctx: null, rows: null, links: {}, range: '4w', q: '', sort: 'net', loading: false, missing: false, err: '', open: { items: false, order: false } };
   var BEV = /beer|wine|liquor|cocktail|beverage|n\/a|drink|spirit|coffee|tea|soda|bar/i;
   try { var saved = JSON.parse(localStorage.getItem('eden-products') || '{}'); if (saved.range) X.range = saved.range; } catch (e) { /* no storage */ }
   function remember() { try { localStorage.setItem('eden-products', JSON.stringify({ range: X.range })); } catch (e) { /* no storage */ } }
@@ -236,6 +236,7 @@
     if (!p) { el.appendChild(h('p', { cls: 'an-sub', text: 'No product sales yet. Drop a Square Item sales detail CSV above.' })); return; }
     var list = products(p), total = list.reduce(function (a, x) { return a + x.net; }, 0);
     el.appendChild(rangeBar(p, total, list));
+    el.appendChild(trendChart(p));
     el.appendChild(mixCharts(list, total, p));
     el.appendChild(flow(list, total));
     el.appendChild(itemsTable(list, total, p));
@@ -265,6 +266,24 @@
         kpi('Food / beverage', total ? Math.round(food / total * 100) + ' / ' + (100 - Math.round(food / total * 100)) : '–', '% of product sales')
       ])
     ]);
+  }
+  // food and beverage sales over the period: by week (by day for a single week), drawn like the Financials charts
+  function trendChart(p) {
+    var Pay = window.EdenPayroll; if (!Pay || !Pay.vbars) return h('span');
+    var daily = p.days <= 7, by = {};
+    var sunday = function (d) { var x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - x.getDay()); return iso(x); };
+    (X.rows || []).forEach(function (r) {
+      if (r.day < p.from || r.day > p.to) return;
+      var k = daily ? r.day : sunday(r.day), o = by[k] = by[k] || { food: 0, bev: 0, qty: 0 };
+      if (isBev(r)) o.bev += r.net; else o.food += r.net; o.qty += r.qty;
+    });
+    var keys = Object.keys(by).sort(); if (!keys.length) return h('span');
+    var lab = function (k) { var d = new Date(k + 'T12:00:00'); return daily ? d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + (d.getMonth() + 1) + '/' + d.getDate() : (d.getMonth() + 1) + '/' + d.getDate(); };
+    var FOOD = '#b0703f', BEVC = '#2a2e33';
+    return Pay.vbars({ title: daily ? 'Product sales by day' : 'Product sales by week', stack: true, cats: keys.map(lab),
+      series: [{ label: 'Food', color: FOOD, values: keys.map(function (k) { return by[k].food; }) }, { label: 'Beverage', color: BEVC, values: keys.map(function (k) { return by[k].bev; }) }],
+      sub: dayLabel(p.from) + ' – ' + dayLabel(p.to) + (daily ? '' : ' · weeks start on Sunday'),
+      tip: function (i) { var o = by[keys[i]], t = o.food + o.bev; return '<b>' + (daily ? dayLabel(keys[i]) : 'Week of ' + lab(keys[i])) + '</b><span><i style="background:' + FOOD + '"></i>Food ' + money(o.food) + (t ? ' · ' + Math.round(o.food / t * 100) + '%' : '') + '</span><span><i style="background:' + BEVC + '"></i>Beverage ' + money(o.bev) + (t ? ' · ' + Math.round(o.bev / t * 100) + '%' : '') + '</span><span>' + money(t) + ' · ' + Math.round(o.qty) + ' sold</span>'; } });
   }
   function kpi(t, v, s) { return h('div', { cls: 'ps-kpi' }, [h('small', { text: t }), h('b', { text: v }), h('span', { text: s })]); }
 
@@ -459,7 +478,7 @@
     // a par or count changed in the inventory: load fresh next time this page shows
     _inv: window.addEventListener('eden-inventory-changed', function () { if (X.rows && !X.loading) X.rows = null; }),
     show: function (el, ctx) {
-      X.el = el; X.ctx = ctx;
+      X.el = el; X.ctx = ctx; X.open = { items: false, order: false };   // the reports start folded each time
       if (!X.rows && !X.loading) load(); else paint();
     },
     _test: { readFile: readFile, X: X, usage: usage, orderGuide: orderGuide }

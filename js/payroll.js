@@ -516,6 +516,7 @@
   }
   function saveRate(id) {
     var r = P.rates[id];
+    if (P.refs.rcharts && P.refs.rcharts.isConnected && P.sub === 'rates') { P.refs.rcharts.innerHTML = ''; P.refs.rcharts.appendChild(ratesCharts(P.emps.filter(function (e) { return e.active !== false || P.rates[e.id]; }))); }
     var row = { emp: id, pay_type: r.pay_type || 'hourly', rate: r.rate == null ? null : r2(r.rate), weekly_salary: r.weekly_salary == null ? null : r2(r.weekly_salary), tip_eligible: !!r.tip_eligible, notes: r.notes || '' };
     if (P.k401) row.k401 = !!r.k401;
     if (P.v2) Object.assign(row, { kitchen_rate: r.kitchen_rate == null ? null : r2(r.kitchen_rate), commission: !!r.commission, payroll_id: r.payroll_id || '', payroll_name: r.payroll_name || '', square_name: r.square_name || '' });
@@ -770,11 +771,14 @@
     el.appendChild(P.row.source === 'square' ? h('p', { cls: 'pr-key', text: 'Hours are from the Square file. Hover a day to see what was scheduled.' })
       : h('p', { cls: 'pr-key' }, [h('span', { cls: 'pr-sw chg' }), ' Different from the schedule   ', h('span', { cls: 'pr-sw approx' }), ' Scheduled to a server cut or close (counted as 8, 9 or 10 pm): check the real out time']));
 
-    // scheduled vs worked, day by day
-    el.appendChild(schedGrid(shownEmps(), sch));
     // labor percentage for the week
     P.refs.labor = h('div', { cls: 'pr-labor' });
     el.appendChild(P.refs.labor);
+    // the week in charts (redrawn as hours and tips change)
+    P.refs.wcharts = h('div'); el.appendChild(P.refs.wcharts);
+    // scheduled vs worked, day by day (folded)
+    var sg = schedGrid(shownEmps(), sch), sgh = sg.querySelector('.pr-schedhead'); if (sgh) sgh.remove();
+    el.appendChild(fold('Scheduled vs worked', 'Each person’s hours against the schedule, day by day', [sgh ? sgh.querySelector('.pr-schedkey') : null, sg]));
     // step 4: the sheets
     var notes = h('textarea', { cls: 'pr-notes', rows: '3', placeholder: 'Anything the payroll company should know this week (new hire, bonus, unpaid leave…)', disabled: ro, 'aria-label': 'Notes for payroll' });
     notes.value = P.row.notes || '';
@@ -953,7 +957,7 @@
   if ([1, 4, 8, 13, 26, 52].indexOf(OV.range) === -1) OV.range = 8;
   try { OV.cfRange = +localStorage.getItem('eden-cf-range') || 1; } catch (e) {}
   function loadOverview() {
-    var my = ++P.seq; OV.err = ''; paint(true);
+    var my = ++P.seq; MET.open = null; OV.err = ''; paint(true);
     Promise.all([
       sb().from('payroll_weeks').select('week_start,status,finalized_at,rows').order('week_start', { ascending: false }).limit(104),
       sb().from('employees').select('*').order('name'),
@@ -1058,8 +1062,7 @@
       h('td', { cls: 'pr-num', text: invW.length ? money(totInv) : '–' }), h('td', { cls: 'pr-num', text: invW.length ? pctTxt(invW.reduce(function (a, w) { return a + (w.s.extraPct || 0); }, 0) / invW.length) : '–' }), h('td', { cls: 'pr-num', text: netInv ? pctTxt(totTrue / netInv) : '–' }),
       h('td', { cls: 'pr-num', text: money(shown.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) }), h('td', { cls: 'pr-num', text: hrs(shown.reduce(function (a, w) { return a + (w.s.hours || 0); }, 0)) })]);
     el.appendChild(capView());
-    el.appendChild(h('h2', { cls: 'fn-h', text: 'Week by week' }));
-    el.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Payroll invoice', 'On top of pay', 'True labor %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])]));
+    el.appendChild(fold('Week by week', shown.length + (shown.length === 1 ? ' week' : ' weeks') + ' · ' + money(totNet) + ' revenue · payroll ' + pctTxt(totNet ? totCost / totNet : null), [h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Payroll invoice', 'On top of pay', 'True labor %', 'Tips', 'Hours'].map(function (t, i) { return h('th', { scope: 'col', cls: i ? 'pr-num' : null, text: t }); }))]), tb, h('tfoot', null, [foot])])])]));
     el.appendChild(h('p', { cls: 'pr-fine', text: 'Revenue is net sales from the week’s Transactions CSV (before sales tax and tips). Payroll cost is wages, salary, overtime, sick and holiday pay plus commission; tips aren’t included, since they pass through to the staff. Payroll % = payroll cost ÷ revenue. Payroll invoice is the payroll company’s bill (estimated until you enter the real one on the week). True labor % = (invoice − tips) ÷ revenue.' + (pending.length ? ' ' + pending.length + (pending.length === 1 ? ' week has' : ' weeks have') + ' been started but not calculated yet; open ' + (pending.length === 1 ? 'it' : 'them') + ' in Weekly payroll to include ' + (pending.length === 1 ? 'it' : 'them') + '.' : '') }));
   }
   /* ----- Financials: each person's pay this year toward the unemployment wage bases ----- */
@@ -1097,8 +1100,6 @@
       h('small', { text: nUnder ? nUnder + (nUnder === 1 ? ' person' : ' people') + ' still under the state base · up to ' + money(r2(left)) + ' more this year' : 'Everyone on staff is past the state base for ' + y })]));
     if (head) head.remove();
     while (box.firstChild) det.appendChild(box.firstChild);
-    try { if (localStorage.getItem('eden-cap-open') === '1') det.open = true; } catch (e) {}
-    det.addEventListener('toggle', function () { try { localStorage.setItem('eden-cap-open', det.open ? '1' : '0'); } catch (e) {} });
     return det;
   }
   /* ----- Past payroll: every week, to open, print, download or email again ----- */
@@ -1110,6 +1111,7 @@
     if (OV.err) el.appendChild(h('p', { cls: 'pr-err', text: OV.err }));
     var search = h('input', { type: 'search', cls: 'pr-pastq', placeholder: 'Find a week: “October”, “2026”, “10/11”…', value: PAST.q, 'aria-label': 'Find a week' });
     el.appendChild(h('div', { cls: 'fn-top' }, [h('p', { cls: 'an-sub', text: 'Every payroll week, newest first. Open one to see it, or print, download or email it again.' }), search]));
+    el.appendChild(pastCharts());
     var list = h('div', { cls: 'pr-past' }); el.appendChild(list);
     var label = function (w) { var d = new Date(w.week + 'T12:00:00'); return weekLabel(d); };
     var match = function (w) {
@@ -1128,8 +1130,10 @@
         var y = w.week.slice(0, 4);
         if (y !== year) {
           year = y; tb = h('tbody');
-          list.appendChild(h('h2', { cls: 'fn-h', text: y }));
-          list.appendChild(h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table pr-pasttbl' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Gross pay', 'Hours', ''].map(function (t, i) { return h('th', { scope: 'col', cls: i && i < 7 ? 'pr-num' : null, text: t }); }))]), tb])]));
+          var yw = ws.filter(function (x) { return x.week.slice(0, 4) === y; }), yg = yw.reduce(function (a, x) { return a + (x.s ? (x.s.gross != null ? x.s.gross : (x.s.cost || 0) + (x.s.tips || 0)) : 0); }, 0), yc = yw.reduce(function (a, x) { return a + ((x.s && x.s.cost) || 0); }, 0), yn = yw.reduce(function (a, x) { return a + ((x.s && x.s.net) || 0); }, 0);
+          var yd = fold(y, yw.length + (yw.length === 1 ? ' week' : ' weeks') + ' · ' + money(yg) + ' gross pay · payroll ' + pctTxt(yn ? yc / yn : null) + ' of revenue', [h('div', { cls: 'pr-scroll' }, [h('table', { cls: 'pr-table fn-table pr-pasttbl' }, [h('thead', null, [h('tr', null, ['Week', 'Revenue', 'Payroll cost', 'Payroll %', 'Tips', 'Gross pay', 'Hours', ''].map(function (t, i) { return h('th', { scope: 'col', cls: i && i < 7 ? 'pr-num' : null, text: t }); }))]), tb])])]);
+          if (PAST.q.trim()) yd.open = true;   // a search opens the years it finds
+          list.appendChild(yd);
         }
         var s = w.s || {}, act = function (t, a, title) { return h('button', { type: 'button', cls: 'pr-plink', text: t, title: title, on: { click: function () { openWeek(w.week, a); } } }); };
         tb.appendChild(h('tr', null, [
@@ -1144,12 +1148,140 @@
     search.addEventListener('input', function () { PAST.q = search.value; draw(); });
     draw();
   }
+  // Past payroll: gross pay by week (payroll cost + tips + the rest), the last 26 weeks with numbers
+  function pastCharts() {
+    var ws = (OV.weeks || []).filter(function (w) { return w.s && (w.s.gross || w.s.cost); }).slice(0, 26).reverse();
+    if (!ws.length) return h('span');
+    var box = h('div', { cls: 'fn-charts' });
+    var gross = function (w) { return w.s.gross != null ? w.s.gross : r2((w.s.cost || 0) + (w.s.tips || 0)); };
+    var other = function (w) { return Math.max(0, r2(gross(w) - (w.s.cost || 0) - (w.s.tips || 0))); };
+    box.appendChild(vbars({ title: 'Gross pay by week', stack: true, cats: ws.map(function (w) { return wkLabel(w.week); }),
+      series: [{ label: 'Payroll cost', color: PAY, values: ws.map(function (w) { return w.s.cost || 0; }) }, { label: 'Tips', color: SAND, values: ws.map(function (w) { return w.s.tips || 0; }) }, { label: 'Adjustments', color: GREY, values: ws.map(other) }],
+      sub: 'Last ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' · ' + money(ws.reduce(function (a, w) { return a + gross(w); }, 0)) + ' gross pay · ' + money(ws.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) + ' of it tips',
+      tip: function (i) { var w = ws[i]; return '<b>Week of ' + wkLabel(w.week) + (w.status === 'final' ? ' · final' : ' · draft') + '</b>' + tipRow(PAY, 'Payroll cost', money(w.s.cost || 0)) + tipRow(SAND, 'Tips', money(w.s.tips || 0)) + (other(w) ? tipRow(GREY, 'Adjustments', money(other(w))) : '') + '<span>Gross ' + money(gross(w)) + ' · ' + hrs(w.s.hours || 0) + ' hours</span>'; } }));
+    var hw = ws.filter(function (w) { return w.s.hours; });
+    if (hw.length) box.appendChild(vbars({ title: 'Hours worked by week', cats: hw.map(function (w) { return wkLabel(w.week); }), fmt: function (v) { return Math.round(v) + ' h'; }, height: 190,
+      series: [{ label: 'Hours', color: REV, values: hw.map(function (w) { return w.s.hours || 0; }) }],
+      tip: function (i) { var w = hw[i]; return '<b>Week of ' + wkLabel(w.week) + '</b><span>' + hrs(w.s.hours) + ' hours</span>' + (w.s.cost && w.s.hours ? '<span>' + money(w.s.cost / w.s.hours) + ' payroll cost per hour</span>' : ''); } }));
+    return box;
+  }
+  // Pay rates: each person's rate, and the weekly salaries
+  function ratesCharts(emps) {
+    var box = h('div', { cls: 'fn-charts' });
+    var hourly = emps.filter(function (e) { var r = P.rates[e.id]; return r && r.pay_type !== 'salary' && r.rate != null && e.active !== false; }).sort(function (a, b) { return P.rates[b.id].rate - P.rates[a.id].rate; });
+    var sal = emps.filter(function (e) { var r = P.rates[e.id]; return r && r.pay_type === 'salary' && r.weekly_salary != null && e.active !== false; }).sort(function (a, b) { return P.rates[b.id].weekly_salary - P.rates[a.id].weekly_salary; });
+    if (hourly.length) {
+      var inPool = hourly.filter(function (e) { return P.rates[e.id].tip_eligible; }), avg = function (xs) { return xs.length ? xs.reduce(function (a, e) { return a + +P.rates[e.id].rate; }, 0) / xs.length : null; };
+      box.appendChild(hbars({ title: 'Hourly rates', series: [{ label: 'In the tip pool', color: SAND }, { label: 'Not in the tip pool', color: PAY }], fmt: function (v) { return money(v) + '/h'; }, axis: function (v) { return '$' + Math.round(v); },
+        sub: hourly.length + ' hourly' + (inPool.length ? ' · tip pool average ' + money(avg(inPool)) + '/h' : '') + (hourly.length > inPool.length ? ' · everyone else ' + money(avg(hourly.filter(function (e) { return !P.rates[e.id].tip_eligible; }))) + '/h' : ''),
+        rows: hourly.map(function (e) { var r = P.rates[e.id]; return { label: e.name, parts: r.tip_eligible ? [+r.rate, 0] : [0, +r.rate], tip: '<b>' + e.name + '</b><span>' + money(r.rate) + ' an hour' + (r.tip_eligible ? ' · tip pool' : '') + '</span>' + (r.kitchen_rate != null ? '<span>Kitchen ' + money(r.kitchen_rate) + ' an hour</span>' : '') + (r.commission ? '<span>Commission</span>' : '') }; }) }));
+    }
+    if (sal.length) box.appendChild(hbars({ title: 'Weekly salaries', series: [{ label: 'Salary', color: REV }], fmt: function (v) { return money(v) + '/wk'; },
+      sub: money(sal.reduce(function (a, e) { return a + +P.rates[e.id].weekly_salary; }, 0)) + ' a week in salaries',
+      rows: sal.map(function (e) { var r = P.rates[e.id]; return { label: e.name, parts: [+r.weekly_salary], tip: '<b>' + e.name + '</b><span>' + money(r.weekly_salary) + ' a week · about ' + money(r.weekly_salary * 52) + ' a year</span>' }; }) }));
+    return box;
+  }
   function niceMax(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
   function svgEl(tag, a) { var e = document.createElementNS('http://www.w3.org/2000/svg', tag); Object.keys(a || {}).forEach(function (k) { e.setAttribute(k, a[k]); }); return e; }
   function chartBox(title, legend) {
     var box = h('figure', { cls: 'fn-chart' }, [h('figcaption', null, [h('b', { text: title }), legend ? h('span', { cls: 'fn-legend' }, legend.map(function (l) { return h('span', null, [h('i', { cls: 'fn-sw' + (l[2] ? ' line' : ''), style: 'background:' + l[1] }), l[0]]); })) : null])]);
     var tip = h('div', { cls: 'fn-tip', hidden: true }); box.appendChild(tip);
     return { box: box, tip: tip };
+  }
+  /* ----- charts and folded reports for every Owner page, drawn like the Financials charts ----- */
+  var SAND = '#c9a24b', GREY = '#9d9a94';
+  // a report folded away: a line with the gist, open it with the arrow
+  function fold(title, sub, kids) {
+    return h('details', { cls: 'fn-capd fn-fold' }, [h('summary', null, [h('span', { cls: 'fn-capt', text: title }), sub ? h('small', { text: sub }) : null]), h('div', { cls: 'fn-foldb' }, kids)]);
+  }
+  // an axis with round steps: 0, 1k, 2k, 3k… (returns the top and how many steps)
+  function niceAxis(raw) { if (!(raw > 0)) return { max: 1, n: 4 }; var st = niceMax(raw / 4), n = Math.max(1, Math.ceil(raw / st - 1e-9)); return { max: st * n, n: n }; }
+  function axMoney(v) { return '$' + (v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k' : Math.round(v)); }
+  function roundTop(x, base, top, bw) { var hgt = Math.max(0, base - top), r = Math.min(4, bw / 2, hgt); return 'M' + x + ',' + base + 'V' + (top + r) + 'Q' + x + ',' + top + ' ' + (x + r) + ',' + top + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + top + ' ' + (x + bw) + ',' + (top + r) + 'V' + base + 'Z'; }
+  // vertical bars on one money axis: series side by side (grouped) or on top of each other (stacked)
+  // o: { title, cats: [label], series: [{ label, color, values: [] }], stack, tip: function (i) → html, fmt, aria }
+  function vbars(o) {
+    var cb = chartBox(o.title, o.series.map(function (x) { return [x.label, x.color]; }));
+    var W = 760, H = o.height || 230, L = 64, R = 12, T = 12, B = 30, n = o.cats.length, fmt = o.fmt || axMoney;
+    var tot = function (i) { return o.series.reduce(function (a, x) { return a + Math.max(0, x.values[i] || 0); }, 0); };
+    var ax = niceAxis(Math.max.apply(null, o.cats.map(function (c, i) { return o.stack ? tot(i) : Math.max.apply(null, o.series.map(function (x) { return x.values[i] || 0; })); }).concat([0]))), max = ax.max;
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'fn-svg', role: 'img', 'aria-label': o.aria || o.title });
+    var y = function (v) { return T + (H - T - B) * (1 - v / max); };
+    for (var g = 0; g <= ax.n; g++) { var v = max * g / ax.n; svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'fn-grid' })); var t = svgEl('text', { x: L - 8, y: y(v) + 4, class: 'fn-ax', 'text-anchor': 'end' }); t.textContent = fmt(v); svg.appendChild(t); }
+    var band = (W - L - R) / Math.max(1, n), k = o.series.length, bw = o.stack ? Math.max(6, Math.min(34, band * 0.5)) : Math.max(4, Math.min(18, band * 0.7 / k));
+    o.cats.forEach(function (c, i) {
+      var cx = L + band * i + band / 2;
+      if (o.stack) {
+        var acc = 0, x0 = cx - bw / 2;
+        o.series.forEach(function (x, j) {
+          var v = Math.max(0, x.values[i] || 0); if (!v) return;
+          var b0 = y(acc), b1 = y(acc + v); acc += v;
+          var last = !o.series.slice(j + 1).some(function (z) { return (z.values[i] || 0) > 0; });
+          svg.appendChild(last ? svgEl('path', { d: roundTop(x0, b0, b1, bw), fill: x.color }) : svgEl('rect', { x: x0, y: b1, width: bw, height: Math.max(0, b0 - b1 - (j ? 0 : 0)), fill: x.color }));
+          if (!last) svg.appendChild(svgEl('line', { x1: x0, x2: x0 + bw, y1: b1, y2: b1, stroke: '#fffdf9', 'stroke-width': 1.5 }));
+        });
+      } else {
+        o.series.forEach(function (x, j) { var x0 = cx - (k * bw + (k - 1) * 2) / 2 + j * (bw + 2); svg.appendChild(svgEl('path', { d: roundTop(x0, y(0), y(Math.max(0, x.values[i] || 0)), bw), fill: x.color })); });
+      }
+      if (n <= 13 || i % Math.ceil(n / 13) === 0) { var t = svgEl('text', { x: cx, y: H - 10, class: 'fn-ax', 'text-anchor': 'middle' }); t.textContent = c; svg.appendChild(t); }
+      var hit = svgEl('rect', { x: L + band * i, y: T, width: band, height: H - T - B, fill: 'transparent' });
+      hit.addEventListener('mouseenter', function () { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var sc = svg.getBoundingClientRect().width / W; showTip(cb, cb.tip, o.tip(i), cx * sc, y(o.stack ? tot(i) : Math.max.apply(null, o.series.map(function (x) { return x.values[i] || 0; }))) * sc + 40); });
+      hit.addEventListener('mouseleave', function () { hit.setAttribute('fill', 'transparent'); cb.tip.hidden = true; });
+      svg.appendChild(hit);
+    });
+    svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), class: 'fn-base' }));
+    if (o.sub) cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: o.sub }));
+    cb.box.appendChild(svg);
+    return cb.box;
+  }
+  // horizontal bars, one row per name, stacked parts: o: { title, rows: [{ label, parts: [] , tip }], series: [{ label, color }], fmt }
+  function hbars(o) {
+    var cb = chartBox(o.title, o.series.length > 1 ? o.series.map(function (x) { return [x.label, x.color]; }) : null);
+    var rows = o.rows, rowH = 26, L = 150, R = 86, T = 6, W = 760, H = T * 2 + rows.length * rowH + 18, fmt = o.fmt || money;
+    var tot = function (r) { return r.parts.reduce(function (a, v) { return a + Math.max(0, v || 0); }, 0); };
+    var ax = niceAxis(Math.max.apply(null, rows.map(tot).concat([0]))), max = ax.max;
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'fn-svg', role: 'img', 'aria-label': o.title });
+    var x = function (v) { return L + (W - L - R) * v / max; };
+    for (var g = 0; g <= ax.n; g++) { var v = max * g / ax.n; svg.appendChild(svgEl('line', { x1: x(v), x2: x(v), y1: T, y2: H - 18, class: 'fn-grid' })); var t = svgEl('text', { x: x(v), y: H - 4, class: 'fn-ax', 'text-anchor': 'middle' }); t.textContent = (o.axis || axMoney)(v); svg.appendChild(t); }
+    rows.forEach(function (r, i) {
+      var cy = T + i * rowH + rowH / 2, bh = 14, acc = 0;
+      var lb = svgEl('text', { x: L - 10, y: cy + 4, class: 'fn-ax fn-hl', 'text-anchor': 'end' }); lb.textContent = r.label.length > 22 ? r.label.slice(0, 21) + '…' : r.label; svg.appendChild(lb);
+      r.parts.forEach(function (v, j) {
+        v = Math.max(0, v || 0); if (!v) return;
+        var x0 = x(acc), x1 = x(acc + v); acc += v;
+        var last = !r.parts.slice(j + 1).some(function (z) { return (z || 0) > 0; }), rr = last ? Math.min(4, (x1 - x0) / 2) : 0;
+        svg.appendChild(svgEl('path', { d: 'M' + x0 + ',' + (cy - bh / 2) + 'H' + (x1 - rr) + 'Q' + x1 + ',' + (cy - bh / 2) + ' ' + x1 + ',' + (cy - bh / 2 + rr) + 'V' + (cy + bh / 2 - rr) + 'Q' + x1 + ',' + (cy + bh / 2) + ' ' + (x1 - rr) + ',' + (cy + bh / 2) + 'H' + x0 + 'Z', fill: o.series[j].color }));
+        if (!last) svg.appendChild(svgEl('line', { x1: x1, x2: x1, y1: cy - bh / 2, y2: cy + bh / 2, stroke: '#fffdf9', 'stroke-width': 1.5 }));
+      });
+      var vl = svgEl('text', { x: x(acc) + 6, y: cy + 4, class: 'fn-lab fn-hv' }); vl.textContent = fmt(tot(r)); svg.appendChild(vl);
+      var hit = svgEl('rect', { x: 0, y: cy - rowH / 2, width: W, height: rowH, fill: 'transparent' });
+      hit.addEventListener('mouseenter', function () { hit.setAttribute('fill', 'rgba(15,18,21,.04)'); var sc = svg.getBoundingClientRect().width / W; showTip(cb, cb.tip, r.tip || ('<b>' + r.label + '</b>' + o.series.map(function (sx, j) { return r.parts[j] ? '<span><i style="background:' + sx.color + '"></i>' + sx.label + ' ' + fmt(r.parts[j]) + '</span>' : ''; }).join('')), x(acc) * sc, cy * sc + 40); });
+      hit.addEventListener('mouseleave', function () { hit.setAttribute('fill', 'transparent'); cb.tip.hidden = true; });
+      svg.appendChild(hit);
+    });
+    if (o.sub) cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: o.sub }));
+    cb.box.appendChild(svg);
+    return cb.box;
+  }
+  function tipRow(color, label, val) { return '<span><i style="background:' + color + '"></i>' + label + ' ' + val + '</span>'; }
+  // Weekly payroll: the week day by day, and everyone's pay
+  function weekCharts(c) {
+    var box = h('div', { cls: 'fn-charts' }), S = weekSales(), sales = S && S.days ? S.days.map(function (v) { return +v || 0; }) : [0, 0, 0, 0, 0, 0, 0];
+    var pool = c.D.map(function (d) { return +d.pool || 0; }), hours = c.T.days;
+    var open = [0, 1, 2, 3, 4, 5, 6].filter(function (i) { return sales[i] || pool[i] || hours[i]; });
+    if (open.length && !sum(sales) && !sum(pool)) box.appendChild(vbars({ title: 'Hours worked, day by day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }), fmt: function (v) { return Math.round(v) + ' h'; }, height: 200,
+      series: [{ label: 'Hours', color: REV, values: open.map(function (i) { return hours[i]; }) }], sub: hrs(c.T.total) + ' hours worked · sales and tips show here once the Square files are in',
+      tip: function (k) { var i = open[k]; return '<b>' + DAYS[i] + ' ' + md(addDays(P.week, i)) + '</b><span>' + hrs(hours[i]) + ' hours worked</span>'; } }));
+    else if (open.length) box.appendChild(vbars({ title: 'This week, day by day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }),
+      series: [{ label: 'Net sales', color: REV, values: open.map(function (i) { return sales[i]; }) }, { label: 'Tip pool', color: SAND, values: open.map(function (i) { return pool[i]; }) }],
+      sub: (S ? money(sum(sales)) + ' net sales (' + S.src + ')' : 'No sales file yet') + ' · ' + money(c.pool) + ' in the tip pool · ' + hrs(c.T.total) + ' hours worked',
+      tip: function (k) { var i = open[k]; return '<b>' + DAYS[i] + ' ' + md(addDays(P.week, i)) + '</b>' + tipRow(REV, 'Net sales', money(sales[i])) + tipRow(SAND, 'Tip pool', money(pool[i])) + '<span>' + hrs(hours[i]) + ' hours worked' + (sales[i] && hours[i] ? ' · ' + money(sales[i] / hours[i]) + ' sales per hour' : '') + '</span>'; } }));
+    var people = c.lines.filter(function (L) { return L.gross || L.total; }).sort(function (a, b) { return b.gross - a.gross; });
+    if (people.length) box.appendChild(hbars({ title: 'Pay by person', series: [{ label: 'Wages', color: PAY }, { label: 'Tips', color: SAND }, { label: 'Sick, holiday, commission & adjustments', color: GREY }],
+      sub: money(c.T.gross) + ' gross pay · ' + money(c.T.wages) + ' wages · ' + money(c.T.tips) + ' tips',
+      rows: people.map(function (L) { var other = r2(L.sickPay + L.holPay + L.comm + L.adj); return { label: L.info.name || L.e.name, parts: [L.wages, L.tips, other],
+        tip: '<b>' + (L.info.name || L.e.name) + '</b>' + tipRow(PAY, 'Wages', money(L.wages)) + (L.tips ? tipRow(SAND, 'Tips', money(L.tips)) : '') + (other ? tipRow(GREY, 'Other', money(other)) : '') + '<span>' + hrs(L.total) + ' hours · gross ' + money(L.gross) + '</span>' }; }) }));
+    return box;
   }
   function showTip(cb, tip, html, x, y) { tip.innerHTML = html; tip.hidden = false; var bw = cb.box.clientWidth; tip.style.left = Math.min(Math.max(x - 80, 0), bw - 170) + 'px'; tip.style.top = (y - 10) + 'px'; }
   /* ----- Financials: cash flow (Sankey) ---------------------------------------------------------------------
@@ -1522,7 +1654,7 @@
   /* ----- Financials: the numbers behind the chart, as tables. Revenue on the left, expenses on the right ----- */
   var MET = { open: null };
   var RANGE_OPTS = [[1, '1 week'], [4, '1 month'], [8, '8 weeks'], [13, '1 quarter'], [26, '26 weeks'], [52, '1 year']];
-  try { MET.open = localStorage.getItem('eden-fin-table') || null; } catch (e) {}
+  // the tables start closed each time the page opens
   var DOWN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   function pc(v, base) { return base ? (v / base * 100).toFixed(1) + '%' : '–'; }
   function metrics(ws) {
@@ -1633,7 +1765,7 @@
     function btn(k) {
       var tb = TABLES[k];
       return h('button', { type: 'button', cls: 'fn-mbtn ' + tb.side, 'aria-expanded': MET.open === k ? 'true' : 'false', on: { click: function () {
-        MET.open = MET.open === k ? null : k; try { if (MET.open) localStorage.setItem('eden-fin-table', MET.open); else localStorage.removeItem('eden-fin-table'); } catch (e) {}
+        MET.open = MET.open === k ? null : k;
         box.querySelectorAll('.fn-mbtn').forEach(function (b) { b.setAttribute('aria-expanded', b === this ? String(!!MET.open) : 'false'); }, this);
         paintPanel();
       } } }, [h('span', { text: tb.label }), h('i', { 'aria-hidden': 'true', text: '▾' })]);
@@ -1807,6 +1939,7 @@
   }
   function refresh() {
     var c = calc();
+    if (P.refs.wcharts) { clearTimeout(P.wct); P.wct = setTimeout(function () { if (!P.refs.wcharts || !P.refs.wcharts.isConnected) return; P.refs.wcharts.innerHTML = ''; P.refs.wcharts.appendChild(weekCharts(calc())); }, 250); }
     c.lines.forEach(function (L) {
       var x = P.refs[L.id]; if (!x) return;
       x.total.textContent = hrs(L.total); x.reg.textContent = hrs(L.reg);
@@ -2482,6 +2615,7 @@
     var emps = P.emps.filter(function (e) { return e.active !== false || P.rates[e.id]; }).sort(function (a, b) { return (a.active === false) - (b.active === false) || String(a.name).localeCompare(String(b.name)); });
     el.appendChild(h('p', { cls: 'an-sub pr-intro', text: 'Set how each person is paid. Changes save automatically and apply to weeks that aren’t finalized yet. Only you (the Owner) can see this page.' }));
     if (!emps.length) { el.appendChild(h('p', { cls: 'an-sub', text: 'No employees yet. Add them in Schedule → Employees.' })); return; }
+    P.refs.rcharts = h('div'); P.refs.rcharts.appendChild(ratesCharts(emps)); el.appendChild(P.refs.rcharts);
     var body = h('tbody');
     emps.forEach(function (e) {
       var r = P.rates[e.id] || (P.rates[e.id] = { emp: e.id, pay_type: 'hourly', rate: null, weekly_salary: null, tip_eligible: false, notes: '' });
@@ -2541,6 +2675,7 @@
     },
     hide: function () { flush(); },
     sankey: function () { return sankey.apply(null, arguments); }, chartBox: function (t, l) { return chartBox(t, l); }, CF: CF,
+    vbars: function (o) { return vbars(o); }, hbars: function (o) { return hbars(o); }, fold: function (t, s, k) { return fold(t, s, k); },
     _test: { squareShifts: squareShifts, sameName: sameName, splitCents: splitCents, P: P, calc: calc, payco: payco }
   };
 })();
