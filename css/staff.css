@@ -3859,3 +3859,4 @@ body.rp-open{overflow:hidden}
 .rp-fine{font-size:.8rem;color:var(--stone);margin-top:10px}
 @media (max-width:760px){.rp-in{padding:10px 14px 90px}.rp-h h1{font-size:1.5rem}.rp-wk{grid-template-columns:1fr 1fr}}
 @media print{body.rp-open>*:not(.rp){display:none!important}.rp{position:static;overflow:visible}.rp-top{display:none}}
+.pp-table .pp-item{overflow-wrap:anywhere;word-break:normal;hyphens:auto}.pp-table .pp-item span,.pp-table .pp-item small{overflow-wrap:anywhere}

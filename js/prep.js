@@ -354,14 +354,14 @@
         });
         if (!dishRows.length) return;
         n += dishRows.length;
-        if (!dish.basic) { dishRows.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '6' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])])); n += 1.3; }
+        if (!dish.basic) { dishRows.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '5' }, [h('b', { text: dish.name }), dish.src ? h('span', { text: dish.src }) : null])])); n += 1.3; }
         rows.push(h('tbody', { cls: 'pp-group' }, dishRows)); // a dish and its lines stay together
       });
     }
     var extras = extraRows(sec.id);
     if (extras.length) {
       n += extras.length;
-      if (P.mode === 'dish') { if (!sec.basic) { extras.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '6' }, h('b', { text: 'Also' }))])); n += 1.3; } rows.push(h('tbody', { cls: 'pp-group' }, extras)); }
+      if (P.mode === 'dish') { if (!sec.basic) { extras.unshift(h('tr', { cls: 'pp-dish' }, [h('td', { colspan: '5' }, h('b', { text: 'Also' }))])); n += 1.3; } rows.push(h('tbody', { cls: 'pp-group' }, extras)); }
       else rows = rows.concat(extras);
     }
     var count = 0; rows.forEach(function (r) { count += r.tagName === 'TBODY' ? r.querySelectorAll('tr:not(.pp-dish)').length : 1; });
