@@ -54,7 +54,12 @@
     P.prices = ctx.canPrep ? q(sb.from('inventory_prices').select('item_id,unit_cost,old_cost').is('seen_at', null).not('old_cost', 'is', null).gte('created_at', iso(addDays(now, -90))).limit(500)) : null;   // supabase/inventory-costing.sql
     P.pay = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status').eq('week_start', iso(lastWk)).maybeSingle()) : null;
     P.payReady = ctx.isOwner ? q(sb.from('pay_rates').select('emp').limit(1)) : null;
-    P.events = q(sb.from('events').select('id,title,type,date,start,end,room,guests,all_day').gte('date', today).lte('date', iso(addDays(now, 7))));
+    P.events = q(sb.from('events').select('id,title,type,date,start,end,room,guests,all_day').gte('date', today).lte('date', iso(addDays(now, 10))));
+    // last week's numbers (the Owner): payroll summaries, scanned invoices and the end of day reports' guest counts
+    var since = iso(addDays(thisWk, -7 * 14));
+    P.pweeks = ctx.isOwner ? q(sb.from('payroll_weeks').select('week_start,status,summary:rows->_summary').gte('week_start', since).lt('week_start', iso(thisWk)).order('week_start')) : null;
+    P.invs = ctx.isOwner ? q(sb.from('inventory_invoices').select('invoice_date,total').gte('invoice_date', since).limit(3000)) : null;
+    P.covers = ctx.isOwner ? q(sb.from('eod_reports').select('report_date,actual_covers,total_covers').gte('report_date', since).limit(1000)) : null;
     P.eod = mgr ? q(sb.from('eod_reports').select('*').eq('status', 'submitted').order('report_date', { ascending: false }).order('submitted_at', { ascending: false }).limit(4)) : null;
     P.notes = mgr ? q(sb.from('notes').select('id,title,body,author,edited_by,updated_at,shared').eq('shared', true)) : null;
     P.todos = q(sb.from('todos').select('*'));
@@ -182,7 +187,17 @@
       for (var k = 1; k <= 6; k++) { var dd = addDays(w.now, -k); if (ld && iso(dd) <= ld) break; if (dd.getDay() >= 3 && dd.getDay() <= 6) { miss = dd; break; } }
       eod.missing = miss;
     }
-    return { items: items, counts: counts, tonight: tonight, week: week, crew: crew, crewKnown: !!(d.thisWeek && d.emps), notes: notes, w: w, eod: eod };
+    // last week and the weeks before it: net sales, labor %, purchases and guests
+    var biz = null;
+    if (d.pweeks) {
+      var wk = {}, key = function (ds) { return iso(sunday(parseDay(ds))); };
+      for (var b = 13; b >= 1; b--) { var k0 = iso(addDays(w.thisWk, -7 * b)); wk[k0] = { week: k0, net: null, pct: null, cost: null, buy: 0, guests: 0, gDays: 0 }; }
+      d.pweeks.forEach(function (x) { var o = wk[x.week_start], sm = x.summary; if (o && sm) { o.net = sm.net != null ? +sm.net : null; o.pct = sm.pct != null ? +sm.pct : null; o.cost = sm.cost != null ? +sm.cost : null; o.status = x.status; } });
+      (d.invs || []).forEach(function (v) { var o = v.invoice_date && wk[key(v.invoice_date)]; if (o) o.buy += +v.total || 0; });
+      (d.covers || []).forEach(function (c) { var o = wk[key(c.report_date)], n = c.total_covers != null ? +c.total_covers : +c.actual_covers; if (o && n) { o.guests += n; o.gDays++; } });
+      biz = Object.keys(wk).sort().map(function (k) { return wk[k]; });
+    }
+    return { items: items, counts: counts, tonight: tonight, week: week, crew: crew, crewKnown: !!(d.thisWeek && d.emps), notes: notes, w: w, eod: eod, biz: biz };
   }
 
   /* ---------- who's working: the same timeline as the Hub's daily schedule ---------- */
@@ -232,64 +247,130 @@
       h('b', { text: (bits.length ? bits.join(' · ') + ' · ' : '') + e.title }),
       (e.room || e.guests) ? h('span', { text: [e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') }) : null])]);
   }
+  /* ---------- drawing: the layout from the redesign ---------- */
+  var ICONS = {
+    Catering: 'M4 6h16v12H4z M4 7l8 6 8-6', Schedule: 'M4 6h16v14H4z M4 10h16 M8 3v5 M16 3v5', Reviews: 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z',
+    Inventory: 'M3 4h2l2.4 11h10.2L20 7H6.2 M9 20h.01 M17 20h.01', 'Wine list': 'M8 3h8l-1 7a3 3 0 0 1-6 0z M12 13v7 M8 20h8', Payroll: 'M12 3v18 M16 7H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H8',
+    'To-do': 'M9 6h11 M9 12h11 M9 18h11 M4 6h.01 M4 12h.01 M4 18h.01', up: 'M12 19V5 M6 11l6-6 6 6'
+  };
+  var TINT = { Catering: ['#e3efe6', '#3f6b4f'], Schedule: ['#e4ecf5', '#2f5f8a'], Reviews: ['#e4ecf5', '#2f5f8a'], Inventory: ['#f6ecd2', '#8a6a12'], 'Wine list': ['#f6e1e4', '#9b3d4b'], Payroll: ['#f3e3d3', '#8a5226'], 'To-do': ['#eef0f2', '#4a4e53'] };
+  function icon(area, title) {
+    var key = /use first/i.test(title || '') ? 'up' : area, t = TINT[area] || TINT['To-do'];
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    var p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', ICONS[key] || ICONS['To-do']); svg.appendChild(p);
+    var i = h('span', { cls: 'tdx-ic', style: 'background:' + t[0] + ';color:' + t[1] }); i.appendChild(svg); return i;
+  }
+  var EVT = { private: ['private', '#e4ecf5', '#2f5f8a'], supper: ['supper', '#f3e3d3', '#8a5226'], catering: ['catering', '#e3efe6', '#3f6b4f'], meeting: ['meeting', '#eef0f2', '#4a4e53'], closed: ['closed', '#f7dedb', '#8f2d22'], other: ['event', '#eef0f2', '#4a4e53'] };
+  function money(v) { return '$' + Math.round(+v || 0).toLocaleString('en-US'); }
+  function pctT(v) { return v == null || !isFinite(v) ? '—' : (v * 100).toFixed(1) + '%'; }
+  function wkL(k) { var d = parseDay(k); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function spark(vals, color) {
+    var pts = vals.map(function (v, i) { return [i, v]; }).filter(function (p) { return p[1] != null && isFinite(p[1]); });
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 200 40'); svg.setAttribute('class', 'td-spark'); svg.setAttribute('preserveAspectRatio', 'none');
+    if (pts.length < 2) return svg;
+    var lo = Math.min.apply(null, pts.map(function (p) { return p[1]; })), hi = Math.max.apply(null, pts.map(function (p) { return p[1]; })), span = hi - lo || 1, n = vals.length - 1 || 1;
+    var d = pts.map(function (p, j) { return (j ? 'L' : 'M') + (p[0] / n * 196 + 2).toFixed(1) + ',' + (36 - (p[1] - lo) / span * 32).toFixed(1); }).join('');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', d); path.setAttribute('fill', 'none'); path.setAttribute('stroke', color); path.setAttribute('stroke-width', '2'); path.setAttribute('stroke-linejoin', 'round'); path.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(path); return svg;
+  }
+  function kpi(label, value, delta, sub, vals, color, report) {
+    var chip = delta && delta.v != null && isFinite(delta.v) ? h('span', { cls: 'tdx-delta ' + (delta.good ? 'good' : 'bad'), text: (delta.v > 0 ? '▲ ' : '▼ ') + Math.abs(delta.v * 100).toFixed(1) + '%' }) : null;
+    var card = h('div', { cls: 'tdx-kpi', role: 'button', tabindex: '0', title: 'Open the report', on: { click: report, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); report(); } } } },
+      [h('span', { cls: 'tdx-kl', text: label }), h('b', { text: value }), h('div', { cls: 'tdx-ks' }, [chip, h('span', { text: sub })]), spark(vals, color)]);
+    return card;
+  }
+  function lastWeek(ctx, r) {
+    var B = r.biz; if (!B || !B.length) return null;
+    var withNet = B.filter(function (x) { return x.net != null; }); if (!withNet.length) return null;
+    var L = withNet[withNet.length - 1], P0 = withNet[withNet.length - 2] || null;
+    var ch = function (a, b) { return a != null && b ? (a - b) / Math.abs(b) : null; };
+    var bp = function (x) { return x.net ? x.buy / x.net : null; }, avgChk = function (x) { return x.guests ? (x.net || 0) / x.guests : null; };
+    var rep = function (title, series, fmt, axis, extra) {
+      return function () {
+        if (!window.EdenReport) return;
+        window.EdenReport.open(Object.assign({ title: title, x: B.map(function (x) { return wkL(x.week); }), xTitle: function (i) { return 'Week of ' + wkL(B[i].week); }, kind: 'line', fmt: fmt, axis: axis, series: series,
+          source: 'From the weekly payroll (net sales, payroll cost), invoices scanned into Inventory and the end of day reports’ guest counts.',
+          detail: function (i) { var x = B[i]; var g = h('div', { cls: 'rp-wk' }); [['Net sales', x.net != null ? money(x.net) : '—'], ['Payroll cost', x.cost != null ? money(x.cost) : '—'], ['Labor %', pctT(x.pct)], ['Invoices', money(x.buy)], ['Purchases %', pctT(bp(x))], ['Guests', x.guests ? String(x.guests) : '—'], ['Average check', avgChk(x) ? '$' + avgChk(x).toFixed(2) : '—'], ['Payroll', x.status === 'final' ? 'final' : x.net != null ? 'draft' : 'not in']].forEach(function (f) { g.appendChild(h('div', null, [h('span', { text: f[0] }), h('b', { text: f[1] })])); }); return g; } }, extra || {}));
+      };
+    };
+    var mfmt = function (v) { return money(v); }, pf = function (v) { return pctT(v); }, pa = function (v) { return Math.round(v * 100) + '%'; };
+    var sec = h('section', { cls: 'tdx-sec' }, [h('div', { cls: 'tdx-sech' }, [h('h2', { text: 'Last week' }), h('a', { cls: 'tdx-btn', href: '#financials', text: 'Financials', on: { click: function (e) { e.preventDefault(); go('#financials'); } } })])]);
+    sec.appendChild(h('div', { cls: 'tdx-kpis' }, [
+      kpi('Net sales', money(L.net), { v: ch(L.net, P0 && P0.net), good: ch(L.net, P0 && P0.net) >= 0 }, 'week of ' + wkL(L.week), B.map(function (x) { return x.net; }), '#b0703f',
+        rep('Net sales', [{ name: 'Net sales', color: '#b0703f', values: B.map(function (x) { return x.net; }) }], mfmt, null, { kind: 'bars' })),
+      kpi('Labor', pctT(L.pct), { v: ch(L.pct, P0 && P0.pct), good: ch(L.pct, P0 && P0.pct) <= 0 }, 'of sales', B.map(function (x) { return x.pct; }), '#8f2d22',
+        rep('Labor %', [{ name: 'Labor %', color: '#8f2d22', values: B.map(function (x) { return x.pct; }) }], pf, pa, { target: 0.30, targetLabel: '30%' })),
+      kpi('Purchases', pctT(bp(L)), { v: ch(bp(L), P0 && bp(P0)), good: ch(bp(L), P0 && bp(P0)) <= 0 }, money(L.buy) + ' on invoices', B.map(bp), '#3f6b4f',
+        rep('Purchases % of sales', [{ name: 'Purchases %', color: '#3f6b4f', values: B.map(bp) }], pf, pa)),
+      kpi('Guests', L.guests ? String(L.guests) : '—', { v: ch(L.guests, P0 && P0.guests), good: ch(L.guests, P0 && P0.guests) >= 0 }, avgChk(L) ? '$' + avgChk(L).toFixed(2) + ' average check' : 'from end of day reports', B.map(function (x) { return x.guests || null; }), '#2f5f8a',
+        rep('Guests', [{ name: 'Guests', color: '#2f5f8a', values: B.map(function (x) { return x.guests || null; }) }], function (v) { return String(Math.round(v)); }, function (v) { return String(Math.round(v)); }, { kind: 'bars' }))
+    ]));
+    return sec;
+  }
   function render(ctx, r) {
     var el = ctx.el; el.innerHTML = '';
     var now = r.w.now, hr = now.getHours(), first = String(ctx.name || '').split(/[\s@]/)[0];
-    var grid = h('div', { cls: 'td-in' });
-    grid.appendChild(h('header', { cls: 'td-head' }, [
-      h('p', { cls: 'home-eyebrow', text: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) }),
-      h('h1', { cls: 'td-title', id: 'homeHello', text: (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '') })
+    var needs = r.items.filter(function (it) { return it.area !== 'To-do'; }), todos = r.items.filter(function (it) { return it.area === 'To-do'; });
+    var page = h('div', { cls: 'tdx' });
+    page.appendChild(h('header', { cls: 'tdx-head' }, [
+      h('h1', { id: 'homeHello', text: (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first : '') }),
+      h('p', { text: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ' · ' + (r.items.length ? plural(r.items.length, 'thing') + ' need' + (r.items.length === 1 ? 's' : '') + ' you' : 'Nothing needs you right now') })
     ]));
-    // needs you
-    var needs = h('section', { cls: 'td-needs', 'aria-labelledby': 'tdNeedsH' });
-    needs.appendChild(h('h2', { cls: 'td-h', id: 'tdNeedsH', text: r.items.length ? 'Needs you · ' + r.items.length : 'Needs you' }));
-    if (!r.items.length) {
-      needs.appendChild(h('div', { cls: 'td-clear' }, [h('b', { text: 'All caught up.' }), h('span', { text: 'Nothing is waiting for you right now. Everything else is in the menu.' })]));
-    } else {
-      var list = h('ul', { cls: 'td-list' });
-      r.items.forEach(function (it) {
-        var tick = it.todo ? h('button', { type: 'button', cls: 'td-tick', title: 'Mark done', 'aria-label': 'Mark done: ' + it.title, on: { click: function () { tickTodo(ctx, it.todo, this); } } }) : null;
-        list.appendChild(h('li', { cls: 'td-item' + (it.hot ? ' hot' : '') + (it.todo ? ' td-todo' : '') + (it.late ? ' late' : '') }, [
-          h('span', { cls: 'td-area', text: it.area }), tick,
-          h('span', { cls: 'td-what' }, [h('b', { text: it.title }), h('span', { text: it.sub })]),
-          h('a', { cls: 'td-go', href: it.href, text: it.cta, 'aria-label': it.cta + ': ' + it.title, on: { click: function (e) { e.preventDefault(); go(it.href); } } })
-        ]));
-      });
-      needs.appendChild(list);
-    }
-    needs.appendChild(h('p', { cls: 'td-fine', text: ctx.isOwner ? 'Payroll shows only for you; managers see the rest of this list.' : 'This list only shows what your role can take care of.' }));
-    if (ctx.isMgr && r.eod) needs.appendChild(eodCard(r.eod));
-    grid.appendChild(needs);
-    // side: tonight, week, shared notes, shortcuts
-    var side = h('aside', { cls: 'td-side', 'aria-label': 'Today at Eden' });
-    var tn = h('section', { cls: 'td-tonight' }, [h('p', { cls: 'td-k', text: 'Tonight' })]);
-    if (r.tonight.length) tn.appendChild(h('ul', { cls: 'td-ev' }, r.tonight.map(function (e) { return eventLine(e, false); })));
-    else tn.appendChild(h('p', { cls: 'td-none', text: 'No events on the calendar today.' }));
-    if (ctx.isMgr && r.crewKnown) {
-      tn.appendChild(h('p', { cls: 'td-k', text: 'Working today' }));
-      tn.appendChild(r.crew.length ? crewTimeline(r.crew, r.w.now) : h('p', { cls: 'td-crew', text: 'Nobody on this week’s published schedule today.' }));
-    }
-    side.appendChild(tn);
-    var wk = h('section', { cls: 'td-card' }, [h('p', { cls: 'td-k', text: 'This week' })]);
-    wk.appendChild(r.week.length ? h('ul', { cls: 'td-ev' }, r.week.slice(0, 6).map(function (e) { return eventLine(e, true); })) : h('p', { cls: 'td-none', text: 'Nothing else on the calendar this week.' }));
-    wk.appendChild(h('a', { cls: 'td-more', href: '#calendar', text: 'Calendar ›' }));
-    side.appendChild(wk);
+    // needs you: a card each, two across
+    var sec = h('section', { cls: 'tdx-sec' }, [h('div', { cls: 'tdx-sech' }, [h('h2', { text: 'Needs you' })])]);
+    if (!needs.length) sec.appendChild(h('div', { cls: 'tdx-clear' }, [h('b', { text: 'All caught up.' }), h('span', { text: 'Nothing is waiting for you right now.' })]));
+    else sec.appendChild(h('div', { cls: 'tdx-grid' }, needs.map(function (it) {
+      return h('a', { cls: 'tdx-card' + (it.hot ? ' hot' : ''), href: it.href, on: { click: function (e) { e.preventDefault(); go(it.href); } } }, [
+        icon(it.area, it.title), h('span', { cls: 'tdx-what' }, [h('b', { text: it.title }), h('span', { text: it.sub })]), h('span', { cls: 'tdx-go', text: it.cta + ' →' })]);
+    })));
+    page.appendChild(sec);
+    // last week's numbers, each opens its report
+    var lw = ctx.isOwner ? lastWeek(ctx, r) : null; if (lw) page.appendChild(lw);
+    // on tonight and coming up
+    var two = h('div', { cls: 'tdx-two' });
+    var tn = h('section', { cls: 'tdx-panel' }, [h('div', { cls: 'tdx-ph' }, [h('div', null, [h('h3', { text: 'On tonight' }), h('p', { text: r.crewKnown ? (r.crew.length ? plural(r.crew.length, 'person') .replace('persons', 'people') + ' scheduled' : 'Nobody scheduled') : 'Tonight’s events' })]),
+      ctx.isMgr ? h('a', { cls: 'tdx-btn', href: '#schedule', text: 'Schedule', on: { click: function (e) { e.preventDefault(); go('#schedule'); } } }) : null])]);
+    if (r.tonight.length) tn.appendChild(h('ul', { cls: 'tdx-list' }, r.tonight.map(function (e) {
+      var c = EVT[e.type] || EVT.other;
+      return h('li', null, [h('a', { href: '#calendar/e/' + e.date + '/' + encodeURIComponent(e.id || '') }, [h('div', null, [h('b', { text: e.title }), h('span', { text: [!e.all_day && e.start ? t12(e.start) : 'All day', e.room, e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') })]), h('em', { cls: 'tdx-chip', style: 'background:' + c[1] + ';color:' + c[2], text: c[0] })])]);
+    })));
+    if (ctx.isMgr && r.crewKnown) tn.appendChild(r.crew.length ? h('ul', { cls: 'tdx-list' }, r.crew.map(function (c) {
+      return h('li', null, [h('div', null, [h('b', { text: c.name }), h('span', { text: c.position })]), h('span', { cls: 'tdx-time', text: t12(c.start) + '–' + (endText(c) || '') })]);
+    })) : h('p', { cls: 'tdx-none', text: 'Nobody on this week’s published schedule today.' }));
+    else if (!r.tonight.length) tn.appendChild(h('p', { cls: 'tdx-none', text: 'No events on the calendar today.' }));
+    two.appendChild(tn);
+    var up = h('section', { cls: 'tdx-panel' }, [h('div', { cls: 'tdx-ph' }, [h('div', null, [h('h3', { text: 'Coming up' }), h('p', { text: 'Next 10 days' })]), h('a', { cls: 'tdx-btn', href: '#calendar', text: 'Calendar', on: { click: function (e) { e.preventDefault(); go('#calendar'); } } })])]);
+    up.appendChild(r.week.length ? h('ul', { cls: 'tdx-list' }, r.week.slice(0, 8).map(function (e) {
+      var c = EVT[e.type] || EVT.other, d = parseDay(e.date);
+      return h('li', null, [h('a', { href: '#calendar/e/' + e.date + '/' + encodeURIComponent(e.id || '') }, [h('div', null, [h('b', { text: e.title }), h('span', { text: [d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), !e.all_day && e.start ? t12(e.start) : '', e.guests ? e.guests + ' guests' : ''].filter(Boolean).join(' · ') })]), h('em', { cls: 'tdx-chip', style: 'background:' + c[1] + ';color:' + c[2], text: c[0] })])]);
+    })) : h('p', { cls: 'tdx-none', text: 'Nothing on the calendar in the next 10 days.' }));
+    two.appendChild(up);
+    page.appendChild(two);
+    if (ctx.isMgr && r.eod) { var eo = eodCard(r.eod); eo.classList.add('tdx-panel'); page.appendChild(eo); }
+    // my to-dos and shared notes
+    var two2 = h('div', { cls: 'tdx-two' });
+    var td = h('section', { cls: 'tdx-panel' }, [h('div', { cls: 'tdx-ph' }, [h('div', null, [h('h3', { text: 'My to-dos' }), h('p', { text: 'From Notes and the To-do list' })]), h('a', { cls: 'tdx-btn', href: '#todo', text: 'To-do', on: { click: function (e) { e.preventDefault(); go('#todo'); } } })])]);
+    var open = todos.filter(function (it) { return it.todo; });
+    td.appendChild(open.length ? h('ul', { cls: 'tdx-list tdx-todos' }, open.map(function (it) {
+      var tick = h('button', { type: 'button', cls: 'td-tick', title: 'Mark done', 'aria-label': 'Mark done: ' + it.title, on: { click: function () { tickTodo(ctx, it.todo, this); } } });
+      return h('li', { cls: 'td-item' + (it.late ? ' late' : '') }, [tick, h('div', null, [h('b', { text: it.title }), it.sub ? h('span', { text: it.sub }) : null])]);
+    }).concat(todos.filter(function (it) { return !it.todo; }).map(function (it) { return h('li', null, [h('a', { href: it.href, text: it.title + ' →' })]); }))) : h('p', { cls: 'tdx-none', text: 'Nothing on your list.' }));
+    two2.appendChild(td);
     if (ctx.isMgr && r.notes.length) {
-      var nt = h('section', { cls: 'td-card' }, [h('p', { cls: 'td-k', text: 'Shared notes' })]);
-      nt.appendChild(h('ul', { cls: 'td-ev' }, r.notes.map(function (n) {
+      var nt = h('section', { cls: 'tdx-panel' }, [h('div', { cls: 'tdx-ph' }, [h('div', null, [h('h3', { text: 'Shared notes' }), h('p', { text: 'The latest' })])])]);
+      nt.appendChild(h('ul', { cls: 'tdx-list' }, r.notes.map(function (n) {
         var title = (n.title || '').trim() || (n.body || '').trim().split('\n')[0].slice(0, 60) || 'Handwritten note';
-        return h('li', null, [h('button', { type: 'button', cls: 'td-note', text: title, on: { click: function () { if (window.EdenNotes) window.EdenNotes.open(); } } }),
-          h('span', { text: n.edited_by && n.edited_by !== n.author ? 'edited by ' + n.edited_by : (n.author ? 'by ' + n.author : '') })]);
+        return h('li', null, [h('button', { type: 'button', cls: 'tdx-note', on: { click: function () { if (window.EdenNotes) window.EdenNotes.open(); } } }, [h('b', { text: title }), h('span', { text: n.edited_by && n.edited_by !== n.author ? 'edited by ' + n.edited_by : (n.author ? 'by ' + n.author : '') })])]);
       })));
-      side.appendChild(nt);
+      two2.appendChild(nt);
     }
+    page.appendChild(two2);
     var site = ctx.site;
-    side.appendChild(h('p', { cls: 'home-links' }, [
+    page.appendChild(h('p', { cls: 'home-links tdx-links' }, [
       h('a', { id: 'homeSite', href: site || '#', target: '_blank', rel: 'noopener', hidden: !site, text: 'View the website' }), ' ',
       h('a', { id: 'homePad', href: site ? site.replace(/#.*$/, '') + '#ipad' : '#', target: '_blank', rel: 'noopener', hidden: !site, text: 'Open the iPad menu' })
     ]));
-    grid.appendChild(side);
-    el.appendChild(grid);
+    el.appendChild(page);
   }
 
   // Last night's end of day report: a link to it, the numbers, and anything that needs attention

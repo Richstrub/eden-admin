@@ -300,7 +300,7 @@
   function bars(title, sub, items, opt) {   // items: [{label, value, color, note}] → horizontal bars, % of opt.base
     opt = opt || {};
     var max = items.reduce(function (a, x) { return Math.max(a, x.value); }, 0) || 1, base = opt.base || items.reduce(function (a, x) { return a + x.value; }, 0) || 1;
-    return h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: title }), sub ? h('span', { text: sub }) : null]),
+    var fig = h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: title }), sub ? h('span', { text: sub }) : null]),
       h('div', { cls: 'ps-bars' }, items.map(function (x) {
         var pc = x.value / base * 100;
         return h('div', { cls: 'ps-bar', title: x.label + ': ' + money(x.value) + ' · ' + pc.toFixed(1) + '%' + (x.note ? ' · ' + x.note : '') }, [
@@ -309,6 +309,11 @@
           h('span', { cls: 'ps-bv', text: pc.toFixed(1) + '% · ' + money0(x.value) })
         ]);
       }))]);
+    if (window.EdenReport && items.length) window.EdenReport.wire(fig, function () {
+      return { title: title, sub: sub, cats: true, kind: 'hbars', unit: 'line', xName: opt.xName || 'Item', x: items.map(function (x) { return x.label; }), xTitle: function (i) { return items[i].label + (items[i].note ? ' · ' + items[i].note : ''); },
+        series: [{ name: 'Net sales', color: '#b0703f', values: items.map(function (x) { return x.value; }) }], source: 'From Square’s Item sales detail.' };
+    });
+    return fig;
   }
   function mixCharts(list, total, p) {
     var col = catColors(list), grid = h('div', { cls: 'ps-grid' });
@@ -348,9 +353,16 @@
       ]);
     });
     var avg = keys.length ? keys.reduce(function (s, k) { return s + by[k].food + by[k].bev; }, 0) / keys.length : 0;
-    return h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: long ? 'Sales by week' : 'Sales by day' }), h('span', { text: 'Average ' + money0(avg) + (long ? ' a week' : ' a day open') })]),
+    var fig = h('figure', { cls: 'ps-mix' }, [h('figcaption', null, [h('b', { text: long ? 'Sales by week' : 'Sales by day' }), h('span', { text: 'Average ' + money0(avg) + (long ? ' a week' : ' a day open') })]),
       h('div', { cls: 'ps-legend' }, [h('span', null, [h('i', { style: 'background:' + FOOD }), 'Food']), h('span', null, [h('i', { style: 'background:' + BEVC }), 'Beverage'])]),
       h('div', { cls: 'ps-cols' }, cols)]);
+    if (window.EdenReport && keys.length) window.EdenReport.wire(fig, function () {
+      return { title: long ? 'Sales by week' : 'Sales by day', kind: 'stack', unit: long ? 'week' : 'day', xName: long ? 'Week' : 'Day',
+        x: keys.map(function (k) { var d = new Date(k + 'T12:00:00'); return (long ? '' : d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ') + (d.getMonth() + 1) + '/' + d.getDate(); }),
+        xTitle: function (i) { return (long ? 'Week of ' : '') + dayLabel(keys[i]); },
+        series: [{ name: 'Food', color: FOOD, values: keys.map(function (k) { return by[k].food; }) }, { name: 'Beverage', color: BEVC, values: keys.map(function (k) { return by[k].bev; }) }], source: 'From Square’s Item sales detail.' };
+    });
+    return fig;
   }
 
   // where product sales come from: food / beverage → Square categories → the best sellers in each

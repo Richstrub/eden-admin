@@ -1155,12 +1155,12 @@
     var box = h('div', { cls: 'fn-charts' });
     var gross = function (w) { return w.s.gross != null ? w.s.gross : r2((w.s.cost || 0) + (w.s.tips || 0)); };
     var other = function (w) { return Math.max(0, r2(gross(w) - (w.s.cost || 0) - (w.s.tips || 0))); };
-    box.appendChild(vbars({ title: 'Gross pay by week', stack: true, cats: ws.map(function (w) { return wkLabel(w.week); }),
+    box.appendChild(vbars({ title: 'Gross pay by week', stack: true, cats: ws.map(function (w) { return wkLabel(w.week); }), xTitle: function (i) { return 'Week of ' + wkLabel(ws[i].week); }, detail: function (i) { return weekDetail(ws[i]); },
       series: [{ label: 'Payroll cost', color: PAY, values: ws.map(function (w) { return w.s.cost || 0; }) }, { label: 'Tips', color: SAND, values: ws.map(function (w) { return w.s.tips || 0; }) }, { label: 'Adjustments', color: GREY, values: ws.map(other) }],
       sub: 'Last ' + ws.length + (ws.length === 1 ? ' week' : ' weeks') + ' · ' + money(ws.reduce(function (a, w) { return a + gross(w); }, 0)) + ' gross pay · ' + money(ws.reduce(function (a, w) { return a + (w.s.tips || 0); }, 0)) + ' of it tips',
       tip: function (i) { var w = ws[i]; return '<b>Week of ' + wkLabel(w.week) + (w.status === 'final' ? ' · final' : ' · draft') + '</b>' + tipRow(PAY, 'Payroll cost', money(w.s.cost || 0)) + tipRow(SAND, 'Tips', money(w.s.tips || 0)) + (other(w) ? tipRow(GREY, 'Adjustments', money(other(w))) : '') + '<span>Gross ' + money(gross(w)) + ' · ' + hrs(w.s.hours || 0) + ' hours</span>'; } }));
     var hw = ws.filter(function (w) { return w.s.hours; });
-    if (hw.length) box.appendChild(vbars({ title: 'Hours worked by week', cats: hw.map(function (w) { return wkLabel(w.week); }), fmt: function (v) { return Math.round(v) + ' h'; }, height: 190,
+    if (hw.length) box.appendChild(vbars({ title: 'Hours worked by week', cats: hw.map(function (w) { return wkLabel(w.week); }), xTitle: function (i) { return 'Week of ' + wkLabel(hw[i].week); }, detail: function (i) { return weekDetail(hw[i]); }, fmt: function (v) { return Math.round(v) + ' h'; }, valFmt: function (v) { return hrs(v) + ' h'; }, height: 190,
       series: [{ label: 'Hours', color: REV, values: hw.map(function (w) { return w.s.hours || 0; }) }],
       tip: function (i) { var w = hw[i]; return '<b>Week of ' + wkLabel(w.week) + '</b><span>' + hrs(w.s.hours) + ' hours</span>' + (w.s.cost && w.s.hours ? '<span>' + money(w.s.cost / w.s.hours) + ' payroll cost per hour</span>' : ''); } }));
     return box;
@@ -1172,11 +1172,11 @@
     var sal = emps.filter(function (e) { var r = P.rates[e.id]; return r && r.pay_type === 'salary' && r.weekly_salary != null && e.active !== false; }).sort(function (a, b) { return P.rates[b.id].weekly_salary - P.rates[a.id].weekly_salary; });
     if (hourly.length) {
       var inPool = hourly.filter(function (e) { return P.rates[e.id].tip_eligible; }), avg = function (xs) { return xs.length ? xs.reduce(function (a, e) { return a + +P.rates[e.id].rate; }, 0) / xs.length : null; };
-      box.appendChild(hbars({ title: 'Hourly rates', series: [{ label: 'In the tip pool', color: SAND }, { label: 'Not in the tip pool', color: PAY }], fmt: function (v) { return money(v) + '/h'; }, axis: function (v) { return '$' + Math.round(v); },
+      box.appendChild(hbars({ title: 'Hourly rates', noTotal: true, valueName: 'Hourly rate', series: [{ label: 'In the tip pool', color: SAND }, { label: 'Not in the tip pool', color: PAY }], fmt: function (v) { return money(v) + '/h'; }, axis: function (v) { return '$' + Math.round(v); },
         sub: hourly.length + ' hourly' + (inPool.length ? ' · tip pool average ' + money(avg(inPool)) + '/h' : '') + (hourly.length > inPool.length ? ' · everyone else ' + money(avg(hourly.filter(function (e) { return !P.rates[e.id].tip_eligible; }))) + '/h' : ''),
         rows: hourly.map(function (e) { var r = P.rates[e.id]; return { label: e.name, parts: r.tip_eligible ? [+r.rate, 0] : [0, +r.rate], tip: '<b>' + e.name + '</b><span>' + money(r.rate) + ' an hour' + (r.tip_eligible ? ' · tip pool' : '') + '</span>' + (r.kitchen_rate != null ? '<span>Kitchen ' + money(r.kitchen_rate) + ' an hour</span>' : '') + (r.commission ? '<span>Commission</span>' : '') }; }) }));
     }
-    if (sal.length) box.appendChild(hbars({ title: 'Weekly salaries', series: [{ label: 'Salary', color: REV }], fmt: function (v) { return money(v) + '/wk'; },
+    if (sal.length) box.appendChild(hbars({ title: 'Weekly salaries', valueName: 'Weekly salary', series: [{ label: 'Salary', color: REV }], fmt: function (v) { return money(v) + '/wk'; },
       sub: money(sal.reduce(function (a, e) { return a + +P.rates[e.id].weekly_salary; }, 0)) + ' a week in salaries',
       rows: sal.map(function (e) { var r = P.rates[e.id]; return { label: e.name, parts: [+r.weekly_salary], tip: '<b>' + e.name + '</b><span>' + money(r.weekly_salary) + ' a week · about ' + money(r.weekly_salary * 52) + ' a year</span>' }; }) }));
     return box;
@@ -1232,6 +1232,10 @@
     svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), class: 'fn-base' }));
     if (o.sub) cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: o.sub }));
     cb.box.appendChild(svg);
+    if (o.report !== false && window.EdenReport) window.EdenReport.wire(cb.box, function () {
+      return { title: o.title, sub: o.sub, x: o.cats, xTitle: o.xTitle, xName: o.xName, unit: o.unit, kind: o.stack ? 'stack' : 'bars', fmt: o.valFmt, axis: o.valFmt ? o.fmt : null, detail: o.detail, source: o.source,
+        series: o.series.map(function (x) { return { name: x.label, color: x.color, values: x.values }; }) };
+    });
     return cb.box;
   }
   // horizontal bars, one row per name, stacked parts: o: { title, rows: [{ label, parts: [] , tip }], series: [{ label, color }], fmt }
@@ -1261,7 +1265,25 @@
     });
     if (o.sub) cb.box.appendChild(h('p', { cls: 'fn-sk-sub', text: o.sub }));
     cb.box.appendChild(svg);
+    if (o.report !== false && window.EdenReport) window.EdenReport.wire(cb.box, function () {
+      var one = rows.every(function (r) { return r.parts.filter(function (v) { return v; }).length <= 1; }) && o.series.length > 1;   // each row is one kind (e.g. tip pool or not): one column
+      return { title: o.title, sub: o.sub, cats: true, kind: 'hbars', unit: o.unit || 'person', xName: o.xName || 'Name', fmt: o.fmt, axis: o.axis, noTotal: o.noTotal, x: rows.map(function (r) { return r.label; }),
+        xTitle: one ? function (i) { var j = rows[i].parts.findIndex(function (v) { return v; }); return rows[i].label + (j >= 0 ? ' · ' + o.series[j].label.toLowerCase() : ''); } : null,
+        series: one ? [{ name: o.valueName || o.title, color: o.series[0].color, values: rows.map(function (r) { return r.parts.reduce(function (a, v) { return a + (v || 0); }, 0); }) }]
+          : o.series.map(function (sx, j) { return { name: sx.label, color: sx.color, values: rows.map(function (r) { return r.parts[j] || 0; }) }; }).filter(function (x) { return x.values.some(function (v) { return v; }); }) };
+    });
     return cb.box;
+  }
+  // one payroll week, everything its summary knows (the row breakdown in reports)
+  function weekDetail(w) {
+    var s0 = (w && w.s) || {}, g = h('div', { cls: 'rp-wk' });
+    [['Revenue', s0.net != null ? money(s0.net) : '–'], ['Food · beverage', s0.food != null ? money(s0.food) + ' · ' + money(s0.bev || 0) : '–'], ['Payroll cost', money(s0.cost || 0)], ['Payroll %', pctTxt(s0.pct)],
+      ['Tips', money(s0.tips || 0)], ['Gross pay', s0.gross != null ? money(s0.gross) : '–'], ['Hours', hrs(s0.hours || 0)], ['Cost per hour', s0.hours ? money((s0.cost || 0) / s0.hours) : '–'],
+      ['Payroll invoice', s0.invEst != null ? money(s0.invActual || s0.invEst) + (s0.invActual ? '' : ' est.') : '–'], ['True labor %', pctTxt(s0.truePct)],
+      ['Kitchen wages', s0.wagesBy ? money(s0.wagesBy.boh || 0) : '–'], ['Servers & bar wages', s0.wagesBy ? money(s0.wagesBy.foh || 0) : '–']].forEach(function (f) { g.appendChild(h('div', null, [h('span', { text: f[0] }), h('b', { text: f[1] })])); });
+    var box = h('div', null, [g]);
+    box.appendChild(h('button', { type: 'button', cls: 'ed-btn small', text: 'Open this week in Weekly payroll', on: { click: function () { var rp = document.querySelector('.rp'); if (rp) { rp.remove(); document.body.classList.remove('rp-open'); } P.week = new Date(w.week + 'T12:00:00'); P.row = null; location.hash = '#payroll'; } } }));
+    return box;
   }
   function tipRow(color, label, val) { return '<span><i style="background:' + color + '"></i>' + label + ' ' + val + '</span>'; }
   // Weekly payroll: the week day by day, and everyone's pay
@@ -1269,10 +1291,10 @@
     var box = h('div', { cls: 'fn-charts' }), S = weekSales(), sales = S && S.days ? S.days.map(function (v) { return +v || 0; }) : [0, 0, 0, 0, 0, 0, 0];
     var pool = c.D.map(function (d) { return +d.pool || 0; }), hours = c.T.days;
     var open = [0, 1, 2, 3, 4, 5, 6].filter(function (i) { return sales[i] || pool[i] || hours[i]; });
-    if (open.length && !sum(sales) && !sum(pool)) box.appendChild(vbars({ title: 'Hours worked, day by day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }), fmt: function (v) { return Math.round(v) + ' h'; }, height: 200,
+    if (open.length && !sum(sales) && !sum(pool)) box.appendChild(vbars({ title: 'Hours worked, day by day', unit: 'day', xName: 'Day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }), fmt: function (v) { return Math.round(v) + ' h'; }, valFmt: function (v) { return hrs(v) + ' h'; }, height: 200,
       series: [{ label: 'Hours', color: REV, values: open.map(function (i) { return hours[i]; }) }], sub: hrs(c.T.total) + ' hours worked · sales and tips show here once the Square files are in',
       tip: function (k) { var i = open[k]; return '<b>' + DAYS[i] + ' ' + md(addDays(P.week, i)) + '</b><span>' + hrs(hours[i]) + ' hours worked</span>'; } }));
-    else if (open.length) box.appendChild(vbars({ title: 'This week, day by day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }),
+    else if (open.length) box.appendChild(vbars({ title: 'This week, day by day', unit: 'day', xName: 'Day', cats: open.map(function (i) { return DOW[i] + ' ' + md(addDays(P.week, i)); }),
       series: [{ label: 'Net sales', color: REV, values: open.map(function (i) { return sales[i]; }) }, { label: 'Tip pool', color: SAND, values: open.map(function (i) { return pool[i]; }) }],
       sub: (S ? money(sum(sales)) + ' net sales (' + S.src + ')' : 'No sales file yet') + ' · ' + money(c.pool) + ' in the tip pool · ' + hrs(c.T.total) + ' hours worked',
       tip: function (k) { var i = open[k]; return '<b>' + DAYS[i] + ' ' + md(addDays(P.week, i)) + '</b>' + tipRow(REV, 'Net sales', money(sales[i])) + tipRow(SAND, 'Tip pool', money(pool[i])) + '<span>' + hrs(hours[i]) + ' hours worked' + (sales[i] && hours[i] ? ' · ' + money(sales[i] / hours[i]) + ' sales per hour' : '') + '</span>'; } }));
@@ -1815,6 +1837,13 @@
         })),
         h('p', { cls: 'fn-note', text: 'Each invoice counts on its invoice date. Lines go to food, beverage or paper goods by the inventory item they were matched to when the invoice was scanned; unmatched vendors, delivery and fuel charges go to Other. Fixed costs: rent, $6,000 on the 1st of every month, counted in the period that includes the 1st.' })]));
     }
+    if (window.EdenReport) window.EdenReport.wire(cb.box, function () {
+      var wk = ws.slice().reverse(), per = wk.map(function (w) { return cashFlowData([w]); });
+      return { title: 'Cash flow by week', sub: span, x: wk.map(function (w) { return wkLabel(w.week); }), xTitle: function (i) { return 'Week of ' + wkLabel(wk[i].week); }, kind: 'bars',
+        series: [{ name: 'Net sales', color: REV, values: per.map(function (x) { return x.t.net; }) }, { name: 'Payroll (invoice less tips)', color: PAY, values: per.map(function (x) { return x.t.cost; }) },
+          { name: 'Invoices & fixed costs', color: SAND, values: per.map(function (x) { return x.buy.total || 0; }) }, { name: 'Left after payroll & costs', color: '#5d7a64', values: per.map(function (x) { return x.left; }) }],
+        detail: function (i) { return weekDetail(wk[i]); }, source: 'Each week on its own: net sales in, payroll (the payroll company’s invoice less tips), scanned invoices by invoice date, and fixed costs in the week that includes the 1st.' };
+    });
     cb.box.appendChild(metrics(ws));
     if (costsDet) cb.box.appendChild(costsDet);
     var noteEl = (h('p', { cls: 'fn-note', text: 'Percentages are of net sales (' + money(d.t.net) + '); “Total costs” adds up the right-hand column, leaving out sales tax and tips (they pass through) and what’s left. Costs line up with sales: Food costs are kitchen (back of house) labor and food purchases; Beverage & service are servers & bartenders and beverage purchases; Overhead is management, payroll taxes, commission, paper goods, other and fixed costs. From each week’s Transactions CSV (net sales, sales tax, tips, Square’s card fees), the Square loan activity and payroll.' + (d.t.noFees ? ' Card fees are missing for ' + d.t.noFees + (d.t.noFees === 1 ? ' week' : ' weeks') + ' imported before they were read: drop ' + (d.t.noFees === 1 ? 'its' : 'their') + ' Transactions CSV in Weekly payroll again to add them.' : '') + ' Food and beverage sales ' + (d.t.exact === ws.length ? 'are from Square’s Item sales detail' : d.t.exact ? 'are from Square’s Item sales detail for ' + d.t.exact + ' of ' + ws.length + ' weeks and estimated from the items on each check for the rest' : 'are estimated from the items on each check (drop Square’s Item sales detail above for the exact split)') + (d.t.noSplit ? '; ' + d.t.noSplit + (d.t.noSplit === 1 ? ' week was' : ' weeks were') + ' imported before the split, so ' + (d.t.noSplit === 1 ? 'its' : 'their') + ' sales show as “not split” (drop the Transactions CSV in again to split ' + (d.t.noSplit === 1 ? 'it' : 'them') + ')' : '') +
@@ -1848,6 +1877,11 @@
     });
     svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), class: 'fn-base' }));
     cb.box.appendChild(svg);
+    if (window.EdenReport) window.EdenReport.wire(cb.box, function () {
+      return { title: 'Revenue and payroll cost', x: ws.map(function (w) { return wkLabel(w.week); }), xTitle: function (i) { return 'Week of ' + wkLabel(ws[i].week); }, kind: 'bars',
+        series: [{ name: 'Revenue', color: REV, values: ws.map(function (w) { return w.s.net || 0; }) }, { name: 'Payroll cost', color: PAY, values: ws.map(function (w) { return w.s.cost || 0; }) }],
+        detail: function (i) { return weekDetail(ws[i]); }, source: 'Revenue is net sales from each week’s Transactions CSV; payroll cost is wages, salary, overtime, sick and holiday pay plus commission.' };
+    });
     return cb.box;
   }
   // payroll % per week, with the range's overall % as a reference line
@@ -1886,6 +1920,12 @@
     var lp = pts[pts.length - 1];
     if (lp) { var lt = svgEl('text', { x: Math.min(lp[0] + 8, W - R - 40), y: lp[1] - 8, class: 'fn-lab' }); lt.textContent = pctTxt(ws[ws.length - 1].s.pct); svg.appendChild(lt); }
     cb.box.appendChild(svg);
+    if (window.EdenReport) window.EdenReport.wire(cb.box, function () {
+      return { title: 'Payroll % and true labor %', x: ws.map(function (w) { return wkLabel(w.week); }), xTitle: function (i) { return 'Week of ' + wkLabel(ws[i].week); }, kind: 'line', fmt: pctTxt, axis: function (v) { return Math.round(v * 100) + '%'; },
+        target: overall, targetLabel: overall != null ? 'average ' + pctTxt(overall) : null,
+        series: [{ name: 'Payroll %', color: PAY, values: ws.map(function (w) { return w.s.pct; }) }].concat(hasTrue ? [{ name: 'True labor %', color: TRUE_C, values: ws.map(function (w) { return w.s.truePct; }) }] : []),
+        detail: function (i) { return weekDetail(ws[i]); }, source: 'Payroll % = payroll cost ÷ revenue. True labor % = (payroll invoice − tips) ÷ revenue.' };
+    });
     return cb.box;
   }
 
