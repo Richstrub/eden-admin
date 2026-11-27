@@ -3701,3 +3701,5 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 @media print{.cl-shtog{display:none}}
 .cl-msh .cl-mtot{display:none}
 @media (max-width:700px){.cl-msh>span{display:none}.cl-msh .cl-mtot{display:inline;color:#4f5358}}
+.cl-wp.draft{opacity:.75}.cl-wp.draft em{text-decoration:underline dashed;text-underline-offset:3px}
+.cl-tl-sbar.draft{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--c) 55%,#fff) 0 6px,color-mix(in srgb,var(--c) 35%,#fff) 6px 12px);color:#14171a;outline:1.5px dashed var(--c);outline-offset:-1.5px}

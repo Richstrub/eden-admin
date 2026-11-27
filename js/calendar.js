@@ -112,6 +112,32 @@
   // published shifts for every week in view (weeks start on Sunday; a shift's day is 0 = Sunday … 6 = Saturday)
   function loadShifts(r) {
     var weeks = []; for (var w = monday(r[0]); w <= r[1]; w = addDays(w, 7)) weeks.push(new Date(w));
+    C.drafts = 0;
+    // the Owner and managers see the schedule as it stands, published or not (unpublished shifts are dashed)
+    if (canEdit()) return Promise.all([
+      C.ctx.sb.from('schedule_weeks').select('week_start,status,shifts,published').in('week_start', weeks.map(iso)),
+      C.ctx.sb.from('employees').select('id,name,position')
+    ]).then(function (x) {
+      if (x[0].error || x[1].error) return publishedShifts(weeks);
+      var emp = {}; (x[1].data || []).forEach(function (e) { emp[e.id] = e; });
+      var out = {};
+      (x[0].data || []).forEach(function (row) {
+        var pubKeys = {}; (row.status === 'published' ? row.published || [] : []).forEach(function (s) { pubKeys[JSON.stringify([s.emp, s.day, s.start, s.end, s.role || ''])] = 1; });
+        var any = false;
+        (row.shifts || []).forEach(function (s) {
+          var e = emp[s.emp] || {}, draft = !pubKeys[JSON.stringify([s.emp, s.day, s.start, s.end, s.role || ''])];
+          if (draft) any = true;
+          var k = iso(addDays(parseDay(row.week_start), +s.day || 0)), o = { name: String(e.name || 'Team member').trim(), position: e.position || '', role: s.role || '', day: s.day, start: s.start, end: s.end, note: s.note || '', draft: draft };
+          o.g = groupOf(o); (out[k] = out[k] || []).push(o);
+        });
+        if (any) C.drafts++;
+      });
+      sortShifts(out); C.shifts = out;
+    }, function () { return publishedShifts(weeks); });
+    return publishedShifts(weeks);
+  }
+  function sortShifts(out) { Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return GROUPS.indexOf(grp(a.g)) - GROUPS.indexOf(grp(b.g)) || mins(a.start) - mins(b.start) || String(a.name).localeCompare(b.name); }); }); }
+  function publishedShifts(weeks) {
     return Promise.all(weeks.map(function (wk) {
       return C.ctx.sb.rpc('team_schedule', { p_week: iso(wk) }).then(function (x) { return { wk: wk, d: x.error ? null : x.data }; }, function () { return { wk: wk, d: null }; });
     })).then(function (res) {
@@ -122,8 +148,7 @@
           var k = iso(addDays(x.wk, +s.day || 0)); (out[k] = out[k] || []).push(Object.assign({ g: groupOf(s) }, s));
         });
       });
-      Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return GROUPS.indexOf(grp(a.g)) - GROUPS.indexOf(grp(b.g)) || mins(a.start) - mins(b.start) || String(a.name).localeCompare(b.name); }); });
-      C.shifts = out;
+      sortShifts(out); C.shifts = out;
     });
   }
   function go() { render(); load().then(render); }
@@ -174,7 +199,7 @@
     else wrap.appendChild(monthView());
     wrap.appendChild(h('div', { cls: 'cl-legend' }, TYPES.map(function (t) { return h('span', null, [h('i', { style: 'background:' + t.color }), t.label]); })
       .concat(SHOW_SHIFTS ? GROUPS.map(function (g) { return h('span', { cls: 'cl-lg-sh' }, [h('i', { style: 'background:' + g.color }), g.label + ' shifts']); }) : [])));
-    if (SHOW_SHIFTS) wrap.appendChild(h('p', { cls: 'cl-hint', text: 'Shifts are from published schedules. 1st cut, 2nd cut and close are drawn ending about 8pm, 9pm and 10pm.' }));
+    if (SHOW_SHIFTS) wrap.appendChild(h('p', { cls: 'cl-hint', text: (canEdit() ? 'Shifts are the schedule as it stands' + (C.drafts ? '; dashed ones aren’t published yet, so the staff page doesn’t show them (Schedule → Publish).' : '.') : 'Shifts are from published schedules.') + ' 1st cut, 2nd cut and close are drawn ending about 8pm, 9pm and 10pm.' }));
   }
 
   function chip(e) {
@@ -212,7 +237,7 @@
     GROUPS.forEach(function (g) {
       var list = sh.filter(function (s) { return s.g === g.id; }); if (!list.length) return;
       box.appendChild(h('div', { cls: 'cl-wg', style: '--c:' + g.color }, [h('b', { text: g.label + ' · ' + list.length })].concat(list.map(function (s) {
-        return h('span', { cls: 'cl-wp' + (s.mine ? ' mine' : '') }, [h('em', { text: s.name }), ' ' + shiftText(s)]);
+        return h('span', { cls: 'cl-wp' + (s.mine ? ' mine' : '') + (s.draft ? ' draft' : ''), title: s.draft ? 'Not published yet' : null }, [h('em', { text: s.name }), ' ' + shiftText(s) + (s.draft ? ' · not published' : '')]);
       }))));
     });
     return box;
@@ -276,8 +301,8 @@
       if (s.g !== lastG) { lastG = s.g; tl.appendChild(h('div', { cls: 'cl-tl-sec', style: '--c:' + g.color }, [h('span', { text: g.label })])); }
       tl.appendChild(h('div', { cls: 'cl-tl-row cl-tl-shift' + (s.mine ? ' mine' : '') }, [
         h('div', { cls: 'cl-tl-who' }, [h('b', { text: s.name }), h('span', { text: s.role || s.position || g.label })]),
-        h('div', { cls: 'cl-tl-lane' }, [h('div', { cls: 'cl-tl-bar cl-tl-sbar' + (OUTS[s.end || 'close'] ? ' approx' : ''), style: '--c:' + g.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: s.name + ' · ' + shiftText(s) + (s.note ? ' · ' + s.note : '') },
-          [h('span', { text: shiftText(s) + (s.note ? ' · ' + s.note : '') })])])
+        h('div', { cls: 'cl-tl-lane' }, [h('div', { cls: 'cl-tl-bar cl-tl-sbar' + (OUTS[s.end || 'close'] ? ' approx' : '') + (s.draft ? ' draft' : ''), style: '--c:' + g.color + ';left:' + pct(a) + ';width:calc(' + pct(b) + ' - ' + pct(a) + ')', title: s.name + ' · ' + shiftText(s) + (s.note ? ' · ' + s.note : '') },
+          [h('span', { text: shiftText(s) + (s.draft ? ' · not published' : '') + (s.note ? ' · ' + s.note : '') })])])
       ]));
     });
     var grid = h('div', { cls: 'cl-tl-grid', 'aria-hidden': 'true' });
