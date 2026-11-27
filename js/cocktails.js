@@ -187,7 +187,7 @@
     var bar = h('div', { cls: 'ck-bar' }, [
       h('p', { cls: 'ck-lede', text: C.list.length ? C.list.filter(function (b) { return b.active !== false; }).length + ' cocktails' + (canEdit() ? ' · costs from the inventory’s prices' : '') : 'No cocktail builds yet.' }),
       h('div', { cls: 'ck-tools' }, [
-        C.list.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Print builds', title: 'A printable spec sheet of every cocktail on the menu', on: { click: function () { printBuilds(active()); } } }) : null,
+        C.list.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Print builds', title: 'House cocktails on one sheet, the classics on two', on: { click: function () { printBuilds(active()); } } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Monthly tally', on: { click: tallyDialog } }) : null,
         canEdit() && missingClassics().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the classic cocktails', title: 'Old Fashioned, Manhattan, Martini and the rest of the bar’s classic specs', on: { click: addClassics } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add cocktails from the menu', on: { click: fromMenu } }) : null,
@@ -383,26 +383,48 @@
     if (!w) { status('Allow pop-ups for the staff site to print the sheet.', 'err'); return; }
     w.document.open(); w.document.write(html); w.document.close();
   }
-  // bar spec sheet: every build with its pours, glass, ice, garnish and method (two to a page side by side)
+  // bar spec sheet. The classics print on two sheets of paper and the house cocktails on one; each group's cards are
+  // split evenly across its pages, and the type shrinks until every page fits (so adding cocktails never adds paper)
+  function isClassic(b) { var n = norm(b.name); return CLASSICS.some(function (x) { return norm(x[0]) === n; }); }
   function printBuilds(list) {
     if (!list.length) { status('No cocktail builds to print.', 'err'); return; }
-    var cards = list.map(function (b) {
+    function cardHtml(b) {
       var m = menuFor(b);
       var meta = [['Glass', b.glass], ['Ice', b.ice], ['Garnish', b.garnish]].filter(function (x) { return x[1]; }).map(function (x) { return '<span><b>' + x[0] + '</b> ' + esc(x[1]) + '</span>'; }).join('');
-      var pours = (b.ingredients || []).map(function (g) { var q = amt(g); return '<tr><td class="q">' + esc(q) + '</td><td>' + esc(g.item) + '</td></tr>'; }).join('');
+      var pours = (b.ingredients || []).map(function (g) { return '<tr><td class="q">' + esc(amt(g)) + '</td><td>' + esc(g.item) + '</td></tr>'; }).join('');
+      var method = String(b.method || '').replace(/^\s*(SHAKEN|STIRRED|BUILT)\s*·\s*/i, '');
       return '<section class="card"><h2><span>' + esc(b.name) + (methodTag(b) ? ' <i>' + methodTag(b) + '</i>' : '') + '</span>' + (m && m.price ? '<em>$' + esc(m.price) + '</em>' : '') + '</h2>' + (meta ? '<div class="meta">' + meta + '</div>' : '') +
-        '<table>' + pours + '</table>' + (b.method ? '<p class="method">' + esc(b.method).replace(/\n/g, '<br>') + '</p>' : '') + '</section>';
-    }).join('');
+        '<table>' + pours + '</table>' + (method ? '<p class="method">' + esc(method).replace(/\n/g, '<br>') + '</p>' : '') + '</section>';
+    }
+    var house = list.filter(function (b) { return !isClassic(b); }), classic = list.filter(isClassic);
+    var groups = list.length === 1 ? [['', list, 1]] : [['House cocktails', house, 1], ['Classics', classic, 2]].filter(function (g) { return g[1].length; });
+    var date = esc(new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }));
+    var pages = [];
+    groups.forEach(function (g) {
+      var n = g[1].length, np = Math.min(g[2], n), per = Math.ceil(n / np);
+      var cols = list.length === 1 ? 1 : per <= 2 ? 1 : per <= 6 ? 2 : per <= 15 ? 3 : 4;
+      for (var i = 0; i < np; i++) {
+        var chunk = g[1].slice(i * per, (i + 1) * per); if (!chunk.length) continue;
+        pages.push('<div class="page"><header><h1>Eden · ' + (g[0] ? esc(g[0]) : 'Cocktail build') + (np > 1 ? ' <small>' + (i + 1) + ' of ' + np + '</small>' : '') + '</h1><span>' + date + '</span></header>' +
+          '<div class="grid" style="grid-template-columns:repeat(' + cols + ',minmax(0,1fr))">' + chunk.map(cardHtml).join('') + '</div></div>');
+      }
+    });
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Eden cocktail builds</title><style>' +
-      '@page{size:letter;margin:.5in}body{font:11pt/1.35 -apple-system,Helvetica,Arial,sans-serif;color:#111;margin:0}' +
-      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:14px}header h1{font:600 18pt Georgia,serif;margin:0}header span{font-size:9pt;color:#555}' +
-      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{border:1px solid #111;border-radius:6px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid}' +
-      '.card h2{font:600 14pt Georgia,serif;margin:0 0 6px;display:flex;justify-content:space-between;gap:8px}.card h2 i{font:600 7.5pt -apple-system,Helvetica,Arial,sans-serif;font-style:normal;text-transform:uppercase;letter-spacing:.1em;border:1px solid #111;border-radius:3px;padding:1px 5px;vertical-align:3px;margin-left:6px}.card h2 em{font:500 11pt -apple-system,Helvetica,Arial,sans-serif;font-style:normal}' +
-      '.meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:9.5pt;margin-bottom:6px}.meta b{font-size:7.5pt;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-right:3px}' +
-      'table{width:100%;border-collapse:collapse;font-size:10.5pt}td{padding:3px 0;border-top:1px solid #ddd;vertical-align:top}td.q{width:.85in;font-weight:600;white-space:nowrap}' +
-      '.method{font-size:9.5pt;margin:8px 0 0;color:#222}' + (list.length === 1 ? '.grid{grid-template-columns:1fr;max-width:4.5in}' : '') +
-      '</style></head><body><header><h1>Eden · Cocktail builds</h1><span>' + esc(new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })) + '</span></header>' +
-      '<div class="grid">' + cards + '</div><script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>';
+      '@page{size:letter;margin:.4in}*{box-sizing:border-box}html,body{margin:0}body{font-family:-apple-system,Helvetica,Arial,sans-serif;color:#111;line-height:1.3}.page{font-size:calc(11pt * var(--s,1))}' +
+      '.page{height:10.1in;overflow:hidden;break-after:page;page-break-after:always;display:flex;flex-direction:column}.page:last-child{break-after:auto;page-break-after:auto}' +
+      'header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:5px;margin-bottom:10px;flex:none}header h1{font:600 17pt Georgia,serif;margin:0}header h1 small{font:400 9pt -apple-system,Helvetica,Arial,sans-serif;color:#555;margin-left:6px}header span{font-size:9pt;color:#555}' +
+      '.grid{display:grid;gap:calc(9px * var(--s,1));align-content:start}.card{border:1px solid #111;border-radius:5px;padding:calc(8px * var(--s,1)) calc(10px * var(--s,1));break-inside:avoid;page-break-inside:avoid}' +
+      '.card h2{font:600 calc(13pt * var(--s,1)) Georgia,serif;margin:0 0 .3em;display:flex;justify-content:space-between;gap:6px}.card h2 i{font:600 calc(7pt * var(--s,1)) -apple-system,Helvetica,Arial,sans-serif;font-style:normal;text-transform:uppercase;letter-spacing:.1em;border:1px solid #111;border-radius:3px;padding:1px 4px;vertical-align:2px;margin-left:4px}.card h2 em{font:500 calc(10pt * var(--s,1)) -apple-system,Helvetica,Arial,sans-serif;font-style:normal}' +
+      '.meta{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:.85em;margin-bottom:.35em}.meta b{font-size:.78em;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-right:3px}' +
+      'table{width:100%;border-collapse:collapse;font-size:.95em}td{padding:.18em 0;border-top:1px solid #ddd;vertical-align:top}td.q{width:4.6em;font-weight:600;white-space:nowrap}' +
+      '.method{font-size:.85em;margin:.45em 0 0;color:#222}' + (list.length === 1 ? '.grid{max-width:4.6in}' : '') +
+      '@media screen{body{background:#eee}.page{width:7.7in;margin:16px auto;background:#fff;padding:0;box-shadow:0 1px 6px rgba(0,0,0,.2)}}' +
+      '</style></head><body>' + pages.join('') +
+      '<script>(function(){[].forEach.call(document.querySelectorAll(".page"),function(p){var s=1,g=p.querySelector(".grid"),hd=p.querySelector("header");' +
+      'function over(){return hd.offsetHeight+14+g.scrollHeight>p.clientHeight;}' +
+      'while(over()&&s>0.5){s-=0.03;p.style.setProperty("--s",s.toFixed(2));}' +
+      'if(over()){p.style.height="auto";p.style.overflow="visible";}});' +
+      'window.onload=function(){setTimeout(function(){window.print()},250)};})();<\/script></body></html>';
     var w = window.open('', '_blank');
     if (!w) { status('Allow pop-ups for the staff site to print.', 'err'); return; }
     w.document.open(); w.document.write(html); w.document.close();
