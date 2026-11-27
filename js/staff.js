@@ -603,8 +603,9 @@
   function isKitchen(t) { return t && (t.id === 'm-food' || /kitchen/i.test(t.label || '')); }
   /* ---------- steak cuts: tick the cuts on tonight, from either beef source; each tick is a menu item (item.cut, item.beef)
      that the website and iPad menu link to "About tonight's cuts of beef" (eden-website js/beef-cuts.js) ---------- */
-  var CUTS = [['tenderloin', 'Tenderloin'], ['chateaubriand', 'Chateaubriand'], ['ribeye-da', 'Dry-Aged Ribeye'], ['strip-da', 'Dry-Aged Strip Loin'],
+  var CUTS = [['tenderloin', 'Tenderloin'], ['chateaubriand', 'Chateaubriand'], ['ribeye-da', 'Dry-Aged Ribeye'], ['ribeye', 'Bone-In Ribeye'], ['spinalis', 'Spinalis Dorsi'], ['strip-da', 'Dry-Aged Strip Loin'],
     ['picanha', 'Picanha'], ['tri-tip', 'Tri-Tip'], ['skirt', 'Skirt Steak'], ['flank', 'Flank Steak']];
+  var CUT_PRICE = { ribeye: '3.75', spinalis: '6.50' };   // per ounce, filled in the first time the cut is ticked
   var BEEF = [['cab', 'Certified Angus Beef', 'Certified Angus Beef'], ['hillside', 'Hillside Farm (Grass fed)', 'Hillside Farm · Truxton, NY · Grass fed']];
   function isCutsAnchor(it) { return it && !it.cut && /specialty cuts|steak cuts|tonight.s cuts/i.test(it.name || ''); }
   function isCutsGroup(g) { return /steak|cuts?\b/i.test(g.title || '') || (g.items || []).some(isCutsAnchor); }
@@ -640,7 +641,7 @@
               var anchor = -1, at = -1, lastCut = -1;
               g.items.forEach(function (x, k) { if (isCutsAnchor(x) && anchor < 0) anchor = k; if (x.cut) { lastCut = k; var o = order.indexOf(x.cut) * 2 + (x.beef === 'cab' ? 0 : 1); if (at < 0 && o > me) at = k; } });
               if (at < 0) at = lastCut >= 0 ? lastCut + 1 : anchor >= 0 ? anchor + 1 : g.items.length;
-              g.items.splice(at, 0, { name: c[1], src: b[2], desc: '', price: '', cut: c[0], beef: b[0] });
+              g.items.splice(at, 0, { name: c[1], src: b[2], desc: '', price: CUT_PRICE[c[0]] || '', cut: c[0], beef: b[0] });
             }
           } else if (i >= 0) g.items[i].hidden = true;   // kept (hidden) so its price and note are there the next time it's on
           markDirty(); edRender();
@@ -907,7 +908,7 @@
     }
     if (isKitchen(t) && ed.canWrite && !t.groups.some(isCutsGroup)) {
       var cbn = document.createElement('div'); cbn.className = 'ed-banner';
-      var cp = document.createElement('p'); cp.textContent = 'Add a Steak Cuts section to choose tonight’s cuts (tenderloin, chateaubriand, dry-aged ribeye and strip loin, picanha, tri-tip, skirt and flank) from Certified Angus Beef or Hillside Farm.'; cbn.appendChild(cp);
+      var cp = document.createElement('p'); cp.textContent = 'Add a Steak Cuts section to choose tonight’s cuts (tenderloin, chateaubriand, dry-aged ribeye and strip loin, bone-in ribeye, spinalis dorsi, picanha, tri-tip, skirt and flank) from Certified Angus Beef or Hillside Farm.'; cbn.appendChild(cp);
       var cgo = document.createElement('button'); cgo.type = 'button'; cgo.className = 'ed-btn'; cgo.textContent = 'Add a Steak Cuts section';
       cgo.onclick = function () {
         var at = t.groups.length; t.groups.forEach(function (g, i) { if (/large/i.test(g.title || '')) at = i + 1; });
