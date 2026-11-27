@@ -3860,3 +3860,9 @@ body.rp-open{overflow:hidden}
 @media (max-width:760px){.rp-in{padding:10px 14px 90px}.rp-h h1{font-size:1.5rem}.rp-wk{grid-template-columns:1fr 1fr}}
 @media print{body.rp-open>*:not(.rp){display:none!important}.rp{position:static;overflow:visible}.rp-top{display:none}}
 .pp-table .pp-item{overflow-wrap:anywhere;word-break:normal;hyphens:auto}.pp-table .pp-item span,.pp-table .pp-item small{overflow-wrap:anywhere}
+/* cocktail builds: shaken / stirred / built tag, menu vs classics groups */
+.ck-card h3 .ck-tag{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:3px;font-family:var(--sans,inherit);font-size:.62rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;vertical-align:3px;background:#efe7db;color:#7a4b25}
+.ck-card h3 .ck-tag.stirred{background:#e4ebf2;color:#2f5f8a}
+.ck-card h3 .ck-tag.built{background:#e7efe2;color:#4f7a3a}
+.ck-group{font-family:var(--serif);font-weight:400;font-size:1.5rem;margin:26px 0 10px}
+.ck-rowbtns{display:flex;gap:8px;flex-wrap:wrap}
