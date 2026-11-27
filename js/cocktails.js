@@ -124,9 +124,7 @@
     ['Rear Admiral', 'Coupe (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled coupe.', [[1.5, 'oz', 'Taconic rum'], [0.5, 'oz', 'Lockhouse Isco Bitter'], [0.75, 'oz', 'Pineapple juice'], [0.5, 'oz', 'Lime juice'], [0.25, 'oz', 'Toasted sesame syrup'], [2, 'drop', 'Saline']]],
     ['Second Act', 'Coupe (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled coupe.', [[2.25, 'oz', 'McKenzie gin'], [1, 'oz', 'Red pepper–white balsamic gastrique'], [0.25, 'oz', 'Antica Torino Vermouth di Torino'], [0.25, 'oz', 'Cocchi Dopo Teatro'], [0.5, 'oz', 'Lemon juice'], [5, 'drop', 'Tarragon tincture']]],
     ['Bad Apple', 'Nick & Nora (chilled)', 'None, served up', '', S_ + ' · Shake hard with ice 10–12 seconds. Double strain into a chilled Nick & Nora.', [[1.75, 'oz', 'Reposado'], [0.75, 'oz', 'Crab apple juice'], [0.25, 'oz', 'Agave syrup'], [0.25, 'oz', 'Hibiscus concentrate'], [0.25, 'oz', 'China-China'], [2, 'drop', 'Saline'], [0.25, 'oz', 'Lecarre']]],
-    ['He Man', 'Rocks', 'Large cube', '', T_ + ' · Stir with ice 20–30 seconds. Strain over a large cube in a rocks glass. Black pepper tincture: 3–5 drops, to taste.', [[2, 'oz', 'Buckwheat-infused single malt'], [0.5, 'oz', 'Plum eau de vie'], [0.25, 'oz', 'Honey syrup'], [0.25, 'oz', 'Sherry'], [3, 'drop', 'Black pepper tincture']]],
     ['No Country', 'Rocks', 'Fresh cubes', 'Lime wheel', S_ + ' · Shake hard with ice 10–12 seconds. Strain into a rocks glass over fresh ice.', [[2, 'oz', 'Mezcal'], [0.25, 'oz', 'Primo Aperitivo'], [0.5, 'oz', 'Honey syrup'], [1, 'oz', 'Lemon juice']]],
-    ['Bloom', 'Martini glass (chilled)', 'None', 'Flower petal', T_ + ' · Spritz a chilled martini glass with absinthe. Stir the gin, verjus and elderflower with ice 20–30 seconds, strain into the glass and fill with sparkling rosé.', [[1.75, 'oz', 'Gin'], [0.75, 'oz', 'Verjus'], [0.25, 'oz', 'Elderflower liqueur'], [1, 'spritz', 'Absinthe'], [1, 'top', 'Sparkling rosé']]],
     ['Blue! You’re My Boy Blue!', 'Coupe (chilled)', 'None, served up', 'Flower', S_ + ' · Shake very hard with ice 15 seconds to foam the espresso. Double strain into a chilled coupe.', [[1.5, 'oz', 'Fort Hamilton'], [0.5, 'oz', 'Crème de cacao'], [0.5, 'oz', 'Sweet vermouth'], [0.75, 'oz', 'Espresso']]],
     ['The Rye of Power', 'Nick & Nora (chilled)', 'None, served up', 'Cherry', T_ + ' · Stir with ice 20–30 seconds. Strain into a chilled Nick & Nora.', [[1, 'oz', 'Ryeval rye vodka'], [2.25, 'oz', 'Batched aperitif'], [0.5, 'oz', 'Ginger honey syrup']]],
     ['Bramble On', 'Collins', 'Fresh cubes', 'Lemon wedge', S_ + ' · Zero proof. Shake the strawberry and lemon with ice, strain into a Collins glass over fresh ice and top with verjus soda.', [[1, 'oz', 'Strawberry'], [0.5, 'oz', 'Lemon juice'], [1, 'top', 'Verjus soda']]],
@@ -155,7 +153,9 @@
   function methodTag(b) { var m = String(b.method || ''); return /^\s*shak/i.test(m) ? 'Shaken' : /^\s*stir/i.test(m) ? 'Stirred' : /^\s*buil/i.test(m) ? 'Built' : ''; }
   function sig(list) { return (list || []).map(function (g) { return norm(g.item); }).sort().join('|'); }
   function findBuild(name) { var n = norm(name); return C.list.filter(function (b) { return norm(b.name) === n || norm(b.menu_name) === n; })[0] || null; }
-  function houseToDo() { return HOUSE.filter(function (x) { var b = findBuild(x[0]); return !b || sig(b.ingredients) !== sig(x[5].map(function (r) { return { item: r[2] }; })); }); }
+  function onMenuName(name) { var n = norm(name); return (menuCocktails().filter(function (m) { return norm(m.name) === n; })[0] || {}).name || ''; }
+  // only the house cocktails that are on the cocktail menu, each linked to its menu item
+  function houseToDo() { return HOUSE.filter(function (x) { if (!onMenuName(x[0])) return false; var b = findBuild(x[0]); if (b && norm(b.menu_name) !== norm(onMenuName(x[0]))) return true; return !b || sig(b.ingredients) !== sig(x[5].map(function (r) { return { item: r[2] }; })); }); }
   function addHouse() {
     var todo = houseToDo(); if (!todo.length) { status('The house cocktails are already up to date.', 'ok'); return; }
     var upd = todo.filter(function (x) { return findBuild(x[0]); }).map(function (x) { return x[0]; });
@@ -164,7 +164,7 @@
     var rows = todo.map(function (x, i) {
       var old = findBuild(x[0]);
       var ings = x[5].map(function (r) { var gu = /oz|top/.test(r[1]) ? guessInv(r[2]) : null; return { qty: r[0], unit: r[1], item: r[2], inv_id: gu ? gu.id : null }; });
-      return Object.assign({}, old || { id: uid(), active: true, sort: 50 + i }, { name: old ? old.name : (menuNames[norm(x[0])] || x[0]), menu_name: (old && old.menu_name) || menuNames[norm(x[0])] || '', glass: x[1], ice: x[2], garnish: x[3], method: x[4], ingredients: byCost(ings) });
+      return Object.assign({}, old || { id: uid(), active: true, sort: 50 + i }, { name: old ? old.name : onMenuName(x[0]), menu_name: onMenuName(x[0]), glass: x[1], ice: x[2], garnish: x[3], method: x[4], ingredients: byCost(ings) });
     });
     status('Saving ' + rows.length + ' house cocktails…', 'dirty');
     Promise.all(rows.map(saveBuild)).then(function (saved) {
@@ -223,7 +223,7 @@
       h('div', { cls: 'ck-tools' }, [
         C.list.length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Print builds', title: 'House cocktails on one sheet, the classics on two', on: { click: function () { printBuilds(active()); } } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Monthly tally', on: { click: tallyDialog } }) : null,
-        canEdit() && houseToDo().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the house cocktails', title: 'Rear Admiral, Second Act, Bad Apple and the rest of Eden’s own cocktails, from the bar’s spec cards', on: { click: addHouse } }) : null,
+        canEdit() && houseToDo().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the house cocktails', title: 'The cocktails on the menu, from the bar’s spec cards, linked to their menu items', on: { click: addHouse } }) : null,
         canEdit() && missingClassics().length ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add the classic cocktails', title: 'Old Fashioned, Manhattan, Martini and the rest of the bar’s classic specs', on: { click: addClassics } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'Add cocktails from the menu', on: { click: fromMenu } }) : null,
         canEdit() ? h('button', { type: 'button', cls: 'ed-btn small', text: 'New build', on: { click: function () { edit({ id: uid(), name: '', ingredients: [{ qty: 1.5, unit: 'oz', item: '' }, { qty: null, unit: 'oz', item: '' }], _new: true }); } } }) : null
