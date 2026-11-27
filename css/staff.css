@@ -3717,3 +3717,52 @@ input.iv-sp-in::-webkit-search-cancel-button{-webkit-appearance:none;display:non
 .fn-who>summary{display:block;padding:10px 40px 10px 0;border-top:1px solid var(--line)}
 .fn-foldb{padding-bottom:4px}
 .fn-foldb .pr-sched{margin-top:0}
+/* Catering & BEOs: the board, BEO cards and the past list (the layout from the redesign) */
+.cq-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:4px 0 16px}
+.cq-st1{padding:14px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.cq-st1:first-child{border-left:0}
+.cq-st1 span{font-size:.78rem;color:var(--stone,#857f75)}
+.cq-st1 b{font-size:1.5rem;font-weight:500;line-height:1.25;color:var(--ink,#0f1215)}
+.cq-st1 small{font-size:.72rem;color:var(--stone,#857f75)}
+.cq-board{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;overflow-x:auto;padding-bottom:4px;align-items:start}
+.cq-col{background:#efe6d8;border-radius:14px;padding:12px;min-height:220px}
+.cq-colh{display:flex;justify-content:space-between;align-items:center}
+.cq-colh b{font-size:.92rem;font-weight:600}
+.cq-colh span{font-size:.78rem;color:#4a4e53;font-variant-numeric:tabular-nums}
+.cq-colsub{margin:2px 0 10px;font-size:.8rem;color:#6b6257}
+.cq-none{font-size:.82rem;color:#8b8376;margin:8px 2px}
+.cq-card{background:#fff;border-radius:12px;padding:12px 13px;margin-bottom:9px;box-shadow:0 1px 2px rgba(91,60,30,.08);cursor:pointer;display:grid;gap:3px;outline:none}
+.cq-card:hover,.cq-card:focus-visible{box-shadow:0 4px 14px rgba(91,60,30,.14)}
+.cq-ct{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.cq-ct b{font-size:.95rem;font-weight:600;line-height:1.3}
+.cq-ct span{font-size:.76rem;color:#8a5226;font-weight:600;white-space:nowrap}
+.cq-cm{font-size:.8rem;color:#6b6257;line-height:1.4}
+.cq-cm.strong{color:#2b2f33;font-weight:500}
+.cq-warn{font-size:.76rem;line-height:1.35;padding:6px 8px;border-radius:7px;margin-top:6px}
+.cq-warn.gold{background:#f6ecd2;color:#7a5b12}
+.cq-warn.red{background:#f7dedb;color:#8f2d22}
+.cq-cardbtn{justify-self:start;margin-top:8px}
+.cq-foot{font-size:.82rem;color:var(--stone,#857f75);margin:12px 0 0;max-width:72em;line-height:1.5}
+.cq-beogrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.cq-beocard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;cursor:pointer;outline:none}
+.cq-beocard:hover,.cq-beocard:focus-visible{box-shadow:0 4px 16px rgba(91,60,30,.1)}
+.cq-bh{display:flex;gap:14px;align-items:flex-start;margin-bottom:10px}
+.cq-bh>div:nth-child(2){flex:1;min-width:0}
+.cq-bh h2{font-size:1.08rem;font-weight:600;margin:2px 0 2px;font-family:inherit}
+.cq-bh p{margin:0;font-size:.86rem;color:#6b6257}
+.cq-bdate{width:54px;flex:none;border-radius:10px;background:#f3e3d3;color:#8a5226;display:grid;place-items:center;padding:7px 0;line-height:1.1}
+.cq-bdate b{font-size:1.4rem;font-weight:600}.cq-bdate span{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.cq-pill{font-size:.74rem;background:#f6ecd2;color:#7a5b12;border-radius:6px;padding:3px 8px;white-space:nowrap}
+.cq-beocard .cq-kv{margin:6px 0 4px}
+.cq-beocard .cq-acts{margin-top:12px}
+.cq-pastlist{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.cq-prow{display:flex;width:100%;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;border:0;border-top:1px solid var(--line);background:none;text-align:left;font:inherit;cursor:pointer}
+.cq-prow:first-child{border-top:0}
+.cq-prow:hover{background:#faf6ef}
+.cq-prow b{display:block;font-weight:600;font-size:.94rem}
+.cq-prow div span{font-size:.82rem;color:#6b6257}
+.cq-full{border-radius:14px}
+@media (max-width:900px){.cq-stats{grid-template-columns:repeat(2,1fr)}.cq-st1{border-left:0;border-top:1px solid var(--line)}.cq-st1:nth-child(-n+2){border-top:0}.cq-st1:nth-child(even){border-left:1px solid var(--line)}.cq-beogrid{grid-template-columns:1fr}}
+@media (max-width:760px){.cq-board{grid-template-columns:repeat(4,84%);scroll-snap-type:x mandatory}.cq-col{scroll-snap-align:start}}
+.cq-full .cq-back{display:inline-block;margin-bottom:6px}
+.cq-beocard .cq-acts{border:0;padding:0}

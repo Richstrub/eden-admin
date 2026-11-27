@@ -21,7 +21,7 @@
   };
   var STEPS = ['new', 'link_sent', 'received', 'beo', 'completed'];
   var VIEWS = [
-    ['inquiries', 'Inquiries', function (r) { return r.status === 'new' || r.status === 'link_sent' || r.status === 'received'; }],
+    ['inquiries', 'Inquiries', function (r) { return r.status === 'new' || r.status === 'link_sent' || r.status === 'received' || r.status === 'beo'; }],
     ['beos', 'Active BEOs', function (r) { return r.status === 'beo'; }],
     ['past', 'Completed & declined', function (r) { return r.status === 'completed' || r.status === 'declined'; }],
     ['spam', 'Spam', function (r) { return r.status === 'spam'; }]
@@ -37,7 +37,9 @@
   function flagText(f) { var m = /^check-error-(.+)$/.exec(f); return m ? (m[1] === 'load' ? 'The check was blocked from loading on their device (often a browser extension or work network)' : 'The check reported error ' + m[1] + ' on their device') + (/^1102/.test(m[1]) ? ' (edencny.com isn’t on the Turnstile widget’s list of hostnames)' : '') : FLAGS[f] || f; }
   var CFG = window.EDEN_STAFF_CONFIG || {};
   var GUEST = String(CFG.guestSite || CFG.publicSite || 'https://edencny.com/').replace(/\/?$/, '/');
-  var I = { ctx: null, el: null, rows: [], loaded: false, missing: false, view: 'inquiries', sel: null, q: '', msgs: {}, compose: null };
+  var I = { ctx: null, el: null, rows: [], loaded: false, missing: false, view: 'inquiries', sel: null, q: '', msgs: {}, compose: null, events: [], shifts: {} };
+  // the board: an inquiry moves left to right
+  var COLS = [['new', 'Reply or send the questionnaire'], ['link_sent', 'Waiting on the client'], ['received', 'Price it and turn it into a BEO'], ['beo', 'Booked — on the calendar']];
 
   function h(tag, attrs, kids) {
     var e = document.createElement(tag);
@@ -76,7 +78,33 @@
       I.missing = false; I.rows = r.data || [];
       syncAllBeos();
       I.rows.forEach(function (x) { if (x.status === 'beo') calSync(x, true); });   // active BEOs made before this, or on another computer
+      return loadDays();
     }, function () { I.loaded = true; I.ctx.status('Couldn’t reach the database.', 'err'); });
+  }
+  // the calendar and the schedule around the events' dates: same-day events, closed days and who's working
+  function isoD(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function loadDays() {
+    var t = new Date(); t.setHours(0, 0, 0, 0); var from = isoD(t), sun = new Date(t); sun.setDate(t.getDate() - t.getDay());
+    var sb = I.ctx.sb;
+    return Promise.all([
+      sb.from('events').select('id,title,date,type,beo_id,start').gte('date', from).limit(1000).then(function (x) { return x.error ? [] : x.data || []; }, function () { return []; }),
+      sb.from('schedule_weeks').select('week_start,shifts').gte('week_start', isoD(sun)).limit(30).then(function (x) { return x.error ? [] : x.data || []; }, function () { return []; }),
+      sb.from('employees').select('id,position').then(function (x) { return x.error ? [] : x.data || []; }, function () { return []; })
+    ]).then(function (res) {
+      I.events = res[0];
+      var pos = {}; res[2].forEach(function (e) { pos[e.id] = e.position || ''; });
+      I.shifts = {};
+      res[1].forEach(function (w) { (w.shifts || []).forEach(function (s) { var d = parseDay(w.week_start); if (!d) return; d.setDate(d.getDate() + (+s.day || 0)); var k = isoD(d); (I.shifts[k] = I.shifts[k] || []).push(String((s.role || '') + ' ' + (pos[s.emp] || '')).toLowerCase()); }); });
+    });
+  }
+  function dayFacts(r) {
+    var k = String(r.event_date || '').slice(0, 10), d = parseDay(k); if (!d) return null;
+    var evs = I.events.filter(function (e) { return e.date === k && e.beo_id !== r.id; });
+    var closedEv = evs.filter(function (e) { return e.type === 'closed'; })[0];
+    var open = !closedEv && [3, 4, 5, 6].indexOf(d.getDay()) !== -1;   // Eden is open Wednesday to Saturday
+    var sh = I.shifts[k] || [], n = function (re) { return sh.filter(function (x) { return re.test(x); }).length; };
+    var kit = n(/line|sous|cook|chef|prep|dish|kitchen/), bar = sh.filter(function (x) { return !/line|sous|cook|chef|prep|dish|kitchen/.test(x) && /bar/.test(x); }).length, floor = sh.length - kit - bar;
+    return { others: evs.filter(function (e) { return e.type !== 'closed'; }), closedEv: closedEv, open: open, staff: sh.length ? [floor ? 'Floor ' + floor : '', bar ? 'Bar ' + bar : '', kit ? 'Kitchen ' + kit : ''].filter(Boolean).join(' · ') : '' };
   }
   function loadMsgs(id) {
     return I.ctx.sb.from('inquiry_messages').select('*').eq('inquiry_id', id).order('at', { ascending: true }).then(function (r) {
@@ -170,7 +198,7 @@
       wrap.appendChild(h('div', { cls: 'iv-setup' }, [h('p', { text: 'Catering & BEOs isn’t switched on yet. In Supabase, open SQL Editor → New query, paste the contents of supabase/inquiries.sql from the eden-admin repository, and click Run. The README lists the remaining steps.' })]));
       return;
     }
-    var counts = {}; VIEWS.forEach(function (v) { counts[v[0]] = I.rows.filter(v[2]).length; });
+    var counts = {}; VIEWS.forEach(function (v) { counts[v[0]] = I.rows.filter(v[2]).filter(function (r) { return v[0] !== 'inquiries' || r.status !== 'beo'; }).length; });
     var seg = h('div', { cls: 'cq-seg', role: 'group', 'aria-label': 'Show' }, VIEWS.map(function (v) {
       return h('button', { type: 'button', 'aria-pressed': I.view === v[0] ? 'true' : 'false', on: { click: function () { I.view = v[0]; I.sel = null; I.compose = null; render(); } } },
         [v[1], counts[v[0]] && v[0] !== 'past' ? h('span', { cls: 'cq-n' + (v[0] === 'spam' ? ' muted' : ''), text: String(counts[v[0]]) }) : null]);
@@ -178,12 +206,68 @@
     var search = h('input', { type: 'search', placeholder: 'Search name, email, event', value: I.q, 'aria-label': 'Search' });
     search.addEventListener('input', function () { I.q = search.value; paintList(); });
     wrap.appendChild(h('div', { cls: 'cq-bar' }, [seg, search]));
-    var body = h('div', { cls: 'cq-body' + (I.sel ? ' has-sel' : '') });
-    I.listEl = h('div', { cls: 'cq-list', role: 'list' });
-    I.detailEl = h('div', { cls: 'cq-detail' });
-    body.appendChild(I.listEl); body.appendChild(I.detailEl);
-    wrap.appendChild(body);
-    paintList(); paintDetail();
+    if (I.sel && cur()) {   // one inquiry: its details and conversation, full width
+      I.listEl = null; I.detailEl = h('div', { cls: 'cq-detail cq-full' });
+      wrap.appendChild(I.detailEl); paintDetail(); return;
+    }
+    I.sel = null; I.detailEl = null;
+    I.listEl = h('div', { cls: 'cq-view' }); wrap.appendChild(I.listEl);
+    paintList();
+  }
+  function cname(r) { return r.event_name || r.organization || r.name || '(no name)'; }
+  function inDays(x) { var d = parseDay(x); if (!d) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((d - t) / 86400000); }
+  function whenLine(r) {
+    var n = inDays(r.event_date);
+    return r.event_date ? parseDay(r.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + (n > 0 ? ' · in ' + n + (n === 1 ? ' day' : ' days') : n === 0 ? ' · today' : '') + (r.start_time ? ' · ' + time12(r.start_time) : '') : 'No date yet';
+  }
+  function warns(r, f) {
+    if (!f) return [];
+    var out = [];
+    if (f.others.length) out.push(['gold', 'Same day: ' + f.others.map(function (e) { return e.title; }).join(', ')]);
+    if (!f.open && r.status !== 'completed') out.push(['gold', f.closedEv ? 'That day is marked “' + f.closedEv.title + '”' : 'Eden is normally closed that day']);
+    return out;
+  }
+  function stats() {
+    var month = isoD(new Date()).slice(0, 7), rows = I.rows;
+    var thisM = rows.filter(function (x) { return String(x.created_at || '').slice(0, 7) === month && x.status !== 'spam'; });
+    var decided = rows.filter(function (x) { return ['beo', 'completed', 'declined'].indexOf(x.status) !== -1; }), won = decided.filter(function (x) { return x.status !== 'declined'; });
+    var booked = rows.filter(function (x) { return x.status === 'beo' && (inDays(x.event_date) == null || inDays(x.event_date) >= 0); });
+    var g = h('div', { cls: 'cq-stats' });
+    [['New this month', String(thisM.length), 'inquiries'], ['Need a reply', String(rows.filter(function (x) { return x.status === 'new'; }).length), 'new, not answered'],
+      ['Waiting on clients', String(rows.filter(function (x) { return x.status === 'link_sent'; }).length), 'questionnaire out'],
+      ['Active BEOs', String(booked.length), booked.reduce(function (a, x) { return a + (+x.guests || 0); }, 0) + ' guests booked'],
+      ['Booked rate', decided.length ? Math.round(won.length / decided.length * 100) + '%' : '—', won.length + ' of ' + decided.length + ' decided']
+    ].forEach(function (t) { g.appendChild(h('div', { cls: 'cq-st1' }, [h('span', { text: t[0] }), h('b', { text: t[1] }), h('small', { text: t[2] })])); });
+    return g;
+  }
+  function act(label, fn) { return h('button', { type: 'button', cls: 'ed-btn small cq-cardbtn', text: label, on: { click: function (e) { e.stopPropagation(); fn(); } } }); }
+  function startBeo(r) { var w = window.open('', '_blank'); save(r, { status: 'beo' }, 'Moved to Active BEOs.').then(function () { addMsg(r, { kind: 'event', subject: 'BEO started' }); openBEO(r, w); loadDays().then(render); }); }
+  function card(r) {
+    var f = dayFacts(r), next = r.status === 'new' ? act('→ Send the questionnaire', function () { pick(r.id); openCompose(r, 'plan'); })
+      : r.status === 'link_sent' ? act('→ Questionnaire back', function () { save(r, { status: 'received' }, 'Moved to Questionnaire back.').then(function () { addMsg(r, { kind: 'event', subject: 'Moved to Questionnaire back' }); render(); }); })
+      : r.status === 'received' ? act('→ Start the BEO', function () { startBeo(r); }) : null;
+    return h('div', { cls: 'cq-card', role: 'button', tabindex: '0', on: { click: function () { pick(r.id); }, keydown: function (e) { if (e.key === 'Enter' && e.target === e.currentTarget) pick(r.id); } } }, [
+      h('div', { cls: 'cq-ct' }, [h('b', { text: cname(r) }), r.guests ? h('span', { text: r.guests + ' guests' }) : null]),
+      h('div', { cls: 'cq-cm', text: [r.event_type, r.location].filter(Boolean).join(' · ') || '\u00a0' }),
+      h('div', { cls: 'cq-cm strong', text: whenLine(r) }),
+      h('div', { cls: 'cq-cm', text: [r.event_name ? r.name : '', r.created_at ? 'came in ' + ago(r.created_at) : ''].filter(Boolean).join(' · ') }),
+      r.last_message_at ? h('div', { cls: 'cq-cm', text: 'Last email ' + ago(r.last_message_at) }) : null
+    ].concat(warns(r, f).map(function (w) { return h('div', { cls: 'cq-warn ' + w[0], text: w[1] }); })).concat([next]));
+  }
+  function beoCard(r) {
+    var f = dayFacts(r), d = parseDay(r.event_date), n = inDays(r.event_date);
+    return h('div', { cls: 'cq-beocard', role: 'button', tabindex: '0', on: { click: function () { pick(r.id); }, keydown: function (e) { if (e.key === 'Enter' && e.target === e.currentTarget) pick(r.id); } } }, [
+      h('div', { cls: 'cq-bh' }, [
+        h('div', { cls: 'cq-bdate' }, d ? [h('b', { text: String(d.getDate()) }), h('span', { text: d.toLocaleDateString('en-US', { month: 'short' }) })] : [h('span', { text: 'TBD' })]),
+        h('div', null, [h('h2', { text: cname(r) }), h('p', { text: [r.event_type, r.location].filter(Boolean).join(' · ') })]),
+        n != null ? h('span', { cls: 'cq-pill', text: n > 0 ? 'in ' + n + (n === 1 ? ' day' : ' days') : n === 0 ? 'today' : Math.abs(n) + ' days ago' }) : null
+      ]),
+      kv([['When', r.event_date ? longDate(r.event_date) + (r.start_time ? ' · ' + time12(r.start_time) + (r.end_time ? '–' + time12(r.end_time) : '') : '') : 'No date yet'],
+        ['Guests', r.guests ? String(r.guests) : ''], ['Contact', [r.name, r.phone, r.email].filter(Boolean).join(' · ')],
+        ['Estimate', money(r.estimate)], ['Staff that day', f ? f.staff || 'No one scheduled yet' : ''], ['BEO', r.beo_saved_at ? 'Saved ' + ago(r.beo_saved_at) : 'Not opened yet'], ['Notes', r.staff_note || '']]),
+      h('div', null, warns(r, f).map(function (w) { return h('div', { cls: 'cq-warn ' + w[0], text: w[1] }); })),
+      h('div', { cls: 'cq-acts' }, [act('Open BEO', function () { openBEO(r); }), act('Mark completed', function () { save(r, { status: 'completed' }, 'Marked completed.').then(function () { addMsg(r, { kind: 'event', subject: 'Event completed' }); render(); }); })])
+    ]);
   }
   function visible() {
     var f = VIEWS.filter(function (v) { return v[0] === I.view; })[0][2], q = fold(I.q);
@@ -192,8 +276,34 @@
     return rows;
   }
   function paintList() {
-    var list = I.listEl; list.innerHTML = '';
+    var list = I.listEl; if (!list) return; list.innerHTML = '';
     var rows = visible();
+    var byDate = function (a, b) { return String(a.event_date || '9999') < String(b.event_date || '9999') ? -1 : 1; };
+    if (I.view === 'inquiries') {
+      list.appendChild(stats());
+      var board = h('div', { cls: 'cq-board' });
+      COLS.forEach(function (c) {
+        var col = rows.filter(function (r) { return r.status === c[0]; }).sort(byDate);
+        if (c[0] === 'beo') col = col.filter(function (r) { var n = inDays(r.event_date); return n == null || n >= 0; });
+        board.appendChild(h('div', { cls: 'cq-col' }, [h('div', { cls: 'cq-colh' }, [h('b', { text: STATUS[c[0]].label }), h('span', { text: String(col.length) })]), h('p', { cls: 'cq-colsub', text: c[1] })]
+          .concat(col.length ? col.map(card) : [h('p', { cls: 'cq-none', text: I.q ? 'Nothing matches.' : 'Nothing here.' })])));
+      });
+      list.appendChild(board);
+      list.appendChild(h('p', { cls: 'cq-foot', text: 'Left to right as an inquiry moves along. Click a card for the details, the questionnaire, the BEO and every email. When one becomes an Active BEO it goes on the calendar with its date, time, room and guest count.' }));
+      return;
+    }
+    if (I.view === 'beos') {
+      if (!rows.length) { list.appendChild(h('p', { cls: 'cq-empty', text: I.q ? 'Nothing matches that search.' : 'No active BEOs.' })); return; }
+      list.appendChild(h('div', { cls: 'cq-beogrid' }, rows.sort(byDate).map(beoCard)));
+      return;
+    }
+    if (I.view === 'past' && rows.length) {
+      list.appendChild(h('div', { cls: 'cq-pastlist' }, rows.sort(function (a, b) { return String(a.event_date || a.created_at) < String(b.event_date || b.created_at) ? 1 : -1; }).map(function (r) {
+        return h('button', { type: 'button', cls: 'cq-prow', on: { click: function () { pick(r.id); } } }, [h('div', null, [h('b', { text: cname(r) }), h('span', { text: [longDate(r.event_date), r.guests ? r.guests + ' guests' : '', r.name].filter(Boolean).join(' · ') })]),
+          h('span', { cls: 'cq-chip cq-' + r.status, text: STATUS[r.status].label })]);
+      })));
+      return;
+    }
     if (!rows.length) {
       list.appendChild(h('p', { cls: 'cq-empty', text: I.q ? 'Nothing matches that search.' : { inquiries: 'No open inquiries.', beos: 'No active BEOs.', past: 'Nothing here yet.', spam: 'No spam.' }[I.view] }));
       return;
@@ -247,7 +357,7 @@
     if (!r) { d.appendChild(h('p', { cls: 'cq-pick', text: I.rows.length ? 'Choose an inquiry or BEO to see the details and the conversation.' : 'Inquiries from the website will appear here.' })); return; }
     var st = h('select', { 'aria-label': 'Stage' }, Object.keys(STATUS).map(function (k) { return h('option', { value: k, text: STATUS[k].label }); }));
     st.value = r.status;
-    st.addEventListener('change', function () { save(r, { status: st.value }, 'Moved to ' + STATUS[st.value].label + '.').then(function () { addMsg(r, { kind: 'event', subject: 'Moved to ' + STATUS[st.value].label }); render(); }); });
+    st.addEventListener('change', function () { save(r, { status: st.value }, 'Moved to ' + STATUS[st.value].label + '.').then(function () { addMsg(r, { kind: 'event', subject: 'Moved to ' + STATUS[st.value].label }); render(); loadDays().then(function () { if (!I.sel) render(); }); }); });
     d.appendChild(h('div', { cls: 'cq-dh' }, [
       h('button', { type: 'button', cls: 'cq-back', text: '← Back to the list', on: { click: function () { I.sel = null; render(); } } }),
       h('h2', { text: r.name || '(no name)' }),
