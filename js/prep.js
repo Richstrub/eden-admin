@@ -5,7 +5,7 @@
  * note ("Add to any large plate: Chickpea & Red Miso Butter 6 · …") become their own items.
  * "Combined" view merges components shared by several dishes into one line.
  *
- * Fillable: tick a line when it's done, and fill in On hand, Prep and initials. What's filled in, items added and
+ * Fillable: tick a line when it's done, and fill in Prep and initials. What's filled in, items added and
  * lines taken off are shared by everyone who can see the list (Owner, managers, Kitchen logins, cooks), saved in
  * Supabase (supabase/prep-list.sql). The Owner and managers can reset it for the next day; it resets itself at
  * 8:00 pm if nobody does. Used on the staff site (#prep) and on the staff page's Prep List tab (cooks).
@@ -281,7 +281,6 @@
     var tr = h('tr', { cls: [cls || '', e.done ? 'is-done' : ''].join(' ').trim() || null, 'data-k': k }, [
       h('td', { cls: 'pp-chk' }, chk),
       h('td', { cls: 'pp-item' }, [h('span', { text: label }), used ? h('small', { text: used }) : null]),
-      h('td', { cls: 'pp-num' }, box(k, 'onhand', 'On hand: ' + label, 40)),
       h('td', { cls: 'pp-num' }, prepSel(k, label)),
       h('td', { cls: 'pp-ini' }, iniBtn(k, label)),
       h('td', { cls: 'pp-tool' }, removeBtn(k))
@@ -298,7 +297,7 @@
   }
   function table(rows) {
     return h('table', { cls: 'pp-table' }, [
-      h('thead', null, h('tr', null, [h('th', { cls: 'pp-chk', text: '✓' }), h('th', { text: 'Item' }), h('th', { cls: 'pp-num', text: 'On hand' }), h('th', { cls: 'pp-num', text: 'Prep' }), h('th', { cls: 'pp-ini', text: 'Init.' }), h('th', { cls: 'pp-tool' })])),
+      h('thead', null, h('tr', null, [h('th', { cls: 'pp-chk', text: '✓' }), h('th', { text: 'Item' }), h('th', { cls: 'pp-num', text: 'Prep' }), h('th', { cls: 'pp-ini', text: 'Init.' }), h('th', { cls: 'pp-tool' })])),
     ].concat(rows.length && rows.every(function (r) { return r.tagName === 'TBODY'; }) ? rows : [h('tbody', null, rows)]));
   }
   function extraRows(secId) {
@@ -413,9 +412,6 @@
   function appItem(it, secId) {
     var k = it.k, e = entry(k);
     var chk = h('button', { type: 'button', cls: 'pp-box pa-check', role: 'checkbox', 'aria-checked': e.done ? 'true' : 'false', 'aria-label': 'Done: ' + it.label });
-    var oh = h('input', { type: 'text', cls: 'pa-oh', 'data-f': 'onhand', value: e.onhand || '', placeholder: 'On hand', 'aria-label': 'On hand: ' + it.label, maxlength: '40', autocomplete: 'off', spellcheck: 'false', enterkeyhint: 'done' });
-    oh.addEventListener('input', function () { setField(k, 'onhand', oh.value, true); });
-    oh.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') oh.blur(); });
     var prep = h('div', { cls: 'pa-prep', role: 'group', 'aria-label': 'Prep: ' + it.label }, [['Do', 'Do'], ['X', 'X']].map(function (o) {
       return h('button', { type: 'button', 'data-v': o[0], 'aria-pressed': e.prep === o[0] ? 'true' : 'false', text: o[1], on: { click: function () {
         var nv = entry(k).prep === o[0] ? '' : o[0]; setField(k, 'prep', nv); paintPrep(prep, nv);
@@ -425,7 +421,7 @@
     var row = h('div', { cls: 'pa-item' + (e.done ? ' is-done' : ''), 'data-k': k }, [
       chk,
       h('div', { cls: 'pa-name' }, [h('b', { text: it.label }), it.sub ? h('span', { text: it.sub }) : null, it.extra ? h('span', { text: 'Added' }) : null]),
-      h('div', { cls: 'pa-ctl' }, [oh, prep, ini]),
+      h('div', { cls: 'pa-ctl' }, [prep, ini]),
       P.editing && canDelete() ? h('button', { type: 'button', cls: 'pa-x', 'aria-label': 'Take ' + it.label + ' off the list', text: '✕', on: { click: function () { if (it.extra) delExtra(secId, it.extra); else hideLine(k); } } }) : null
     ]);
     chk.addEventListener('click', function () {
@@ -545,7 +541,7 @@
       ])
     ]));
     if (!P.ctx.cook) wrap.appendChild(h('p', { cls: 'pp-help', text: (P.bar ? 'Bar prep, built from the cocktail menu. Print prints just this bar list. ' : 'Built from the live menu: change a dish in the Menu editor and this list follows. ') +
-      (P.db === true ? 'Tick a line when it’s done, fill in On hand, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next service day at 8:00 pm on Wednesday to Saturday nights (not Sunday to Tuesday) unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
+      (P.db === true ? 'Tick a line when it’s done, pick Do or X for Prep, and tap Init. to sign it; it saves as you go and everyone on the kitchen team sees the same list. It resets for the next service day at 8:00 pm on Wednesday to Saturday nights (not Sunday to Tuesday) unless the Owner or a manager resets it first. ' : 'Tick lines and fill in the boxes; on this device only until supabase/prep-list.sql is run in Supabase. ') +
       '“Combined” merges components used in more than one dish (it keeps its own ticks). Prints on one landscape 11 × 8½ page.' }));
     wrap.appendChild(h('p', { cls: 'pp-msg', role: 'status' }));
     if (P.db === false && P.ctx.role === 'owner') wrap.appendChild(h('p', { cls: 'pp-setup', text: 'To share the Prep List with managers and cooks, run supabase/prep-list.sql in Supabase (SQL Editor → New query → paste → Run), then reload.' }));
