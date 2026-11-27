@@ -1,0 +1,115 @@
+/* Eden staff site on a phone, in the style of Shopify's mobile admin (Polaris): light grey canvas, white
+ * cards with soft edges, a white top bar, black-and-grey tabs along the bottom, and More as a full page of
+ * grouped rows with chevrons. Phones only (700px and narrower); desktop and iPad are untouched.
+ * Loaded after the other stylesheets so it wins where they overlap. Goes with js/phone.js. */
+.ph-nav,.ph-top,.ph-logo,.ph-page{display:none}
+
+@media (max-width:700px){
+  :root{
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --serif:var(--sans);
+    --paper:#f1f1f1;--ivory:#f1f1f1;--ink:#303030;--text:#303030;--stone:#616161;--ember:#303030;
+    --line:#e3e3e3;--fill:#f1f1f1;--fill-2:#e3e3e3;--warm-side:#fff;--warm-tint:#f1f1f1;--warm-mute:#616161;
+    --p-card:0 0 0 1px rgba(0,0,0,.07),0 1px 0 rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.04);
+  }
+  html body,html body .ed{background:#f1f1f1;color:#303030;font-family:var(--sans);letter-spacing:-.005em}
+  html body .sb-main{background:#f1f1f1;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+
+  /* top bar */
+  html body .ed-bar.sb-bar{background:#fff;color:#303030;border-bottom:1px solid #e3e3e3;-webkit-backdrop-filter:none;backdrop-filter:none;min-height:54px;padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px;gap:10px;flex-wrap:nowrap}
+  html body #sbOpen,html body .sb-scrim,html body .sb-pin,html body .sb-barbrand,html body .sb-back{display:none!important}
+  html body .ph-logo{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:8px;background:#303030;color:#fff;font-weight:700;font-size:.95rem;text-decoration:none;letter-spacing:0}
+  html body .sb-crumb{flex:1 1 auto;min-width:0;margin:0;font-size:1rem;font-weight:650;color:#303030;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html body .sb-crumb .sb-crumb-g{display:none}
+  html body .ph-top{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+  html body .ph-ib{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;border:0;background:transparent;color:#303030}
+  html body .ph-ib:active{background:#f1f1f1}
+  html body .ph-ib svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  html body .ph-me{border:0;background:none;padding:2px}
+  html body .ph-meav{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#e3e3e3;color:#303030;font-size:.72rem;font-weight:650}
+  html body .sb-bar .ed-actions .ed-btn{padding:6px 10px;font-size:.8rem}
+
+  /* tabs along the bottom */
+  html body .ph-nav{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;position:fixed;left:0;right:0;bottom:0;z-index:160;background:#fff;border-top:1px solid #e3e3e3;padding:4px 2px calc(4px + env(safe-area-inset-bottom))}
+  html body .ph-nav[hidden]{display:none}
+  html body .ph-nav>a,html body .ph-nav>button{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px 3px;border:0;background:none;font:inherit;font-size:.66rem;font-weight:500;color:#616161;text-decoration:none;min-width:0;-webkit-tap-highlight-color:transparent}
+  html body .ph-nav span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  html body .ph-nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  html body .ph-nav [aria-current]{color:#303030;font-weight:650}
+  html body .ph-nav [aria-current] svg{stroke-width:2.3}
+  html body .ph-badge{position:absolute;top:2px;left:calc(50% + 5px);min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:#303030;color:#fff;font-style:normal;font-size:.6rem;font-weight:700;line-height:17px;text-align:center}
+  html body .ph-dot{position:absolute;top:6px;left:calc(50% + 8px);width:8px;height:8px;border-radius:50%;background:#e51c00}
+
+  /* More: every section, in grouped rows */
+  html body .ph-page{display:flex;flex-direction:column;position:fixed;left:0;right:0;top:0;bottom:calc(57px + env(safe-area-inset-bottom));z-index:150;background:#f1f1f1;animation:phIn .2s ease}
+  body.ph-page-open{overflow:hidden}
+  html body .ph-ph{background:#fff;border-bottom:1px solid #e3e3e3;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 12px}
+  html body .ph-phrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  html body .ph-ph h2{margin:0;font-size:1.45rem;font-weight:700;letter-spacing:-.02em;color:#303030}
+  html body .ph-search{display:flex;align-items:center;gap:8px;background:#f1f1f1;border-radius:10px;padding:0 12px;height:40px;color:#616161}
+  html body .ph-search svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+  html body .ph-search input{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;color:#303030;outline:none;-webkit-appearance:none;appearance:none;padding:0}
+  html body .ph-body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:14px 12px 24px}
+  html body .ph-card{background:#fff;border-radius:12px;box-shadow:var(--p-card);margin-bottom:14px;overflow:hidden}
+  html body .ph-card h3{margin:0;padding:12px 16px 4px;font-size:.8rem;font-weight:650;color:#616161;letter-spacing:0;text-transform:none;font-family:var(--sans)}
+  html body .ph-row{display:grid;grid-template-columns:22px minmax(0,1fr) auto 16px;align-items:center;gap:12px;width:100%;padding:12px 16px;border:0;border-top:1px solid #ebebeb;background:#fff;color:#303030;text-decoration:none;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
+  html body .ph-card h3+.ph-row,html body .ph-card>.ph-row:first-child{border-top:0}
+  html body .ph-row:active{background:#f7f7f7}
+  html body .ph-row[aria-current]{background:#f7f7f7}
+  html body .ph-row[aria-current] b{font-weight:700}
+  html body .ph-ri{display:grid;place-items:center;color:#4a4a4a}
+  html body .ph-ri svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  html body .ph-rt{display:flex;flex-direction:column;min-width:0}
+  html body .ph-rt b{font-size:.92rem;font-weight:550;line-height:1.3}
+  html body .ph-rt small{font-size:.78rem;color:#616161;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  html body .ph-row.sub{padding-top:10px;padding-bottom:10px}
+  html body .ph-row.sub .ph-ri{visibility:hidden}
+  html body .ph-row.sub b{font-weight:450;font-size:.88rem;color:#4a4a4a}
+  html body .ph-chev{width:16px;height:16px;fill:none;stroke:#8a8a8a;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  html body .ph-badge.inline{position:static;display:inline-block}
+  html body .ph-tag{font-style:normal;font-size:.72rem;font-weight:600;background:#ffeb78;color:#4f4700;border-radius:8px;padding:2px 8px;white-space:nowrap}
+  html body .ph-row.danger{color:#8e1f0b}
+  html body .ph-row.danger .ph-ri{color:#8e1f0b}
+  html body .ph-acctrow{display:flex;align-items:center;gap:12px;padding:14px 16px}
+  html body .ph-acctrow b{display:block;font-size:.95rem;font-weight:650}
+  html body .ph-acctrow small{font-size:.8rem;color:#616161}
+  html body .ph-av{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#303030;color:#fff;font-weight:650;font-size:.85rem;flex:none}
+  html body .ph-acct .ph-acctrow+.ph-row{border-top:1px solid #ebebeb}
+  html body .ph-empty{text-align:center;color:#616161;font-size:.9rem;padding:24px 0}
+
+  /* the pages: Polaris type, cards and buttons */
+  html body .sb-main h1{font-family:var(--sans)!important;font-weight:700!important;font-size:1.5rem!important;line-height:1.2!important;letter-spacing:-.02em!important;color:#303030}
+  html body .sb-main h2{font-family:var(--sans);letter-spacing:-.01em}
+  html body .sc-eyebrow,html body .home-eyebrow,html body .rp-eyebrow{color:#616161;letter-spacing:0;text-transform:none;font-size:.8rem;font-weight:500}
+  html body .ed-btn{background:#fff;color:#303030;border:0;border-radius:8px;box-shadow:inset 0 0 0 1px #d4d4d4,0 1px 0 rgba(0,0,0,.05);font-weight:600;letter-spacing:0;text-transform:none}
+  html body .ed-btn:active{background:#f7f7f7}
+  html body .ed-btn.ghost{background:#fff}
+  html body .ed-btn.pr-accent,html body .ed-btn.cl-add,html body #edSave,html body .ed-btn.primary,html body .ed-btn.accent{background:#303030;color:#fff;box-shadow:inset 0 -1px 0 #000,0 1px 0 rgba(0,0,0,.1)}
+  html body .ed-btn.danger{color:#8e1f0b}
+  html body .tdx-card,html body .tdx-panel,html body .tdx-kpi,html body .cq-card,html body .cq-beocard,html body .cq-pastlist,html body .cq-stats,html body .fn-chart,html body .rp-card,html body .ps-sec,html body .fn-capd,html body .cl-wcol,html body .cq-detail{border:0!important;border-radius:12px!important;box-shadow:var(--p-card)!important;background:#fff}
+  html body .cq-col{background:#ebebeb}
+  html body .tdx-btn{background:#fff;box-shadow:inset 0 0 0 1px #d4d4d4;border-radius:8px;color:#303030;font-weight:600}
+  html body .tdx-go{color:#303030}
+  html body .tdx-ic{border-radius:8px}
+  html body input[type=text],html body input[type=search],html body input[type=email],html body input[type=number],html body input[type=date],html body input[type=time],html body select,html body textarea{border-radius:8px}
+  html body input,html body select,html body textarea{font-size:16px}
+  html body .tdx{padding:18px 12px 30px}
+  html body .tdx-head p{font-size:.88rem}
+  html body .tdx-sec{margin-top:20px}
+}
+@keyframes phIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media print{.ph-nav,.ph-page,.ph-top,.ph-logo{display:none!important}}
+@media (max-width:700px){
+  /* sign in, new password, no access: a white card on the grey canvas */
+  html body .gate{background:#f1f1f1;color:#303030}
+  html body .gate form,html body .gate .card{background:#fff;color:#303030;border:0;border-radius:12px;box-shadow:var(--p-card)}
+  html body .gate .mark{color:#303030}
+  html body .gate .mark span{color:#616161}
+  html body .gate label{color:#303030}
+  html body .gate input{background:#fff;color:#303030;border:1px solid #8a8a8a;border-radius:8px}
+  html body .gate input:focus{border-color:#303030;box-shadow:0 0 0 2px #fff,0 0 0 4px #005bd3;outline:none}
+  html body .gate .primary{background:#303030;color:#fff;border-radius:10px;box-shadow:inset 0 -1px 0 #000}
+  html body .gate .link,html body .gate a:not(.primary),html body .gate-new a{color:#005bd3}
+  html body .gate p,html body .gate .gate-new{color:#616161}
+  html body .gate .msg{color:#8e1f0b}
+}
